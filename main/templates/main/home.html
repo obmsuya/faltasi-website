@@ -1,0 +1,344 @@
+{% extends 'main/base.html' %}
+
+{% load static %}
+
+{% block title %}
+Faltasi Innovations Limited | Innovative Business Solutions
+{% endblock %}
+
+
+{% block content %}
+
+
+<!-- HERO SECTION -->
+
+<section class="hero">
+
+    <div class="hero-overlay"></div>
+
+    <div class="container hero-content">
+
+        <div class="hero-text">
+
+            <span class="hero-label">
+                FALTASI INNOVATIONS LIMITED
+            </span>
+
+            <h1>
+                Technology that
+                <span>moves business forward.</span>
+            </h1>
+
+            <p>
+                We build innovative technology and professional
+                solutions that help businesses operate smarter,
+                faster and more efficiently.
+            </p>
+
+            <div class="hero-buttons">
+
+                <a href="{% url 'services' %}" class="btn btn-primary">
+                    Explore Our Services
+                </a>
+
+                <a href="{% url 'contact' %}" class="btn btn-outline">
+                    Talk to Us
+                </a>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+
+<!-- INTRODUCTION -->
+
+<section class="section">
+
+    <div class="container">
+
+        <div class="section-intro">
+
+            <span class="section-label">
+                WHAT WE DO
+            </span>
+
+            <h2>
+                Innovative solutions for
+                modern businesses
+            </h2>
+
+            <p>
+                Faltasi Innovations Limited combines technology,
+                creativity and professional services to provide
+                practical solutions for businesses and organizations.
+            </p>
+
+        </div>
+
+
+        <div class="services-grid">
+
+
+            <div class="service-card">
+
+                <div class="service-icon">
+                    IT
+                </div>
+
+                <h3>
+                    ICT Solutions
+                </h3>
+
+                <p>
+                    Technology solutions designed to improve
+                    business operations and productivity.
+                </p>
+
+                <a href="{% url 'services' %}">
+                    Learn more →
+                </a>
+
+            </div>
+
+
+
+            <div class="service-card">
+
+                <div class="service-icon">
+                    &lt;/&gt;
+                </div>
+
+                <h3>
+                    Software Development
+                </h3>
+
+                <p>
+                    We design and develop modern websites,
+                    applications and business systems.
+                </p>
+
+                <a href="{% url 'services' %}">
+                    Learn more →
+                </a>
+
+            </div>
+
+
+
+            <div class="service-card">
+
+                <div class="service-icon">
+                    POS
+                </div>
+
+                <h3>
+                    POS Solutions
+                </h3>
+
+                <p>
+                    Point-of-sale solutions that help businesses
+                    manage sales and daily operations.
+                </p>
+
+                <a href="{% url 'services' %}">
+                    Learn more →
+                </a>
+
+            </div>
+
+
+
+            <div class="service-card">
+
+                <div class="service-icon">
+                    PM
+                </div>
+
+                <h3>
+                    Property Solutions
+                </h3>
+
+                <p>
+                    Technology and professional services for
+                    landlords, tenants and property businesses.
+                </p>
+
+                <a href="{% url 'services' %}">
+                    Learn more →
+                </a>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+
+<!-- FEATURE SECTION -->
+
+<section class="feature-section">
+
+    <div class="container feature-grid">
+
+        <div class="feature-image">
+
+            <img
+                src="{% static 'main/images/systems.jpg' %}"
+                alt="Technology solutions"
+            >
+
+        </div>
+
+
+        <div class="feature-content">
+
+            <span class="section-label">
+                TECHNOLOGY & INNOVATION
+            </span>
+
+            <h2>
+                Building solutions for
+                real-world challenges
+            </h2>
+
+            <p>
+                We believe technology should make business
+                simpler. Our solutions are designed around
+                real business needs, helping organizations
+                improve efficiency, manage information and
+                serve their customers better.
+            </p>
+
+            <a href="{% url 'about' %}" class="text-link">
+                Discover Faltasi →
+            </a>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+
+<!-- WHY US -->
+
+<section class="section">
+
+    <div class="container">
+
+        <div class="section-intro">
+
+            <span class="section-label">
+                WHY FALTASI
+            </span>
+
+            <h2>
+                Designed around your business
+            </h2>
+
+        </div>
+
+
+        <div class="numbers-grid">
+
+            <div>
+                <strong>01</strong>
+
+                <h3>
+                    Innovation
+                </h3>
+
+                <p>
+                    We continuously explore better ways
+                    of solving business problems.
+                </p>
+            </div>
+
+
+            <div>
+                <strong>02</strong>
+
+                <h3>
+                    Reliability
+                </h3>
+
+                <p>
+                    We focus on dependable solutions
+                    that businesses can trust.
+                </p>
+            </div>
+
+
+            <div>
+                <strong>03</strong>
+
+                <h3>
+                    Customer Focus
+                </h3>
+
+                <p>
+                    We design our solutions around
+                    the needs of our customers.
+                </p>
+            </div>
+
+
+            <div>
+                <strong>04</strong>
+
+                <h3>
+                    Growth
+                </h3>
+
+                <p>
+                    Our solutions are designed to support
+                    your business as it grows.
+                </p>
+            </div>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+
+<!-- CTA -->
+
+<section class="cta-section">
+
+    <div class="container">
+
+        <span class="section-label">
+            LET'S WORK TOGETHER
+        </span>
+
+        <h2>
+            Ready to build something better?
+        </h2>
+
+        <p>
+            Talk to our team about your next project,
+            system or business solution.
+        </p>
+
+        <a href="{% url 'contact' %}" class="btn btn-light">
+            Contact Faltasi
+        </a>
+
+    </div>
+
+</section>
+
+
+{% endblock %}

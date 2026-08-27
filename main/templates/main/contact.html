@@ -1,0 +1,186 @@
+{% extends 'main/base.html' %}
+
+{% block title %}
+Contact Us | Faltasi Innovations Limited
+{% endblock %}
+
+
+{% block content %}
+
+
+<section class="page-hero">
+
+    <div class="container">
+
+        <span class="section-label">
+            CONTACT US
+        </span>
+
+        <h1>
+            Let's talk.
+        </h1>
+
+        <p>
+            Tell us about your project, business or
+            technology needs.
+        </p>
+
+    </div>
+
+</section>
+
+
+
+<section class="section">
+
+    <div class="container contact-grid">
+
+
+        <!-- CONTACT INFORMATION -->
+
+        <div class="contact-info">
+
+            <span class="section-label">
+                GET IN TOUCH
+            </span>
+
+            <h2>
+                We'd love to hear from you.
+            </h2>
+
+            <p>
+                Contact our team and let's discuss how
+                Faltasi Innovations can help your business.
+            </p>
+
+
+            <div class="contact-item">
+
+                <strong>
+                    Location
+                </strong>
+
+                <p>
+                    Dar es Salaam, Tanzania
+                </p>
+
+            </div>
+
+
+            <div class="contact-item">
+
+                <strong>
+                    Email
+                </strong>
+
+                <p>
+                    info@faltasi.co.tz
+                </p>
+
+            </div>
+
+
+            <div class="contact-item">
+
+                <strong>
+                    Phone
+                </strong>
+
+                <p>
+                    +255 XXX XXX XXX
+                </p>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- CONTACT FORM -->
+
+        <div class="contact-form-container">
+
+            <form method="POST">
+
+                {% csrf_token %}
+
+                <div class="form-group">
+
+                    <label>
+                        Your Name
+                    </label>
+
+                    <input
+                        type="text"
+                        name="name"
+                        placeholder="Enter your name"
+                        required
+                    >
+
+                </div>
+
+
+                <div class="form-group">
+
+                    <label>
+                        Email Address
+                    </label>
+
+                    <input
+                        type="email"
+                        name="email"
+                        placeholder="Enter your email"
+                        required
+                    >
+
+                </div>
+
+
+                <div class="form-group">
+
+                    <label>
+                        Phone Number
+                    </label>
+
+                    <input
+                        type="text"
+                        name="phone"
+                        placeholder="Enter your phone number"
+                    >
+
+                </div>
+
+
+                <div class="form-group">
+
+                    <label>
+                        Message
+                    </label>
+
+                    <textarea
+                        name="message"
+                        rows="6"
+                        placeholder="How can we help you?"
+                        required
+                    ></textarea>
+
+                </div>
+
+
+                <button
+                    type="submit"
+                    class="btn btn-primary form-button"
+                >
+                    Send Message
+                </button>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+{% endblock %}

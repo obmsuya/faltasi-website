@@ -1,0 +1,169 @@
+{% load static %} 
+ 
+<!DOCTYPE html> 
+<html lang="en"> 
+<head> 
+    <meta charset="UTF-8"> 
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
+ 
+    <title>{% block title %}Faltasi Innovations Limited{% endblock %}</title> 
+ 
+    <meta name="description" content="Faltasi Innovations Limited provides innovative ICT, software, property management, POS and professional business solutions."> 
+ 
+    <link rel="stylesheet" href="{% static 'main/css/style.css' %}"> 
+</head> 
+ 
+<body> 
+ 
+    <!-- TOP BAR --> 
+    <div class="top-bar"> 
+        <div class="container top-bar-content"> 
+            <span>Innovative Solutions for a Better Future</span> 
+            <span>Faltasi Innovations Limited</span> 
+        </div> 
+    </div> 
+ 
+ 
+    <!-- NAVIGATION --> 
+    <header class="header"> 
+ 
+        <div class="container nav-container"> 
+ 
+
+
+
+
+            <a href="{% url 'home' %}" class="logo"> 
+                <img src="{% static 'main/images/logo.png' %}" > 
+            </a> 
+ 
+ 
+        <a href="{% url 'home' %}" class="logo">
+                <span class="logo-icon">F</span>
+                <span class="logo-text">
+                    FALTASI
+                    <small>INNOVATIONS LIMITED</small>
+                </span>
+            </a>
+
+
+
+            <button class="menu-toggle" id="menuToggle"> 
+                ☰ 
+            </button> 
+ 
+ 
+            <nav class="navigation" id="navigation"> 
+ 
+                <a href="{% url 'home' %}">Home</a> 
+ 
+                <a href="{% url 'about' %}">About Us</a> 
+ 
+                <a href="{% url 'services' %}">Services</a> 
+ 
+                <a href="{% url 'contact' %}" class="nav-button"> 
+                    Contact Us 
+                </a> 
+ 
+            </nav> 
+ 
+        </div> 
+ 
+    </header> 
+ 
+ 
+    <!-- PAGE CONTENT --> 
+ 
+    <main> 
+ 
+        {% block content %} 
+        {% endblock %} 
+ 
+    </main> 
+ 
+ 
+    <!-- FOOTER --> 
+ 
+    <footer class="footer"> 
+ 
+        <div class="container footer-grid"> 
+ 
+            <div class="footer-company"> 
+ 
+                <div class="footer-logo"> 
+                    FALTASI 
+                </div> 
+ 
+                <p> 
+                    Faltasi Innovations Limited is a technology and 
+                    professional services company providing innovative 
+                    solutions for businesses and organizations. 
+                </p> 
+ 
+            </div> 
+ 
+ 
+            <div> 
+ 
+                <h3>Company</h3> 
+ 
+                <a href="{% url 'about' %}">About Us</a> 
+                <a href="{% url 'services' %}">Services</a> 
+                <a href="{% url 'contact' %}">Contact</a> 
+ 
+            </div> 
+ 
+ 
+            <div> 
+ 
+                <h3>Services</h3> 
+ 
+                <a href="{% url 'services' %}">ICT Solutions</a> 
+                <a href="{% url 'services' %}">Software Development</a> 
+                <a href="{% url 'services' %}">POS Solutions</a> 
+                <a href="{% url 'services' %}">Property Services</a> 
+ 
+            </div> 
+ 
+ 
+            <div> 
+ 
+                <h3>Contact</h3> 
+ 
+                <p>Dar es Salaam, Tanzania</p> 
+ 
+                <p> 
+                    Email: 
+                    faltasiinnovationsltd@gmail.com 
+                </p> 
+ 
+                <p> 
+                    Phone: 
+                    +255653397942 
+                </p> 
+ 
+            </div> 
+ 
+        </div> 
+ 
+ 
+        <div class="footer-bottom"> 
+ 
+            <div class="container"> 
+ 
+                <p> 
+                    © {% now "Y" %} Faltasi Innovations Limited. 
+                    All Rights Reserved. 
+                </p> 
+ 
+            </div> 
+ 
+        </div> 
+ 
+    </footer> 
+ 
+ 
+    <script src="{% static 'main/js/main.js' %}"></script> 
+ 
+</body> 
+</html>
