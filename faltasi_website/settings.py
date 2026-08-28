@@ -116,13 +116,14 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-STATIC_URL = 'static/'
+
+STATIC_URL = '/static/'
 
 STATICFILES_DIRS = [
     BASE_DIR / 'main' / 'static',
 ]
-STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 
