@@ -1,14 +1,32 @@
 {
-    "builds": [
+  "builds": [
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/static/(.*)",
+      "dest": "/staticfiles/$1"
+    },
+    
+    {
+      "src": "/(.*)",
+      "dest": "api/index.py"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "has": [
         {
-            "src": "api/index.py",
-            "use": "@vercel/python"
+          "type": "host",
+          "value": "www.faltasi.com"
         }
-    ],
-    "routes": [
-        {
-            "src": "/(.*)",
-            "dest": "api/index.py"
-        }
-    ]
+      ],
+      "destination": "https://faltasi.com/:1",
+      "permanent": true
+    }
+  ]
 }
