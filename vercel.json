@@ -1,24 +1,10 @@
 {
-  "builds": [
-    {
-      "src": "api/index.py",
-      "use": "@vercel/python",
-      "config": {
-        "includeFiles": ["main/**", "faltasi_website/**", "staticfiles/**"]
-      }
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "faltasi_website/wsgi.py": {
+      "maxDuration": 60
     }
-  ],
-  "routes": [
-    {
-      "src": "/static/(.*)",
-      "dest": "/staticfiles/$1"
-    },
-    
-    {
-      "src": "/(.*)",
-      "dest": "api/index.py"
-    }
-  ],
+  },
   "redirects": [
     {
       "source": "/:path*",
