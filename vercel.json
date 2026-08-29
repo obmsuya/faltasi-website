@@ -21,14 +21,14 @@
   ],
   "redirects": [
     {
-      "source": "/(.*)",
+      "source": "/:path*",
       "has": [
         {
           "type": "host",
           "value": "www.faltasi.com"
         }
       ],
-      "destination": "https://faltasi.com/:1",
+      "destination": "https://faltasi.com/:path*",
       "permanent": true
     }
   ]
