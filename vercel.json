@@ -4,18 +4,5 @@
     "faltasi_website/wsgi.py": {
       "maxDuration": 60
     }
-  },
-  "redirects": [
-    {
-      "source": "/:path*",
-      "has": [
-        {
-          "type": "host",
-          "value": "www.faltasi.com"
-        }
-      ],
-      "destination": "https://faltasi.com/:path*",
-      "permanent": true
-    }
-  ]
+  }
 }
