@@ -2,6 +2,7 @@ from django.shortcuts import render
 
 # Create your views here.
 from django.shortcuts import render
+from django.core.mail import send_mail
 
 
 def home(request):
@@ -25,9 +26,19 @@ def contact(request):
         phone = request.POST.get("phone")
         message = request.POST.get("message")
 
-        print("NAME:", name)
-        print("EMAIL:", email)
-        print("PHONE:", phone)
-        print("MESSAGE:", message)
+        send_mail(
+            subject=f"New Contact Message from {name}",
+            message=f"""
+Name: {name}
+Email: {email}
+Phone: {phone}
+
+Message:
+{message}
+""",
+            from_email=None,
+            recipient_list=["faltasiinnovationsltd@gmail.com"],
+            fail_silently=False,
+        )
 
     return render(request, "main/contact.html")
