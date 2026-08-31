@@ -1,3 +1,4 @@
+```html
 {% extends 'main/base.html' %}
 
 {% block title %}
@@ -104,14 +105,18 @@ Contact Us | Faltasi Innovations Limited
 
                 {% csrf_token %}
 
+
+                <!-- NAME -->
+
                 <div class="form-group">
 
-                    <label>
+                    <label for="name">
                         Your Name
                     </label>
 
                     <input
                         type="text"
+                        id="name"
                         name="name"
                         placeholder="Enter your name"
                         required
@@ -120,14 +125,18 @@ Contact Us | Faltasi Innovations Limited
                 </div>
 
 
+
+                <!-- EMAIL -->
+
                 <div class="form-group">
 
-                    <label>
+                    <label for="email">
                         Email Address
                     </label>
 
                     <input
                         type="email"
+                        id="email"
                         name="email"
                         placeholder="Enter your email"
                         required
@@ -136,14 +145,18 @@ Contact Us | Faltasi Innovations Limited
                 </div>
 
 
+
+                <!-- PHONE -->
+
                 <div class="form-group">
 
-                    <label>
+                    <label for="phone">
                         Phone Number
                     </label>
 
                     <input
                         type="text"
+                        id="phone"
                         name="phone"
                         placeholder="Enter your phone number"
                     >
@@ -151,14 +164,106 @@ Contact Us | Faltasi Innovations Limited
                 </div>
 
 
+
+                <!-- PRODUCT / SERVICE -->
+
                 <div class="form-group">
 
-                    <label>
+                    <label for="product">
+                        Product / Service Interested In
+                    </label>
+
+                    <select
+                        name="product"
+                        id="product"
+                    >
+
+                        <option value="">
+                            Select a product or service
+                        </option>
+
+
+                        <option value="Computers & Laptops"
+                            {% if request.GET.product == "Computers & Laptops" %}selected{% endif %}>
+                            Computers & Laptops
+                        </option>
+
+
+                        <option value="Printers & Scanners"
+                            {% if request.GET.product == "Printers & Scanners" %}selected{% endif %}>
+                            Printers & Scanners
+                        </option>
+
+
+                        <option value="Networking Equipment"
+                            {% if request.GET.product == "Networking Equipment" %}selected{% endif %}>
+                            Networking Equipment
+                        </option>
+
+
+                        <option value="Servers & Storage"
+                            {% if request.GET.product == "Servers & Storage" %}selected{% endif %}>
+                            Servers & Storage
+                        </option>
+
+
+                        <option value="CCTV & Security"
+                            {% if request.GET.product == "CCTV & Security" %}selected{% endif %}>
+                            CCTV & Security
+                        </option>
+
+
+                        <option value="POS Systems"
+                            {% if request.GET.product == "POS Systems" %}selected{% endif %}>
+                            POS Systems
+                        </option>
+
+
+                        <option value="Power Backup & Accessories"
+                            {% if request.GET.product == "Power Backup & Accessories" %}selected{% endif %}>
+                            Power Backup & Accessories
+                        </option>
+
+
+                        <option value="Software & Licenses"
+                            {% if request.GET.product == "Software & Licenses" %}selected{% endif %}>
+                            Software & Licenses
+                        </option>
+
+
+                        <option value="ICT Solutions"
+                            {% if request.GET.product == "ICT Solutions" %}selected{% endif %}>
+                            ICT Solutions
+                        </option>
+
+
+                        <option value="Software & System Development"
+                            {% if request.GET.product == "Software & System Development" %}selected{% endif %}>
+                            Software & System Development
+                        </option>
+
+
+                        <option value="Other">
+                            Other
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+
+                <!-- MESSAGE -->
+
+                <div class="form-group">
+
+                    <label for="message">
                         Message
                     </label>
 
                     <textarea
                         name="message"
+                        id="message"
                         rows="6"
                         placeholder="How can we help you?"
                         required
@@ -166,6 +271,9 @@ Contact Us | Faltasi Innovations Limited
 
                 </div>
 
+
+
+                <!-- SUBMIT -->
 
                 <button
                     type="submit"
@@ -184,3 +292,4 @@ Contact Us | Faltasi Innovations Limited
 
 
 {% endblock %}
+```

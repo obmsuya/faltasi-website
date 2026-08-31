@@ -1,0 +1,405 @@
+```html
+{% extends 'main/base.html' %}
+{% load static %}
+
+
+{% block title %}
+Products & ICT Supplies | Faltasi Innovations Limited
+{% endblock %}
+
+
+{% block content %}
+
+
+<section class="page-hero">
+
+    <div class="container">
+
+        <span class="section-label">
+            PRODUCTS & ICT SUPPLIES
+        </span>
+
+        <h1>
+            Technology products for your business.
+        </h1>
+
+        <p>
+            Reliable ICT products, equipment and supplies
+            for businesses, organizations and individuals.
+        </p>
+
+    </div>
+
+</section>
+
+
+
+<section class="section">
+
+    <div class="container">
+
+        <div class="product-grid">
+
+
+            <!-- COMPUTERS & LAPTOPS -->
+
+            <div class="product-card">
+
+                <img
+                    src="{% static 'main/images/computers.jpg' %}"
+                    alt="Computers and laptops"
+                    class="product-image"
+                >
+
+                <div class="product-content">
+
+                    <h2>
+                        Computers & Laptops
+                    </h2>
+
+                    <p>
+                        Desktop computers, laptops, monitors
+                        and devices for business, office and
+                        personal use.
+                    </p>
+
+                    <a href="{% url 'contact' %}?product=Computers%20%26%20Laptops"
+                       class="btn btn-primary product-button">
+                        Request a Quote
+                    </a>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- PRINTERS & SCANNERS -->
+
+            <div class="product-card">
+
+                <img
+                    src="{% static 'main/images/printers.jpg' %}"
+                    alt="Printers and scanners"
+                    class="product-image"
+                >
+
+                <div class="product-content">
+
+                    <h2>
+                        Printers & Scanners
+                    </h2>
+
+                    <p>
+                        Printers, scanners, multifunction devices,
+                        toners and printing supplies.
+                    </p>
+
+                    <a href="{% url 'contact' %}?product=Printers%20%26%20Scanners"
+                       class="btn btn-primary product-button">
+                        Request a Quote
+                    </a>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- NETWORKING EQUIPMENT -->
+
+            <div class="product-card">
+
+                <img
+                    src="{% static 'main/images/nertworking.jpg' %}"
+                    alt="Networking equipment"
+                    class="product-image"
+                >
+
+                <div class="product-content">
+
+                    <h2>
+                        Networking Equipment
+                    </h2>
+
+                    <p>
+                        Routers, switches, Wi-Fi access points,
+                        cables and networking accessories.
+                    </p>
+
+                    <a href="{% url 'contact' %}?product=Networking%20Equipment"
+                       class="btn btn-primary product-button">
+                        Request a Quote
+                    </a>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- SERVERS & STORAGE -->
+
+            <div class="product-card">
+
+                <img
+                    src="{% static 'main/images/servers.jpg' %}"
+                    alt="Servers and storage"
+                    class="product-image"
+                >
+
+                <div class="product-content">
+
+                    <h2>
+                        Servers & Storage
+                    </h2>
+
+                    <p>
+                        Servers, hard drives, SSDs, network storage
+                        and server accessories.
+                    </p>
+
+                    <a href="{% url 'contact' %}?product=Servers%20%26%20Storage"
+                       class="btn btn-primary product-button">
+                        Request a Quote
+                    </a>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- CCTV & SECURITY -->
+
+            <div class="product-card">
+
+                <img
+                    src="{% static 'main/images/cctv.jpg' %}"
+                    alt="CCTV security equipment"
+                    class="product-image"
+                >
+
+                <div class="product-content">
+
+                    <h2>
+                        CCTV & Security
+                    </h2>
+
+                    <p>
+                        CCTV cameras, DVR and NVR systems,
+                        monitors and security accessories.
+                    </p>
+
+                    <a href="{% url 'contact' %}?product=CCTV%20%26%20Security"
+                       class="btn btn-primary product-button">
+                        Request a Quote
+                    </a>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- POS SYSTEMS -->
+
+            <div class="product-card">
+
+                <img
+                    src="{% static 'main/images/pos.jpg' %}"
+                    alt="POS systems"
+                    class="product-image"
+                >
+
+                <div class="product-content">
+
+                    <h2>
+                        POS Systems
+                    </h2>
+
+                    <p>
+                        POS terminals, receipt printers, barcode
+                        scanners, cash drawers and accessories.
+                    </p>
+
+                    <a href="{% url 'contact' %}?product=POS%20Systems"
+                       class="btn btn-primary product-button">
+                        Request a Quote
+                    </a>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- POWER BACKUP -->
+
+            <div class="product-card">
+
+                <img
+                    src="{% static 'main/images/ups.jpg' %}"
+                    alt="UPS and power backup equipment"
+                    class="product-image"
+                >
+
+                <div class="product-content">
+
+                    <h2>
+                        Power Backup & Accessories
+                    </h2>
+
+                    <p>
+                        UPS systems, power backup equipment,
+                        cables, adapters and computer accessories.
+                    </p>
+
+                    <a href="{% url 'contact' %}?product=Power%20Backup%20%26%20Accessories"
+                       class="btn btn-primary product-button">
+                        Request a Quote
+                    </a>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- SOFTWARE & LICENSES -->
+
+            <div class="product-card">
+
+                <img
+                    src="{% static 'main/images/software.jpg' %}"
+                    alt="Software and licenses"
+                    class="product-image"
+                >
+
+                <div class="product-content">
+
+                    <h2>
+                        Software & Licenses
+                    </h2>
+
+                    <p>
+                        Operating systems, business software,
+                        security software and licenses.
+                    </p>
+
+                    <a href="{% url 'contact' %}?product=Software%20%26%20Licenses"
+                       class="btn btn-primary product-button">
+                        Request a Quote
+                    </a>
+
+                </div>
+
+            </div>
+
+
+        </div>
+
+    </div>
+
+</section>
+
+
+
+<!-- TECHNOLOGY BRANDS -->
+
+<section class="section brands-section">
+
+    <div class="container">
+
+        <div class="section-heading">
+
+            <span class="section-label">
+                TECHNOLOGY BRANDS
+            </span>
+
+            <h2>
+                Products from leading technology brands.
+            </h2>
+
+            <p>
+                We source ICT products and equipment from
+                established technology manufacturers and
+                suppliers to meet different business needs.
+            </p>
+
+        </div>
+
+
+        <div class="brands-grid">
+
+            <div class="brand-item">
+                HP
+            </div>
+
+            <div class="brand-item">
+                Dell
+            </div>
+
+            <div class="brand-item">
+                Lenovo
+            </div>
+
+            <div class="brand-item">
+                Canon
+            </div>
+
+            <div class="brand-item">
+                Epson
+            </div>
+
+            <div class="brand-item">
+                TP-Link
+            </div>
+
+            <div class="brand-item">
+                Hikvision
+            </div>
+
+            <div class="brand-item">
+                Ubiquiti
+            </div>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+
+<!-- CTA -->
+
+<section class="cta-section">
+
+    <div class="container">
+
+        <span class="section-label">
+            NEED A PRODUCT?
+        </span>
+
+        <h2>
+            Can't find what you're looking for?
+        </h2>
+
+        <p>
+            Contact our team and tell us what you need.
+            We can help you find the right ICT product
+            for your requirements.
+        </p>
+
+        <a href="{% url 'contact' %}" class="btn btn-light">
+            Request a Quote
+        </a>
+
+    </div>
+
+</section>
+
+
+{% endblock %}
+```

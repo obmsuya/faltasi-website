@@ -24,6 +24,7 @@ def contact(request):
         name = request.POST.get("name")
         email = request.POST.get("email")
         phone = request.POST.get("phone")
+        product = request.POST.get("product")
         message = request.POST.get("message")
 
         send_mail(
@@ -32,6 +33,9 @@ def contact(request):
 Name: {name}
 Email: {email}
 Phone: {phone}
+
+Product / Service Interested In:
+{product}
 
 Message:
 {message}
@@ -42,3 +46,10 @@ Message:
         )
 
     return render(request, "main/contact.html")
+
+
+
+
+
+def products(request):
+    return render(request, "main/products.html")
