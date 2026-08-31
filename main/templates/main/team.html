@@ -1,0 +1,279 @@
+```html
+{% extends 'main/base.html' %}
+{% load static %}
+
+
+{% block title %}
+Our Leadership | Faltasi Innovations Limited
+{% endblock %}
+
+
+{% block content %}
+
+
+<!-- PAGE HERO -->
+
+<section class="page-hero">
+
+    <div class="container">
+
+        <span class="section-label">
+            OUR LEADERSHIP
+        </span>
+
+        <h1>
+            Meet the team behind Faltasi.
+        </h1>
+
+        <p>
+            Our leadership team provides the vision,
+            direction and coordination that drive
+            Faltasi Innovations Limited forward.
+        </p>
+
+    </div>
+
+</section>
+
+
+
+<!-- LEADERSHIP -->
+
+<section class="section">
+
+    <div class="container">
+
+        <div class="leadership-grid">
+
+
+            <!-- CEO -->
+
+            <div class="leader-card">
+
+                <div class="leader-image">
+
+                    <img
+                        src="{% static 'main/images/leader-ceo.jpg' %}"
+                        alt="Overblessing Anderson Msuya"
+                    >
+
+                </div>
+
+                <div class="leader-content">
+
+                    <span class="leader-position">
+                        CHIEF EXECUTIVE OFFICER
+                    </span>
+
+                    <h2>
+                        Overblessing Anderson Msuya
+                    </h2>
+
+                    <p>
+                        Overblessing Anderson Msuya provides
+                        strategic leadership and direction at
+                        Faltasi Innovations Limited. As CEO, he
+                        focuses on driving innovation, developing
+                        practical business solutions and building
+                        partnerships that support the company's
+                        growth.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- DIRECTOR -->
+
+            <div class="leader-card">
+
+                <div class="leader-image">
+
+                    <img
+                        src="{% static 'main/images/leader-director.jpg' %}"
+                        alt="Grace Mpungu Msuya"
+                    >
+
+                </div>
+
+                <div class="leader-content">
+
+                    <span class="leader-position">
+                        DIRECTOR
+                    </span>
+
+                    <h2>
+                        Grace Mpungu Msuya
+                    </h2>
+
+                    <p>
+                        Grace Mpungu Msuya contributes to the
+                        strategic development and effective
+                        management of Faltasi Innovations Limited.
+                        She supports the company's vision,
+                        organizational growth and commitment
+                        to quality service delivery.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- INTERNATIONAL RELATIONS -->
+
+            <div class="leader-card">
+
+                <div class="leader-image">
+
+                    <img
+                        src="{% static 'main/images/leader-international.jpg' %}"
+                        alt="Whitney O. Msuya"
+                    >
+
+                </div>
+
+                <div class="leader-content">
+
+                    <span class="leader-position">
+                        DIRECTOR OF INTERNATIONAL RELATIONS & COORDINATION
+                    </span>
+
+                    <h2>
+                        Whitney O. Msuya
+                    </h2>
+
+                    <p>
+                        Whitney O. Msuya leads Faltasi Innovations
+                        Limited's international relations and
+                        coordination efforts. Based in the United
+                        States, she supports international
+                        partnerships, communication and business
+                        opportunities, helping strengthen Faltasi's
+                        connections with international stakeholders.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- OPERATIONS MANAGER -->
+
+            <div class="leader-card">
+
+                <div class="leader-image">
+
+                    <img
+                        src="{% static 'main/images/leader-operations.jpg' %}"
+                        alt="Mr. Kombe"
+                    >
+
+                </div>
+
+                <div class="leader-content">
+
+                    <span class="leader-position">
+                        OPERATIONS MANAGER
+                    </span>
+
+                    <h2>
+                        Mr. Kombe
+                    </h2>
+
+                    <p>
+                        Mr. Kombe oversees the day-to-day
+                        operations of Faltasi Innovations Limited.
+                        He supports effective service delivery,
+                        coordinates operational activities and
+                        helps ensure that the company's teams and
+                        resources work efficiently toward
+                        organizational goals.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- SALES & MARKETING MANAGER -->
+
+            <div class="leader-card">
+
+                <div class="leader-image">
+
+                    <img
+                        src="{% static 'main/images/leader-sales.jpg' %}"
+                        alt="Ms. Whitney"
+                    >
+
+                </div>
+
+                <div class="leader-content">
+
+                    <span class="leader-position">
+                        SALES & MARKETING MANAGER
+                    </span>
+
+                    <h2>
+                        Ms. Whitney
+                    </h2>
+
+                    <p>
+                        Ms. Whitney leads sales and marketing
+                        activities at Faltasi Innovations Limited.
+                        She focuses on connecting the company's
+                        products and services with customers,
+                        developing business opportunities and
+                        strengthening relationships with clients
+                        and partners.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+        </div>
+
+    </div>
+
+</section>
+
+
+
+<!-- CTA -->
+
+<section class="cta-section">
+
+    <div class="container">
+
+        <span class="section-label">
+            WORK WITH US
+        </span>
+
+        <h2>
+            Let's build something better together.
+        </h2>
+
+        <p>
+            Have a business, technology or professional
+            service requirement? We'd love to hear from you.
+        </p>
+
+        <a href="{% url 'contact' %}" class="btn btn-light">
+            Contact Us
+        </a>
+
+    </div>
+
+</section>
+
+
+{% endblock %}
+```

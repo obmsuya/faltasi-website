@@ -53,3 +53,6 @@ Message:
 
 def products(request):
     return render(request, "main/products.html")
+
+def team(request):
+    return render(request, 'main/team.html')
