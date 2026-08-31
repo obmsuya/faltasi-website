@@ -3,6 +3,7 @@ from django.shortcuts import render
 # Create your views here.
 from django.shortcuts import render
 from django.core.mail import send_mail
+from django.http import HttpResponse
 
 
 def home(request):
@@ -56,3 +57,38 @@ def products(request):
 
 def team(request):
     return render(request, 'main/team.html')
+
+
+
+
+def sitemap(request):
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+
+    <url>
+        <loc>https://www.faltasi.com/</loc>
+    </url>
+
+    <url>
+        <loc>https://www.faltasi.com/about/</loc>
+    </url>
+
+    <url>
+        <loc>https://www.faltasi.com/services/</loc>
+    </url>
+
+    <url>
+        <loc>https://www.faltasi.com/products/</loc>
+    </url>
+
+    <url>
+        <loc>https://www.faltasi.com/team/</loc>
+    </url>
+
+    <url>
+        <loc>https://www.faltasi.com/contact/</loc>
+    </url>
+
+</urlset>"""
+
+    return HttpResponse(xml, content_type="application/xml")
