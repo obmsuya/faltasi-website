@@ -18,6 +18,7 @@ def services(request):
     return render(request, "main/services.html")
 
 
+
 def contact(request):
 
     if request.method == "POST":
@@ -28,6 +29,7 @@ def contact(request):
         product = request.POST.get("product")
         message = request.POST.get("message")
 
+        # Send inquiry to Faltasi
         send_mail(
             subject=f"New Contact Message from {name}",
             message=f"""
@@ -46,7 +48,36 @@ Message:
             fail_silently=False,
         )
 
+        # Automatic reply to the customer
+        send_mail(
+            subject="Thank You for Contacting Faltasi Innovations",
+            message=f"""
+Dear {name},
+
+Thank you for contacting Faltasi Innovations Limited.
+
+We have received your inquiry regarding:
+
+{product}
+
+Our team will review your request and get back to you shortly.
+
+If you have any additional information that may help us assist you, please feel free to reply to this email.
+
+Best regards,
+
+Faltasi Innovations Limited
+ICT Products & Services
+
+www.faltasi.com
+""",
+            from_email=None,
+            recipient_list=[email],
+            fail_silently=False,
+        )
+
     return render(request, "main/contact.html")
+
 
 
 
