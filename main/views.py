@@ -4,7 +4,7 @@ from django.shortcuts import render
 from django.shortcuts import render
 from django.core.mail import send_mail
 from django.http import HttpResponse
-
+import os
 
 def home(request):
     return render(request, "main/home.html")
@@ -43,7 +43,7 @@ Product / Service Interested In:
 Message:
 {message}
 """,
-            from_email=None,
+            from_email=os.getenv("EMAIL_HOST_USER"),
             recipient_list=["faltasiinnovationsltd@gmail.com"],
             fail_silently=False,
         )
@@ -71,7 +71,7 @@ ICT Products & Services
 
 www.faltasi.com
 """,
-            from_email=None,
+            from_email=os.getenv("EMAIL_HOST_USER"),
             recipient_list=[email],
             fail_silently=False,
         )
