@@ -88,6 +88,8 @@ def products(request):
 
 def team(request):
     return render(request, 'main/team.html')
+def partners(request):
+    return render(request, "main/partners.html")
 
 
 

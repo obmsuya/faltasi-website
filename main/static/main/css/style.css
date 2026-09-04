@@ -1223,3 +1223,32 @@ a {
     }
 
 }
+
+/* ---------- FLYING CLICKABLE PARTNER LINK ---------- */
+
+.partner-link {
+    color: #0b63ce !important;
+    font-weight: 800 !important;
+    position: relative;
+    display: inline-block;
+    animation: partnerFly 2s ease-in-out infinite;
+}
+
+@keyframes partnerFly {
+    0% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-6px);
+    }
+
+    100% {
+        transform: translateY(0);
+    }
+}
+
+.partner-link:hover {
+    color: #071d49 !important;
+    animation-play-state: paused;
+}

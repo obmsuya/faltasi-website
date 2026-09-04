@@ -22,4 +22,5 @@ urlpatterns = [
         {"sitemaps": sitemaps},
         name="django_sitemap",
     ),
+    path("partners/", views.partners, name="partners"),
 ]
