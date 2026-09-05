@@ -25,6 +25,10 @@ load_dotenv(BASE_DIR / ".env")
 
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-38x^(1posa$)4as4099b($)u9!82+g6gwwwulc9r!9-@kd&w$$')
 
+WHATSAPP_VERIFY_TOKEN = os.environ.get(
+    "WHATSAPP_VERIFY_TOKEN",
+    "faltasi_whatsapp_2026"
+)
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = ['.vercel.app', '.now.sh', '127.0.0.1', 'localhost', 'faltasi.com', '.faltasi.com', '*']
@@ -41,6 +45,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django.contrib.sitemaps',
      'main',
+     'whatsapp',
 ]
 
 MIDDLEWARE = [
