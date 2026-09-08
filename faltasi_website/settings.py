@@ -29,6 +29,13 @@ WHATSAPP_VERIFY_TOKEN = os.environ.get(
     "WHATSAPP_VERIFY_TOKEN",
     "faltasi_whatsapp_2026"
 )
+WHATSAPP_PHONE_NUMBER_ID = os.environ.get(
+    "WHATSAPP_PHONE_NUMBER_ID"
+)
+
+WHATSAPP_ACCESS_TOKEN = os.environ.get(
+    "WHATSAPP_ACCESS_TOKEN"
+)
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = ['.vercel.app', '.now.sh', '127.0.0.1', 'localhost', 'faltasi.com', '.faltasi.com', '*']
