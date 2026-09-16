@@ -9,4 +9,5 @@ db.sqlite3
 media/
 .vscode/
 .idea/
-/staticfiles
+staticfiles/
+

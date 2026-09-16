@@ -1252,3 +1252,49 @@ a {
     color: #071d49 !important;
     animation-play-state: paused;
 }
+
+/* body {
+    background: red !important;
+} */
+
+/* ================================
+   PRODUCT CATEGORIES
+================================ */
+
+.product-category {
+    margin-bottom: 60px;
+}
+
+.product-category > h2 {
+    margin-bottom: 10px;
+}
+
+.product-category > p {
+    margin-bottom: 30px;
+}
+
+/* ================================
+   PRODUCT CATEGORY NAVIGATION
+================================ */
+
+.product-category-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 45px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #e2e7ef;
+}
+
+.product-category-link {
+    display: inline-block;
+    padding: 10px 18px;
+    text-decoration: none;
+    border: 1px solid #e2e7ef;
+    border-radius: 5px;
+    transition: 0.3s ease;
+}
+
+.product-category-link:hover {
+    transform: translateY(-2px);
+}

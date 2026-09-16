@@ -1,0 +1,319 @@
+{% extends 'main/base.html' %}
+
+{% load static %}
+
+{% block title %}
+Contact Faltasi Innovations Limited | ICT Solutions & Technology Tanzania
+{% endblock %}
+
+{% block meta_description %}
+Contact Faltasi Innovations Limited in Tanzania for ICT solutions, software development, POS systems, networking, ICT products, business applications and digital technology services.
+{% endblock %}
+
+{% block content %}
+
+<!-- PAGE HERO -->
+
+<section class="page-hero">
+
+    <div class="container">
+
+        <span class="section-label">
+            CONTACT US
+        </span>
+
+        <h1>
+            Let's talk about your technology needs.
+        </h1>
+
+        <p>
+            Tell us about your project, business or
+            technology requirements and our team will
+            be happy to help.
+        </p>
+
+    </div>
+
+</section>
+
+
+<!-- CONTACT SECTION -->
+
+<section class="section">
+
+    <div class="container contact-grid">
+
+
+        <!-- CONTACT INFORMATION -->
+
+        <div class="contact-info">
+
+            <span class="section-label">
+                GET IN TOUCH
+            </span>
+
+            <h2>
+                We'd love to hear from you.
+            </h2>
+
+            <p>
+                Contact Faltasi Innovations Limited to discuss
+                ICT solutions, software development, POS systems,
+                networking, technology products or other business
+                technology needs.
+            </p>
+
+
+            <div class="contact-item">
+
+                <strong>
+                    Location
+                </strong>
+
+                <p>
+                    Dar es Salaam, Tanzania
+                </p>
+
+            </div>
+
+
+            <div class="contact-item">
+
+                <strong>
+                    Email
+                </strong>
+
+                <p>
+                    faltasiinnovationsltd@gmail.com
+                </p>
+
+            </div>
+
+
+            <div class="contact-item">
+
+                <strong>
+                    Phone
+                </strong>
+
+                <p>
+                    +255 653 397 942
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <!-- CONTACT FORM -->
+
+        <div class="contact-form-container">
+
+            <form method="POST">
+
+                {% csrf_token %}
+
+
+                <!-- NAME -->
+
+                <div class="form-group">
+
+                    <label for="name">
+                        Your Name
+                    </label>
+
+                    <input
+                        type="text"
+                        id="name"
+                        name="name"
+                        placeholder="Enter your name"
+                        required
+                    >
+
+                </div>
+
+
+                <!-- EMAIL -->
+
+                <div class="form-group">
+
+                    <label for="email">
+                        Email Address
+                    </label>
+
+                    <input
+                        type="email"
+                        id="email"
+                        name="email"
+                        placeholder="Enter your email"
+                        required
+                    >
+
+                </div>
+
+
+                <!-- PHONE -->
+
+                <div class="form-group">
+
+                    <label for="phone">
+                        Phone Number
+                    </label>
+
+                    <input
+                        type="text"
+                        id="phone"
+                        name="phone"
+                        placeholder="Enter your phone number"
+                    >
+
+                </div>
+
+
+                <!-- PRODUCT / SERVICE -->
+
+                <div class="form-group">
+
+                    <label for="product">
+                        Product / Service Interested In
+                    </label>
+
+                    <select
+                        name="product"
+                        id="product"
+                    >
+
+                        <option value="">
+                            Select a product or service
+                        </option>
+
+
+                        <option
+                            value="Computers & Laptops"
+                            {% if selected_product == "Computers & Laptops" %}selected{% endif %}
+                        >
+                            Computers & Laptops
+                        </option>
+
+
+                        <option
+                            value="Printers & Scanners"
+                            {% if selected_product == "Printers & Scanners" %}selected{% endif %}
+                        >
+                            Printers & Scanners
+                        </option>
+
+
+                        <option
+                            value="Networking Equipment"
+                            {% if selected_product == "Networking Equipment" %}selected{% endif %}
+                        >
+                            Networking Equipment
+                        </option>
+
+
+                        <option
+                            value="Servers & Storage"
+                            {% if selected_product == "Servers & Storage" %}selected{% endif %}
+                        >
+                            Servers & Storage
+                        </option>
+
+
+                        <option
+                            value="CCTV & Security"
+                            {% if selected_product == "CCTV & Security" %}selected{% endif %}
+                        >
+                            CCTV & Security
+                        </option>
+
+
+                        <option
+                            value="POS Systems"
+                            {% if selected_product == "POS Systems" %}selected{% endif %}
+                        >
+                            POS Systems
+                        </option>
+
+
+                        <option
+                            value="Power Backup & Accessories"
+                            {% if selected_product == "Power Backup & Accessories" %}selected{% endif %}
+                        >
+                            Power Backup & Accessories
+                        </option>
+
+
+                        <option
+                            value="Software & Licenses"
+                            {% if selected_product == "Software & Licenses" %}selected{% endif %}
+                        >
+                            Software & Licenses
+                        </option>
+
+
+                        <option
+                            value="ICT Solutions"
+                            {% if selected_product == "ICT Solutions" %}selected{% endif %}
+                        >
+                            ICT Solutions
+                        </option>
+
+
+                        <option
+                            value="Software & System Development"
+                            {% if selected_product == "Software & System Development" %}selected{% endif %}
+                        >
+                            Software & System Development
+                        </option>
+
+
+                        <option
+                            value="Other"
+                            {% if selected_product == "Other" %}selected{% endif %}
+                        >
+                            Other
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+                <!-- MESSAGE -->
+
+                <div class="form-group">
+
+                    <label for="message">
+                        Message
+                    </label>
+
+                    <textarea
+                        name="message"
+                        id="message"
+                        rows="6"
+                        placeholder="How can we help you?"
+                        required
+                    ></textarea>
+
+                </div>
+
+
+                <!-- SUBMIT -->
+
+                <button
+                    type="submit"
+                    class="btn btn-primary form-button"
+                >
+                    Send Message
+                </button>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</section>
+
+{% endblock %}

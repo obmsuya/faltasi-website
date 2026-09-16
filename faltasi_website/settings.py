@@ -53,6 +53,9 @@ INSTALLED_APPS = [
     'django.contrib.sitemaps',
      'main',
      'whatsapp',
+     'customers',
+     'business_requests',
+     'products',
 ]
 
 MIDDLEWARE = [
@@ -143,7 +146,8 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 
-
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
 
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"

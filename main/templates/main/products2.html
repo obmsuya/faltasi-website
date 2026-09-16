@@ -1,0 +1,236 @@
+{% extends 'main/base.html' %}
+{% load static %}
+
+{% block title %}
+ICT Products & Supplies in Tanzania | Computers, Networking & POS | Faltasi Innovations
+{% endblock %}
+
+{% block meta_description %}
+Faltasi Innovations Limited supplies ICT products and technology equipment in Tanzania, including computers, laptops, networking equipment, servers, POS systems, CCTV, printers, UPS and software.
+{% endblock %}
+
+{% block content %}
+
+<!-- PAGE HERO -->
+
+<section class="page-hero">
+
+    <div class="container">
+
+        <span class="section-label">
+            PRODUCTS & ICT SUPPLIES
+        </span>
+
+        <h1>
+            ICT Products & Technology Supplies
+        </h1>
+
+        <p>
+            Reliable computers, networking equipment, POS systems
+            and other ICT products for businesses, organizations
+            and individuals in Tanzania.
+        </p>
+
+    </div>
+
+</section>
+
+
+<!-- PRODUCTS -->
+
+<section class="section">
+
+    <div class="container">
+
+        <!-- CATEGORY NAVIGATION -->
+
+        <div class="product-category-nav">
+
+            <a
+                href="{% url 'products2' %}"
+                class="product-category-link"
+            >
+                All Products
+            </a>
+
+            {% for category in categories %}
+
+                <a
+                    href="{% url 'products2' %}?category={{ category.id }}"
+                    class="product-category-link"
+                >
+                    {{ category.name }}
+                </a>
+
+            {% endfor %}
+
+        </div>
+
+
+        <!-- CATEGORY SECTIONS -->
+
+        {% for category in categories %}
+
+            {% if not selected_category or selected_category == category.id %}
+
+                <div class="product-category">
+
+                    <h2>
+                        {{ category.name }}
+                    </h2>
+
+                    {% if category.description %}
+
+                        <p>
+                            {{ category.description }}
+                        </p>
+
+                    {% endif %}
+
+
+                    <!-- PRODUCTS IN THIS CATEGORY -->
+
+                    <div class="product-grid">
+
+                        {% for product in products %}
+
+                            {% if product.category_id == category.id %}
+
+                                <div class="product-card">
+
+                                    {% if product.image %}
+
+                                        <img
+                                            src="{{ product.image.url }}"
+                                            alt="{{ product.name }}"
+                                            class="product-image"
+                                        >
+
+                                    {% endif %}
+
+
+                                    <div class="product-content">
+
+                                        <h2>
+                                            {{ product.name }}
+                                        </h2>
+
+
+                                        {% if product.description %}
+
+                                            <p>
+                                                {{ product.description }}
+                                            </p>
+
+                                        {% endif %}
+
+
+                                        {% if product.brand %}
+
+                                            <p>
+                                                <strong>Brand:</strong>
+                                                {{ product.brand }}
+                                            </p>
+
+                                        {% endif %}
+
+
+                                        {% if product.model %}
+
+                                            <p>
+                                                <strong>Model:</strong>
+                                                {{ product.model }}
+                                            </p>
+
+                                        {% endif %}
+
+
+                                        {% if product.price %}
+
+                                            <p>
+                                                <strong>Price:</strong>
+                                                {{ product.currency }}
+                                                {{ product.price }}
+                                            </p>
+
+                                        {% endif %}
+
+
+                                        <p>
+                                            <strong>Availability:</strong>
+                                            {{ product.get_availability_display }}
+                                        </p>
+
+
+                                        <a
+                                            href="{% url 'contact2' %}?product={{ product.name|urlencode }}"
+                                            class="btn btn-primary product-button"
+                                        >
+                                            Request a Quote
+                                        </a>
+
+                                    </div>
+
+                                </div>
+
+                            {% endif %}
+
+                        {% empty %}
+
+                            <p>
+                                No products are currently available.
+                            </p>
+
+                        {% endfor %}
+
+                    </div>
+
+                </div>
+
+            {% endif %}
+
+        {% empty %}
+
+            <p>
+                No product categories are currently available.
+            </p>
+
+        {% endfor %}
+
+    </div>
+
+</section>
+
+
+<!-- CTA -->
+
+<section class="cta-section">
+
+    <div class="container">
+
+        <span class="section-label">
+            NEED A PRODUCT?
+        </span>
+
+        <h2>
+            Can't find what you're looking for?
+        </h2>
+
+        <p>
+            Contact Faltasi Innovations Limited for ICT products,
+            computers, networking equipment, POS systems, software
+            and other technology supplies in Tanzania.
+        </p>
+
+        <a
+            href="{% url 'contact2' %}"
+            class="btn btn-light"
+        >
+            Request a Quote
+        </a>
+
+    </div>
+
+</section>
+
+{% endblock %}

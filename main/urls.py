@@ -14,7 +14,9 @@ urlpatterns = [
     path("about/", views.about, name="about"),
     path("services/", views.services, name="services"),
     path("contact/", views.contact, name="contact"),
+    path("contact2/", views.contact2, name="contact2"),
     path("products/", views.products, name="products"),
+    path("products2/", views.products2, name="products2"),
     path('team/', views.team, name='team'),
     path(
         "sitemap.xml",
