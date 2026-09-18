@@ -1,0 +1,328 @@
+{% extends "main/base.html" %}
+
+{% block title %}Staff Management | Faltasi{% endblock %}
+
+{% block meta_description %}
+Manage organization staff, departments and staff roles.
+{% endblock %}
+
+{% block content %}
+
+<div class="container" style="max-width: 1200px; margin: 40px auto; padding: 0 20px;">
+
+    <div style="margin-bottom: 30px;">
+        <h1>Staff Management</h1>
+        <p>
+            Manage staff members, departments and their roles.
+        </p>
+    </div>
+
+
+    <!-- Add Staff -->
+
+    <div style="
+        background: #ffffff;
+        padding: 25px;
+        border-radius: 10px;
+        margin-bottom: 30px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    ">
+
+        <h2>Add Staff to Department</h2>
+
+        <form method="post"
+              action="{% url 'business_requests:add_department_member' %}">
+
+            {% csrf_token %}
+
+            <div style="
+                display: grid;
+                grid-template-columns:
+                    repeat(auto-fit, minmax(200px, 1fr));
+                gap: 15px;
+                margin-top: 20px;
+            ">
+
+                <!-- User -->
+
+                <div>
+                    <label for="user_id">
+                        <strong>User</strong>
+                    </label>
+
+                    <select
+                        name="user_id"
+                        id="user_id"
+                        required
+                        style="
+                            width: 100%;
+                            padding: 10px;
+                            margin-top: 6px;
+                        "
+                    >
+
+                        <option value="">
+                            Select user
+                        </option>
+
+                        {% for user in users %}
+
+                            <option value="{{ user.id }}">
+
+                                {{ user.get_full_name|default:user.username }}
+
+                                {% if user.email %}
+                                    — {{ user.email }}
+                                {% endif %}
+
+                            </option>
+
+                        {% endfor %}
+
+                    </select>
+
+                </div>
+
+
+                <!-- Department -->
+
+                <div>
+
+                    <label for="department_id">
+                        <strong>Department</strong>
+                    </label>
+
+                    <select
+                        name="department_id"
+                        id="department_id"
+                        required
+                        style="
+                            width: 100%;
+                            padding: 10px;
+                            margin-top: 6px;
+                        "
+                    >
+
+                        <option value="">
+                            Select department
+                        </option>
+
+                        {% for department in departments %}
+
+                            <option value="{{ department.id }}">
+
+                                {{ department.name }}
+
+                                {% if request.user.is_superuser %}
+                                    — {{ department.organization.name }}
+                                {% endif %}
+
+                            </option>
+
+                        {% endfor %}
+
+                    </select>
+
+                </div>
+
+
+                <!-- Role -->
+
+                <div>
+
+                    <label for="role">
+                        <strong>Role</strong>
+                    </label>
+
+                    <select
+                        name="role"
+                        id="role"
+                        required
+                        style="
+                            width: 100%;
+                            padding: 10px;
+                            margin-top: 6px;
+                        "
+                    >
+
+                        <option value="">
+                            Select role
+                        </option>
+
+                        <option value="manager">
+                            Manager
+                        </option>
+
+                        <option value="agent">
+                            Agent
+                        </option>
+
+                        <option value="staff">
+                            Staff
+                        </option>
+
+                        <option value="viewer">
+                            Viewer
+                        </option>
+
+                    </select>
+
+                </div>
+
+            </div>
+
+
+            <button
+                type="submit"
+                style="
+                    margin-top: 20px;
+                    padding: 11px 20px;
+                    border: none;
+                    border-radius: 6px;
+                    cursor: pointer;
+                "
+            >
+                Add Staff
+            </button>
+
+        </form>
+
+    </div>
+
+
+    <!-- Staff Members -->
+
+    <div style="
+        background: #ffffff;
+        padding: 25px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    ">
+
+        <h2>Department Staff</h2>
+
+        {% if memberships %}
+
+            <div style="
+                overflow-x: auto;
+                margin-top: 20px;
+            ">
+
+                <table style="
+                    width: 100%;
+                    border-collapse: collapse;
+                ">
+
+                    <thead>
+
+                        <tr>
+
+                            {% if request.user.is_superuser %}
+                                <th style="text-align:left; padding:12px;">
+                                    Organization
+                                </th>
+                            {% endif %}
+
+                            <th style="text-align:left; padding:12px;">
+                                Department
+                            </th>
+
+                            <th style="text-align:left; padding:12px;">
+                                Staff Member
+                            </th>
+
+                            <th style="text-align:left; padding:12px;">
+                                Username
+                            </th>
+
+                            <th style="text-align:left; padding:12px;">
+                                Role
+                            </th>
+
+                            <th style="text-align:left; padding:12px;">
+                                Status
+                            </th>
+
+                        </tr>
+
+                    </thead>
+
+
+                    <tbody>
+
+                        {% for membership in memberships %}
+
+                            <tr>
+
+                                {% if request.user.is_superuser %}
+
+                                    <td style="padding:12px;">
+
+                                        {{ membership.department.organization.name }}
+
+                                    </td>
+
+                                {% endif %}
+
+
+                                <td style="padding:12px;">
+
+                                    {{ membership.department.name }}
+
+                                </td>
+
+
+                                <td style="padding:12px;">
+
+                                    {{ membership.user.get_full_name|default:"-" }}
+
+                                </td>
+
+
+                                <td style="padding:12px;">
+
+                                    {{ membership.user.username }}
+
+                                </td>
+
+
+                                <td style="padding:12px;">
+
+                                    {{ membership.get_role_display }}
+
+                                </td>
+
+
+                                <td style="padding:12px;">
+
+                                    {% if membership.is_active %}
+                                        Active
+                                    {% else %}
+                                        Inactive
+                                    {% endif %}
+
+                                </td>
+
+                            </tr>
+
+                        {% endfor %}
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        {% else %}
+
+            <p style="margin-top:20px;">
+                No department staff members have been added yet.
+            </p>
+
+        {% endif %}
+
+    </div>
+
+</div>
+
+{% endblock %}

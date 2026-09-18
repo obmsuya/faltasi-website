@@ -1,36 +1,34 @@
 from django.db import models
+from organizations.models import Organization
 
 
 class Customer(models.Model):
 
-    # ---------------------------------------------------------
-    # CUSTOMER TYPE
-    # ---------------------------------------------------------
     CUSTOMER_TYPE_CHOICES = [
         ("individual", "Individual"),
         ("company", "Company / Organization"),
     ]
 
-    # ---------------------------------------------------------
-    # CUSTOMER STATUS
-    # ---------------------------------------------------------
     CUSTOMER_STATUS_CHOICES = [
         ("active", "Active"),
         ("inactive", "Inactive"),
     ]
 
-    # ---------------------------------------------------------
-    # PREFERRED CONTACT METHOD
-    # ---------------------------------------------------------
     CONTACT_METHOD_CHOICES = [
         ("whatsapp", "WhatsApp"),
         ("phone", "Phone"),
         ("email", "Email"),
     ]
 
-    # ---------------------------------------------------------
-    # BASIC CUSTOMER INFORMATION
-    # ---------------------------------------------------------
+    # SaaS organization / tenant
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="customers",
+        blank=True,
+        null=True,
+    )
+
     name = models.CharField(
         max_length=200
     )
@@ -38,18 +36,15 @@ class Customer(models.Model):
     customer_type = models.CharField(
         max_length=20,
         choices=CUSTOMER_TYPE_CHOICES,
-        default="individual"
+        default="individual",
     )
 
     company = models.CharField(
         max_length=200,
         blank=True,
-        null=True
+        null=True,
     )
 
-    # ---------------------------------------------------------
-    # CONTACT INFORMATION
-    # ---------------------------------------------------------
     phone = models.CharField(
         max_length=30
     )
@@ -57,54 +52,43 @@ class Customer(models.Model):
     email = models.EmailField(
         max_length=254,
         blank=True,
-        null=True
+        null=True,
     )
 
     preferred_contact_method = models.CharField(
         max_length=20,
         choices=CONTACT_METHOD_CHOICES,
-        default="whatsapp"
+        default="whatsapp",
     )
 
-    # ---------------------------------------------------------
-    # LOCATION
-    # ---------------------------------------------------------
     country = models.CharField(
         max_length=100,
-        default="Tanzania"
+        default="Tanzania",
+        blank=True,
     )
 
     city = models.CharField(
         max_length=100,
         blank=True,
-        null=True
+        null=True,
     )
 
     address = models.TextField(
         blank=True,
-        null=True
+        null=True,
     )
 
-    # ---------------------------------------------------------
-    # CUSTOMER STATUS
-    # ---------------------------------------------------------
     status = models.CharField(
         max_length=20,
         choices=CUSTOMER_STATUS_CHOICES,
-        default="active"
+        default="active",
     )
 
-    # ---------------------------------------------------------
-    # INTERNAL NOTES
-    # ---------------------------------------------------------
     notes = models.TextField(
         blank=True,
-        null=True
+        null=True,
     )
 
-    # ---------------------------------------------------------
-    # SYSTEM DATES
-    # ---------------------------------------------------------
     created_at = models.DateTimeField(
         auto_now_add=True
     )
@@ -113,9 +97,9 @@ class Customer(models.Model):
         auto_now=True
     )
 
-    # ---------------------------------------------------------
-    # DISPLAY NAME
-    # ---------------------------------------------------------
+    class Meta:
+        ordering = ["-created_at"]
+
     def __str__(self):
         if self.company:
             return self.company

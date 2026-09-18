@@ -1,0 +1,551 @@
+{% extends "main/base.html" %}
+
+{% block title %}
+Request #{{ business_request.id }} | Faltasi Innovations Limited
+{% endblock %}
+
+{% block meta_description %}
+View and manage customer business request #{{ business_request.id }}.
+{% endblock %}
+
+{% block content %}
+
+<section class="page-section">
+
+    <div class="container">
+
+        <!-- BACK -->
+
+        <div class="page-header">
+
+            <div>
+
+                <a
+                    href="{% url 'business_requests:dashboard' %}"
+                    class="back-link"
+                >
+                    ← Back to Business Requests
+                </a>
+
+                <h1>
+                    Request #{{ business_request.id }}
+                </h1>
+
+                <p>
+                    {{ business_request.subject|default:"Customer Business Request" }}
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <!-- MESSAGES -->
+
+        {% if messages %}
+
+            {% for message in messages %}
+
+                <div class="alert alert-success">
+                    {{ message }}
+                </div>
+
+            {% endfor %}
+
+        {% endif %}
+
+
+        <!-- REQUEST SUMMARY -->
+
+        <div class="dashboard-card">
+
+            <h2>
+                Request Information
+            </h2>
+
+
+            <div class="info-grid">
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Subject
+                    </span>
+
+                    <span class="info-value">
+                        {{ business_request.subject|default:"No subject" }}
+                    </span>
+
+                </div>
+
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Category
+                    </span>
+
+                    <span class="info-value">
+                        {{ business_request.category|default:"Not categorized" }}
+                    </span>
+
+                </div>
+
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Department
+                    </span>
+
+                    <span class="info-value">
+                        {{ business_request.department|default:"Not assigned" }}
+                    </span>
+
+                </div>
+
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Status
+                    </span>
+
+                    <span class="info-value">
+                        {{ business_request.get_status_display }}
+                    </span>
+
+                </div>
+
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Priority
+                    </span>
+
+                    <span class="info-value">
+                        {{ business_request.get_priority_display }}
+                    </span>
+
+                </div>
+
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Source
+                    </span>
+
+                    <span class="info-value">
+                        {{ business_request.get_source_display }}
+                    </span>
+
+                </div>
+
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Created
+                    </span>
+
+                    <span class="info-value">
+                        {{ business_request.created_at|date:"Y-m-d H:i" }}
+                    </span>
+
+                </div>
+
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Last Updated
+                    </span>
+
+                    <span class="info-value">
+                        {{ business_request.updated_at|date:"Y-m-d H:i" }}
+                    </span>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- CUSTOMER -->
+
+        <div class="dashboard-card">
+
+            <h2>
+                Customer
+            </h2>
+
+
+            <div class="info-grid">
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Name
+                    </span>
+
+                    <span class="info-value">
+                        {{ business_request.customer.name }}
+                    </span>
+
+                </div>
+
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Phone
+                    </span>
+
+                    <span class="info-value">
+                        {{ business_request.customer.phone }}
+                    </span>
+
+                </div>
+
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Email
+                    </span>
+
+                    <span class="info-value">
+
+                        {% if business_request.customer.email %}
+
+                            {{ business_request.customer.email }}
+
+                        {% else %}
+
+                            Not provided
+
+                        {% endif %}
+
+                    </span>
+
+                </div>
+
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Company
+                    </span>
+
+                    <span class="info-value">
+
+                        {% if business_request.customer.company %}
+
+                            {{ business_request.customer.company }}
+
+                        {% else %}
+
+                            Not provided
+
+                        {% endif %}
+
+                    </span>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- REQUEST DETAILS -->
+
+        <div class="dashboard-card">
+
+            <h2>
+                Request Details
+            </h2>
+
+            <div class="request-description">
+
+                {{ business_request.request_text|linebreaksbr }}
+
+            </div>
+
+        </div>
+
+
+        <!-- CURRENT ASSIGNMENT -->
+
+        <div class="dashboard-card">
+
+            <h2>
+                Current Assignment
+            </h2>
+
+
+            {% if current_assignment %}
+
+                <div class="info-grid">
+
+                    <div class="info-item">
+
+                        <span class="info-label">
+                            Department
+                        </span>
+
+                        <span class="info-value">
+                            {{ current_assignment.department }}
+                        </span>
+
+                    </div>
+
+
+                    <div class="info-item">
+
+                        <span class="info-label">
+                            Staff Member
+                        </span>
+
+                        <span class="info-value">
+
+                            {% if current_assignment.assigned_to %}
+
+                                {{ current_assignment.assigned_to.get_full_name|default:current_assignment.assigned_to.username }}
+
+                            {% else %}
+
+                                Not assigned
+
+                            {% endif %}
+
+                        </span>
+
+                    </div>
+
+
+                    <div class="info-item">
+
+                        <span class="info-label">
+                            Assigned At
+                        </span>
+
+                        <span class="info-value">
+                            {{ current_assignment.assigned_at|date:"Y-m-d H:i" }}
+                        </span>
+
+                    </div>
+
+
+                    <div class="info-item">
+
+                        <span class="info-label">
+                            Current
+                        </span>
+
+                        <span class="info-value">
+
+                            {% if current_assignment.is_current %}
+                                Yes
+                            {% else %}
+                                No
+                            {% endif %}
+
+                        </span>
+
+                    </div>
+
+                </div>
+
+            {% else %}
+
+                <p>
+                    This request has not been assigned yet.
+                </p>
+
+            {% endif %}
+
+        </div>
+
+
+        <!-- ASSIGN STAFF -->
+
+        <div class="dashboard-card">
+
+            <h2>
+                Assign Staff Member
+            </h2>
+
+            {% if business_request.department %}
+
+                <p>
+                    Available staff members from:
+                    <strong>
+                        {{ business_request.department }}
+                    </strong>
+                </p>
+
+
+                <form
+                    method="post"
+                    action="{% url 'business_requests:assign_request' business_request.id %}"
+                >
+
+                    {% csrf_token %}
+
+
+                    <div class="form-group">
+
+                        <label for="staff_id">
+                            Staff Member
+                        </label>
+
+                        <select
+                            id="staff_id"
+                            name="staff_id"
+                            required
+                        >
+
+                            <option value="">
+                                Select staff member
+                            </option>
+
+                            {% for staff in staff_users %}
+
+                                <option value="{{ staff.id }}">
+
+                                    {{ staff.get_full_name|default:staff.username }}
+
+                                    {% if staff.email %}
+                                        — {{ staff.email }}
+                                    {% endif %}
+
+                                </option>
+
+                            {% empty %}
+
+                                <option value="">
+                                    No active staff members found
+                                </option>
+
+                            {% endfor %}
+
+                        </select>
+
+                    </div>
+
+
+                    <button
+                        type="submit"
+                        class="btn btn-primary"
+                    >
+                        Assign Request
+                    </button>
+
+                </form>
+
+            {% else %}
+
+                <p>
+                    This request does not have a department yet,
+                    so it cannot be assigned.
+                </p>
+
+            {% endif %}
+
+        </div>
+
+
+        <!-- WORKFLOW -->
+
+        <div class="dashboard-card">
+
+            <h2>
+                Workflow
+            </h2>
+
+
+            {% for step in workflow_steps %}
+
+                <div class="workflow-step">
+
+                    <div class="workflow-step-header">
+
+                        <h3>
+
+                            {{ step.step_order }}.
+                            {{ step.name }}
+
+                        </h3>
+
+                        <span>
+                            {{ step.get_status_display }}
+                        </span>
+
+                    </div>
+
+
+                    <p>
+                        {{ step.description }}
+                    </p>
+
+
+                    <div class="workflow-meta">
+
+                        <strong>
+                            Assigned to:
+                        </strong>
+
+                        {% if step.assigned_to %}
+
+                            {{ step.assigned_to.get_full_name|default:step.assigned_to.username }}
+
+                        {% else %}
+
+                            Not assigned
+
+                        {% endif %}
+
+                    </div>
+
+                </div>
+
+            {% empty %}
+
+                <p>
+                    No workflow steps found.
+                </p>
+
+            {% endfor %}
+
+        </div>
+
+
+        <!-- INTERNAL NOTES -->
+
+        {% if business_request.internal_notes %}
+
+            <div class="dashboard-card">
+
+                <h2>
+                    Internal Notes
+                </h2>
+
+                <div class="request-description">
+
+                    {{ business_request.internal_notes|linebreaksbr }}
+
+                </div>
+
+            </div>
+
+        {% endif %}
+
+    </div>
+
+</section>
+
+{% endblock %}

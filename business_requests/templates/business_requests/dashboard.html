@@ -1,0 +1,325 @@
+{% extends "main/base.html" %}
+
+{% block title %}
+Business Requests | Faltasi Innovations Limited
+{% endblock %}
+
+{% block meta_description %}
+Manage and monitor customer business requests through the Faltasi platform.
+{% endblock %}
+
+{% block content %}
+
+<section class="page-section">
+
+    <div class="container">
+
+        <!-- PAGE HEADER -->
+
+        <div class="page-header">
+
+            <div>
+                <h1>Business Requests</h1>
+
+                <p>
+                    Manage customer requests, departments,
+                    assignments and workflows.
+                </p>
+            </div>
+
+        </div>
+
+
+        <!-- MESSAGES -->
+
+        {% if messages %}
+
+            {% for message in messages %}
+
+                <div class="alert alert-success">
+                    {{ message }}
+                </div>
+
+            {% endfor %}
+
+        {% endif %}
+
+
+        <!-- FILTERS -->
+
+        <div class="dashboard-card">
+
+            <h2>Filter Requests</h2>
+
+            <form method="get">
+
+                <div class="form-grid">
+
+                    <!-- STATUS -->
+
+                    <div class="form-group">
+
+                        <label for="status">
+                            Status
+                        </label>
+
+                        <select
+                            id="status"
+                            name="status"
+                        >
+
+                            <option value="">
+                                All Statuses
+                            </option>
+
+                            {% for value, label in status_choices %}
+
+                                <option
+                                    value="{{ value }}"
+                                    {% if selected_status == value %}
+                                        selected
+                                    {% endif %}
+                                >
+                                    {{ label }}
+                                </option>
+
+                            {% endfor %}
+
+                        </select>
+
+                    </div>
+
+
+                    <!-- DEPARTMENT -->
+
+                    <div class="form-group">
+
+                        <label for="department">
+                            Department
+                        </label>
+
+                        <select
+                            id="department"
+                            name="department"
+                        >
+
+                            <option value="">
+                                All Departments
+                            </option>
+
+                            {% for department in departments %}
+
+                                <option
+                                    value="{{ department.department_id }}"
+                                    {% if selected_department|stringformat:"s" == department.department_id|stringformat:"s" %}
+                                        selected
+                                    {% endif %}
+                                >
+                                    {{ department.department__name }}
+                                </option>
+
+                            {% endfor %}
+
+                        </select>
+
+                    </div>
+
+
+                    <!-- BUTTON -->
+
+                    <div class="form-group filter-button">
+
+                        <label>
+                            &nbsp;
+                        </label>
+
+                        <button
+                            type="submit"
+                            class="btn btn-primary"
+                        >
+                            Filter Requests
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </form>
+
+        </div>
+
+
+        <!-- REQUESTS -->
+
+        <div class="dashboard-card">
+
+            <div class="card-header">
+
+                <div>
+                    <h2>Customer Requests</h2>
+
+                    <p>
+                        Requests received from customers.
+                    </p>
+                </div>
+
+                <a
+                    href="{% url 'business_requests:staff_management' %}"
+                    class="btn btn-secondary"
+                >
+                    Staff Management
+                </a>
+
+            </div>
+
+
+            <div class="table-responsive">
+
+                <table class="data-table">
+
+                    <thead>
+
+                        <tr>
+
+                            <th>
+                                ID
+                            </th>
+
+                            <th>
+                                Customer
+                            </th>
+
+                            <th>
+                                Subject
+                            </th>
+
+                            <th>
+                                Department
+                            </th>
+
+                            <th>
+                                Status
+                            </th>
+
+                            <th>
+                                Priority
+                            </th>
+
+                            <th>
+                                Created
+                            </th>
+
+                            <th>
+                                Action
+                            </th>
+
+                        </tr>
+
+                    </thead>
+
+
+                    <tbody>
+
+                        {% for business_request in requests %}
+
+                            <tr>
+
+                                <td>
+                                    #{{ business_request.id }}
+                                </td>
+
+
+                                <td>
+
+                                    <strong>
+                                        {{ business_request.customer.name }}
+                                    </strong>
+
+                                    {% if business_request.customer.phone %}
+
+                                        <br>
+
+                                        <small>
+                                            {{ business_request.customer.phone }}
+                                        </small>
+
+                                    {% endif %}
+
+                                </td>
+
+
+                                <td>
+
+                                    {{ business_request.subject|default:"No subject" }}
+
+                                </td>
+
+
+                                <td>
+
+                                    {{ business_request.department|default:"Not assigned" }}
+
+                                </td>
+
+
+                                <td>
+
+                                    {{ business_request.get_status_display }}
+
+                                </td>
+
+
+                                <td>
+
+                                    {{ business_request.get_priority_display }}
+
+                                </td>
+
+
+                                <td>
+
+                                    {{ business_request.created_at|date:"Y-m-d H:i" }}
+
+                                </td>
+
+
+                                <td>
+
+                                    <a
+                                        href="{% url 'business_requests:request_detail' business_request.id %}"
+                                        class="btn btn-small"
+                                    >
+                                        View
+                                    </a>
+
+                                </td>
+
+                            </tr>
+
+                        {% empty %}
+
+                            <tr>
+
+                                <td colspan="8">
+
+                                    No business requests found.
+
+                                </td>
+
+                            </tr>
+
+                        {% endfor %}
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</section>
+
+{% endblock %}

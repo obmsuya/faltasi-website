@@ -10,9 +10,21 @@ import json
 import requests
 import re
 
-from .models import Conversation, ConversationState, Message
+from .models import (
+    WhatsAppBusinessAccount,
+    WhatsAppPhoneNumber,
+    WhatsAppConnection,
+    Conversation,
+    ConversationState,
+    Message,
+)
 from customers.models import Customer
-from business_requests.models import BusinessRequest, RequestCategory
+from business_requests.models import (
+    BusinessRequest,
+    RequestCategory,
+    RequestAssignment,
+    WorkflowStep,
+)
 
 def find_request_category(text):
     """
@@ -45,71 +57,118 @@ def find_request_category(text):
         print('NO REQUEST CATEGORY IDENTIFIED')
     return best_category
 
-def send_whatsapp_message(phone_number, message):
+def send_whatsapp_message(whatsapp_phone, phone_number, message):
     """
-    Send a text message through the WhatsApp Cloud API.
+    Send a WhatsApp text message.
+
+    Multi-tenant routing:
+    - The WhatsApp phone number determines the organization.
+    - If that organization's connection has a token, use it.
+    - During development, fall back to the platform .env token.
     """
-
-    url = (
-        f"https://graph.facebook.com/v26.0/"
-        f"{settings.WHATSAPP_PHONE_NUMBER_ID}/messages"
-    )
-
-    access_token = settings.WHATSAPP_ACCESS_TOKEN
-
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-    }
-
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": phone_number,
-        "type": "text",
-        "text": {
-            "body": message
-        },
-    }
-
-    print("========== WHATSAPP SEND ==========")
-    print("PHONE NUMBER ID:", settings.WHATSAPP_PHONE_NUMBER_ID)
-    print("RECIPIENT:", phone_number)
-    print("TOKEN EXISTS:", bool(access_token))
-    print("TOKEN LENGTH:", len(access_token) if access_token else 0)
-    print("TOKEN START:", access_token[:10] if access_token else None)
-    print("API URL:", url)
-    print("MESSAGE:", message)
 
     try:
+        # Find the connection belonging to this WhatsApp phone
+        connection = (
+            WhatsAppConnection.objects
+            .select_related(
+                "whatsapp_business_account",
+                "organization",
+            )
+            .filter(
+                whatsapp_business_account=whatsapp_phone.whatsapp_business_account,
+                organization=whatsapp_phone.organization,
+                status="connected",
+            )
+            .first()
+        )
+
+        if not connection:
+            print("========== WHATSAPP SEND ERROR ==========")
+            print("NO ACTIVE WHATSAPP CONNECTION FOUND")
+            print("ORGANIZATION:", whatsapp_phone.organization.name)
+            print("PHONE NUMBER:", whatsapp_phone.phone_number)
+            return None
+
+        # First try the business connection token.
+        # If it is not available, temporarily use the platform
+        # environment token for development.
+        access_token = connection.access_token
+
+        if not access_token:
+            print("BUSINESS ACCESS TOKEN NOT STORED")
+            print("USING PLATFORM DEVELOPMENT TOKEN")
+
+            access_token = settings.WHATSAPP_ACCESS_TOKEN
+
+        if not access_token:
+            print("========== WHATSAPP SEND ERROR ==========")
+            print("NO WHATSAPP ACCESS TOKEN AVAILABLE")
+            return None
+
+        # The phone number ID always comes from the
+        # WhatsApp phone record belonging to this organization.
+        phone_number_id = whatsapp_phone.phone_number_id
+
+        if not phone_number_id:
+            print("========== WHATSAPP SEND ERROR ==========")
+            print("WHATSAPP PHONE NUMBER ID NOT AVAILABLE")
+            print("ORGANIZATION:", whatsapp_phone.organization.name)
+            return None
+
+        # Meta WhatsApp Cloud API endpoint
+        url = (
+            f"https://graph.facebook.com/v26.0/"
+            f"{phone_number_id}/messages"
+        )
+
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": phone_number,
+            "type": "text",
+            "text": {
+                "body": message
+            },
+        }
+
+        print("========== WHATSAPP SEND ==========")
+        print("ORGANIZATION:", whatsapp_phone.organization.name)
+        print("WHATSAPP PHONE:", whatsapp_phone.phone_number)
+        print("PHONE NUMBER ID:", phone_number_id)
+        print("RECIPIENT:", phone_number)
+        print("TOKEN AVAILABLE:", bool(access_token))
+        print("API URL:", url)
+        print("MESSAGE:", message)
 
         response = requests.post(
             url,
             headers=headers,
             json=payload,
-            timeout=30
+            timeout=30,
         )
 
-        print(
-            "WHATSAPP SEND STATUS:",
-            response.status_code
-        )
+        print("WHATSAPP SEND STATUS:", response.status_code)
+        print("WHATSAPP SEND RESPONSE:", response.text)
 
-        print(
-            "WHATSAPP SEND RESPONSE:",
-            response.text
-        )
-
-        return response
-
-    except requests.RequestException as e:
-
-        print(
-            "WHATSAPP SEND ERROR:",
-            str(e)
-        )
+        if response.status_code == 200:
+            return response
 
         return None
 
+    except requests.RequestException as e:
+        print("========== WHATSAPP SEND REQUEST ERROR ==========")
+        print("ERROR:", str(e))
+        return None
+
+    except Exception as e:
+        print("========== WHATSAPP SEND ERROR ==========")
+        print("ERROR:", str(e))
+        return None
 def get_or_create_customer(phone_number):
     """
     Find an existing customer by WhatsApp phone number.
@@ -164,6 +223,56 @@ def create_business_request(customer, text, category, conversation=None):
     print('BUSINESS REQUEST CREATED:', business_request)
     return business_request
 
+def get_whatsapp_phone_number(phone_number_id):
+    """
+    Find the WhatsApp phone number configuration from
+    Meta's phone_number_id.
+    """
+
+    if not phone_number_id:
+        print("NO WHATSAPP PHONE NUMBER ID FOUND")
+        return None
+
+    try:
+        whatsapp_phone = (
+            WhatsAppPhoneNumber.objects
+            .select_related(
+                "organization",
+                "whatsapp_business_account",
+            )
+            .get(
+                phone_number_id=phone_number_id,
+                is_active=True,
+            )
+        )
+
+        print("WHATSAPP PHONE FOUND:", whatsapp_phone)
+        print("ORGANIZATION:", whatsapp_phone.organization)
+        print(
+            "WABA:",
+            whatsapp_phone.whatsapp_business_account,
+        )
+
+        return whatsapp_phone
+
+    except WhatsAppPhoneNumber.DoesNotExist:
+
+        print(
+            "NO WHATSAPP PHONE CONFIGURED FOR PHONE NUMBER ID:",
+            phone_number_id,
+        )
+
+        return None
+
+    except WhatsAppPhoneNumber.MultipleObjectsReturned:
+
+        print(
+            "ERROR: MULTIPLE WHATSAPP PHONES FOUND FOR PHONE NUMBER ID:",
+            phone_number_id,
+        )
+
+        return None
+
 def is_new_request_message(
     text,
     current_category=None,
@@ -173,20 +282,40 @@ def is_new_request_message(
     Determine whether an incoming message appears to start
     a new business request instead of answering the current question.
 
-    The function is intentionally conservative. A customer mentioning
-    a category does not automatically mean they are starting a new request.
+    The function is intentionally conservative.
+
+    Important behavior:
+    - If there is no active request, a detected category starts a new request.
+    - If the detected category is the same as the current category,
+      continue the current request.
+    - If the customer is answering a text field, continue the current request.
+    - Location, address, name, email, phone, and other field answers
+      should not easily be interpreted as new requests.
+    - A new request requires stronger evidence.
     """
 
-    if not text:
+    if not text or not text.strip():
         return False
 
+    normalized = text.lower().strip()
+
     detected_category = find_request_category(text)
+
+    # -----------------------------------------------------
+    # No detected category
+    #
+    # Without a category, we normally cannot confidently say
+    # that the customer is starting a new request.
+    # -----------------------------------------------------
 
     if not detected_category:
         return False
 
     # -----------------------------------------------------
     # No active category
+    #
+    # If there is no current request and we detected a
+    # category, this is a new request.
     # -----------------------------------------------------
 
     if not current_category:
@@ -195,14 +324,83 @@ def is_new_request_message(
     # -----------------------------------------------------
     # Same category
     #
-    # Same category normally means the customer is continuing
-    # the current request.
+    # The customer is most likely continuing the current
+    # request.
     # -----------------------------------------------------
 
     if detected_category.id == current_category.id:
         return False
 
-    normalized = text.lower().strip()
+    # -----------------------------------------------------
+    # If we are currently collecting a field, be conservative.
+    #
+    # A customer can mention another product/service while
+    # answering a field. We should not immediately create
+    # another request unless there is strong evidence.
+    # -----------------------------------------------------
+
+    if current_field:
+
+        # -------------------------------------------------
+        # Text fields
+        # -------------------------------------------------
+
+        if current_field.field_type == "text":
+            return False
+
+        # -------------------------------------------------
+        # Location/address fields
+        #
+        # Location answers can contain many words and may
+        # accidentally contain category keywords.
+        # -------------------------------------------------
+
+        field_name = (
+            getattr(current_field, "name", None)
+            or getattr(current_field, "field_name", None)
+            or getattr(current_field, "key", None)
+            or ""
+        )
+
+        field_name_normalized = field_name.lower().strip()
+
+        location_keywords = [
+            "location",
+            "address",
+            "area",
+            "city",
+            "region",
+            "place",
+            "where",
+        ]
+
+        if any(
+            keyword in field_name_normalized
+            for keyword in location_keywords
+        ):
+            return False
+
+        # -------------------------------------------------
+        # Validate the current field.
+        # -------------------------------------------------
+
+        valid, cleaned_value = (
+            validate_request_field_value(
+                current_field,
+                text
+            )
+        )
+
+        print(
+            "NEW REQUEST FIELD VALIDATION:",
+            valid,
+            cleaned_value
+        )
+
+        # If the customer provided a valid answer to the
+        # current field, it is NOT a new request.
+        if valid:
+            return False
 
     # -----------------------------------------------------
     # Strong phrases indicating a NEW request
@@ -242,11 +440,6 @@ def is_new_request_message(
         "i want a separate",
     ]
 
-    # -----------------------------------------------------
-    # If the customer explicitly indicates another request,
-    # switch to the newly detected category.
-    # -----------------------------------------------------
-
     if any(
         phrase in normalized
         for phrase in explicit_new_request_phrases
@@ -254,68 +447,35 @@ def is_new_request_message(
         return True
 
     # -----------------------------------------------------
-    # Text fields are intentionally conservative.
+    # Strong request language
     #
-    # Example:
-    #
-    # Bot:
-    # "What networking equipment do you need?"
-    #
-    # Customer:
-    # "I need a router and switches."
-    #
-    # This should remain an answer to the current question.
+    # Only use this when the customer has NOT successfully
+    # answered the current field.
     # -----------------------------------------------------
 
-    if current_field and current_field.field_type == "text":
-        return False
+    request_phrases = [
+        "i need",
+        "i want",
+        "i would like",
+        "i'd like",
+        "looking for",
+        "can you provide",
+        "can you help",
+        "quotation for",
+        "quote for",
+    ]
+
+    if any(
+        phrase in normalized
+        for phrase in request_phrases
+    ):
+        return True
 
     # -----------------------------------------------------
-    # For number / yes-no fields:
+    # Default
     #
-    # If the message does not provide a valid answer AND
-    # contains a clear request-style phrase, allow it to
-    # become a new request.
-    # -----------------------------------------------------
-
-    if current_field:
-
-        valid, cleaned_value = (
-            validate_request_field_value(
-                current_field,
-                text
-            )
-        )
-
-        print(
-            "NEW REQUEST FIELD VALIDATION:",
-            valid,
-            cleaned_value
-        )
-
-        if not valid:
-
-            request_phrases = [
-                "i need",
-                "i want",
-                "i would like",
-                "i'd like",
-                "looking for",
-                "can you provide",
-                "can you help",
-                "quotation for",
-                "quote for",
-            ]
-
-            if any(
-                phrase in normalized
-                for phrase in request_phrases
-            ):
-                return True
-
-    # -----------------------------------------------------
-    # If none of the strong conditions were met, continue
-    # the current request.
+    # Continue the current request unless there is strong
+    # evidence that the customer started another request.
     # -----------------------------------------------------
 
     return False
@@ -423,6 +583,123 @@ def update_business_request_details(business_request, state):
 
     return business_request
 
+def create_request_workflow(business_request):
+    """
+    Create the initial internal workflow for a completed
+    WhatsApp business request.
+
+    The request is assigned to its department first.
+    An individual staff member is NOT automatically selected.
+
+    This function is safe to call multiple times because it
+    checks for existing current assignments and workflow steps.
+    """
+
+    if not business_request:
+        print("NO BUSINESS REQUEST FOR WORKFLOW")
+        return business_request
+
+    department = business_request.department
+
+    if not department:
+        print(
+            "NO DEPARTMENT ASSIGNED TO BUSINESS REQUEST:",
+            business_request.id
+        )
+        return business_request
+
+    print("========== CREATE REQUEST WORKFLOW ==========")
+    print("BUSINESS REQUEST:", business_request.id)
+    print("DEPARTMENT:", department)
+
+    # =========================================================
+    # CREATE DEPARTMENT ASSIGNMENT
+    # =========================================================
+
+    assignment = (
+        RequestAssignment.objects
+        .filter(
+            request=business_request,
+            is_current=True,
+        )
+        .first()
+    )
+
+    if assignment:
+        print(
+            "EXISTING CURRENT ASSIGNMENT:",
+            assignment.id
+        )
+    else:
+        assignment = RequestAssignment.objects.create(
+            request=business_request,
+            assigned_to=None,
+            department=department,
+            is_current=True,
+            notes="Automatically routed to department after WhatsApp details were collected.",
+        )
+
+        print(
+            "REQUEST ASSIGNMENT CREATED:",
+            assignment.id
+        )
+
+    # =========================================================
+    # CREATE INITIAL WORKFLOW STEP
+    # =========================================================
+
+    workflow_step = (
+        WorkflowStep.objects
+        .filter(
+            request=business_request,
+            name="Department Review",
+        )
+        .first()
+    )
+
+    if workflow_step:
+        print(
+            "EXISTING WORKFLOW STEP:",
+            workflow_step.id
+        )
+    else:
+        workflow_step = WorkflowStep.objects.create(
+            request=business_request,
+            name="Department Review",
+            description=(
+                "Review the customer's request, verify the collected "
+                "information, and assign the request to an appropriate "
+                "staff member."
+            ),
+            step_order=1,
+            status="active",
+            assigned_to=None,
+        )
+
+        print(
+            "WORKFLOW STEP CREATED:",
+            workflow_step.id
+        )
+
+    # =========================================================
+    # KEEP REQUEST NEW UNTIL A STAFF MEMBER IS ASSIGNED
+    # =========================================================
+
+    if business_request.status != "new":
+        business_request.status = "new"
+        business_request.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ]
+        )
+
+    print(
+        "REQUEST WORKFLOW READY:",
+        business_request.id
+    )
+
+    return business_request
 @csrf_exempt
 def webhook(request):
     """
@@ -430,10 +707,11 @@ def webhook(request):
 
     Handles:
     - Meta webhook verification
+    - Multi-business WhatsApp routing
     - Incoming WhatsApp text messages
     - Duplicate message protection
-    - Customer creation/reuse
-    - Conversation creation/reuse
+    - Organization-specific customers
+    - Organization-specific conversations
     - Conversation state
     - Request category detection
     - BusinessRequest creation/reuse
@@ -452,20 +730,22 @@ def webhook(request):
         verify_token = request.GET.get("hub.verify_token")
         challenge = request.GET.get("hub.challenge")
 
-        print("VERIFY TOKEN:", verify_token)
+        print("VERIFY TOKEN RECEIVED")
         print("CHALLENGE:", challenge)
 
         if verify_token and challenge:
 
             if verify_token == settings.WHATSAPP_VERIFY_TOKEN:
+
                 print("VERIFICATION SUCCESS")
+
                 return HttpResponse(challenge)
 
             print("VERIFICATION FAILED")
 
             return HttpResponse(
                 "Invalid verify token",
-                status=403
+                status=403,
             )
 
         return HttpResponse("OK", status=200)
@@ -477,7 +757,7 @@ def webhook(request):
     if request.method != "POST":
         return HttpResponse(status=405)
 
-    print("========== POST RECEIVED ==========")
+    print("========== WHATSAPP POST RECEIVED ==========")
 
     try:
 
@@ -487,19 +767,19 @@ def webhook(request):
 
         body = request.body.decode(
             "utf-8",
-            errors="replace"
+            errors="replace",
         )
 
-        print("BODY:", body)
+        print("WEBHOOK BODY RECEIVED")
 
         data = json.loads(body)
 
-        print("JSON:")
         print(
+            "WEBHOOK JSON:",
             json.dumps(
                 data,
-                indent=2
-            )
+                indent=2,
+            ),
         )
 
         # =================================================
@@ -509,31 +789,145 @@ def webhook(request):
         entry = data.get("entry", [])
 
         if not entry:
+
             print("NO WEBHOOK ENTRY FOUND")
+
             return JsonResponse({
-                "status": "ok"
+                "status": "ok",
             })
 
         changes = entry[0].get("changes", [])
 
         if not changes:
+
             print("NO WEBHOOK CHANGES FOUND")
+
             return JsonResponse({
-                "status": "ok"
+                "status": "ok",
             })
 
         value = changes[0].get("value", {})
 
-        messages = value.get("messages", [])
+        # =================================================
+        # IDENTIFY THE WHATSAPP PHONE NUMBER
+        # =================================================
+        #
+        # Meta tells us which business phone number
+        # received the message.
+        #
+        # This is the key to multi-business routing.
+        # =================================================
 
-        if not messages:
-            print("NO WHATSAPP MESSAGE FOUND")
+        metadata = value.get("metadata", {})
+
+        phone_number_id = metadata.get(
+            "phone_number_id"
+        )
+
+        print(
+            "META PHONE NUMBER ID:",
+            phone_number_id,
+        )
+
+        if not phone_number_id:
+
+            print(
+                "NO PHONE NUMBER ID FOUND IN WEBHOOK"
+            )
+
             return JsonResponse({
-                "status": "ok"
+                "status": "ok",
+                "message": "No phone number ID found",
             })
 
         # =================================================
-        # GET FIRST MESSAGE
+        # FIND THE WHATSAPP PHONE NUMBER IN OUR DATABASE
+        # =================================================
+
+        try:
+
+            whatsapp_phone = (
+                WhatsAppPhoneNumber.objects
+                .select_related(
+                    "organization",
+                    "whatsapp_business_account",
+                )
+                .get(
+                    phone_number_id=phone_number_id,
+                    is_active=True,
+                )
+            )
+
+        except WhatsAppPhoneNumber.DoesNotExist:
+
+            print(
+                "UNKNOWN WHATSAPP PHONE NUMBER:",
+                phone_number_id,
+            )
+
+            return JsonResponse({
+                "status": "ok",
+                "message": "Unknown WhatsApp phone number",
+            })
+
+        except WhatsAppPhoneNumber.MultipleObjectsReturned:
+
+            print(
+                "MULTIPLE WHATSAPP PHONE NUMBERS FOUND:",
+                phone_number_id,
+            )
+
+            return JsonResponse({
+                "status": "ok",
+                "message": "Multiple WhatsApp phone numbers found",
+            })
+
+        # =================================================
+        # IDENTIFY ORGANIZATION
+        # =================================================
+
+        organization = whatsapp_phone.organization
+
+        whatsapp_business_account = (
+            whatsapp_phone.whatsapp_business_account
+        )
+
+        print(
+            "WHATSAPP PHONE:",
+            whatsapp_phone,
+        )
+
+        print(
+            "ORGANIZATION:",
+            organization,
+        )
+
+        print(
+            "WHATSAPP BUSINESS ACCOUNT:",
+            whatsapp_business_account,
+        )
+
+        # =================================================
+        # GET MESSAGES
+        # =================================================
+
+        messages = value.get("messages", [])
+
+        if not messages:
+
+            print(
+                "NO WHATSAPP MESSAGE FOUND"
+            )
+
+            # This can happen for status updates.
+            # We will build status processing later.
+
+            return JsonResponse({
+                "status": "ok",
+            })
+
+        # =================================================
+        # PROCESS FIRST MESSAGE
         # =================================================
 
         message = messages[0]
@@ -542,7 +936,7 @@ def webhook(request):
 
         print(
             "WHATSAPP MESSAGE ID:",
-            whatsapp_message_id
+            whatsapp_message_id,
         )
 
         # =================================================
@@ -551,20 +945,22 @@ def webhook(request):
 
         if whatsapp_message_id:
 
-            existing_message = Message.objects.filter(
-                whatsapp_message_id=whatsapp_message_id
-            ).first()
+            existing_message = (
+                Message.objects.filter(
+                    whatsapp_message_id=whatsapp_message_id
+                ).first()
+            )
 
             if existing_message:
 
                 print(
                     "DUPLICATE MESSAGE IGNORED:",
-                    whatsapp_message_id
+                    whatsapp_message_id,
                 )
 
                 return JsonResponse({
                     "status": "ok",
-                    "duplicate": True
+                    "duplicate": True,
                 })
 
         # =================================================
@@ -572,10 +968,18 @@ def webhook(request):
         # =================================================
 
         sender = message.get("from")
+
         message_type = message.get("type")
 
-        print("SENDER:", sender)
-        print("MESSAGE TYPE:", message_type)
+        print(
+            "SENDER:",
+            sender,
+        )
+
+        print(
+            "MESSAGE TYPE:",
+            message_type,
+        )
 
         # =================================================
         # CURRENT SYSTEM SUPPORTS TEXT MESSAGES
@@ -583,11 +987,19 @@ def webhook(request):
 
         if message_type != "text":
 
-            print("NON-TEXT MESSAGE RECEIVED")
+            print(
+                "NON-TEXT MESSAGE RECEIVED:",
+                message_type,
+            )
 
             return JsonResponse({
-                "status": "ok"
+                "status": "ok",
+                "message": "Non-text message received",
             })
+
+        # =================================================
+        # GET TEXT
+        # =================================================
 
         text = (
             message
@@ -596,31 +1008,74 @@ def webhook(request):
             .strip()
         )
 
-        print("MESSAGE:", text)
+        print(
+            "MESSAGE TEXT:",
+            text,
+        )
 
         if not sender:
 
-            print("NO SENDER FOUND")
+            print(
+                "NO SENDER FOUND"
+            )
 
             return JsonResponse({
-                "status": "ok"
+                "status": "ok",
             })
 
         if not text:
 
-            print("EMPTY TEXT MESSAGE")
+            print(
+                "EMPTY TEXT MESSAGE"
+            )
 
             return JsonResponse({
-                "status": "ok"
+                "status": "ok",
             })
 
         # =================================================
         # FIND OR CREATE CUSTOMER
         # =================================================
+        #
+        # IMPORTANT:
+        # Customer is now scoped to the organization.
+        #
+        # The same phone number can therefore exist as a
+        # customer for different businesses without mixing
+        # their records.
+        # =================================================
 
-        customer = get_or_create_customer(sender)
+        customer = (
+            Customer.objects
+            .filter(
+                organization=organization,
+                phone=sender,
+            )
+            .first()
+        )
 
-        print("CUSTOMER:", customer)
+        if customer:
+
+            print(
+                "EXISTING CUSTOMER:",
+                customer,
+            )
+
+        else:
+
+            customer = Customer.objects.create(
+                organization=organization,
+                phone=sender,
+                name="WhatsApp Customer",
+                customer_type="individual",
+                preferred_contact_method="whatsapp",
+                status="active",
+            )
+
+            print(
+                "NEW CUSTOMER CREATED:",
+                customer,
+            )
 
         # =================================================
         # FIND ACTIVE CONVERSATION
@@ -629,9 +1084,11 @@ def webhook(request):
         conversation = (
             Conversation.objects
             .filter(
+                organization=organization,
+                whatsapp_phone_number=whatsapp_phone,
                 customer=customer,
                 phone_number=sender,
-                status="active"
+                status="active",
             )
             .first()
         )
@@ -643,20 +1100,24 @@ def webhook(request):
         if not conversation:
 
             conversation = Conversation.objects.create(
+                organization=organization,
+                whatsapp_phone_number=whatsapp_phone,
                 customer=customer,
-                phone_number=sender
+                phone_number=sender,
+                whatsapp_user_id=sender,
+                status="active",
             )
 
             print(
                 "NEW CONVERSATION CREATED:",
-                conversation
+                conversation,
             )
 
         else:
 
             print(
                 "EXISTING CONVERSATION:",
-                conversation
+                conversation,
             )
 
         # =================================================
@@ -669,22 +1130,17 @@ def webhook(request):
 
         print(
             "CURRENT STEP:",
-            state.current_step
+            state.current_step,
         )
 
         print(
             "WAITING FOR:",
-            state.waiting_for
+            state.waiting_for,
         )
 
         print(
             "STATE DATA:",
-            state.data
-        )
-
-        print(
-            "CONVERSATION:",
-            conversation
+            state.data,
         )
 
         # =================================================
@@ -692,6 +1148,7 @@ def webhook(request):
         # =================================================
 
         incoming_message = Message.objects.create(
+            organization=organization,
             conversation=conversation,
             direction="incoming",
             sender_type="customer",
@@ -699,12 +1156,19 @@ def webhook(request):
             content=text,
             delivery_status="delivered",
             whatsapp_message_id=whatsapp_message_id,
-            metadata=message
+            metadata=message,
         )
 
         print(
-            "MESSAGE SAVED:",
-            incoming_message
+            "INCOMING MESSAGE SAVED:",
+            incoming_message,
+        )
+
+        # Update conversation activity timestamp
+        conversation.save(
+            update_fields=[
+                "last_message_at",
+            ]
         )
 
         # =================================================
@@ -713,8 +1177,8 @@ def webhook(request):
 
         state_data = state.data or {}
 
-        stored_category_name = state_data.get(
-            "category"
+        stored_category_name = (
+            state_data.get("category")
         )
 
         current_category = None
@@ -730,13 +1194,13 @@ def webhook(request):
                 current_category = (
                     RequestCategory.objects.get(
                         name=stored_category_name,
-                        is_active=True
+                        is_active=True,
                     )
                 )
 
                 print(
                     "CURRENT CATEGORY RESTORED:",
-                    current_category
+                    current_category,
                 )
 
             except RequestCategory.DoesNotExist:
@@ -757,7 +1221,7 @@ def webhook(request):
 
         print(
             "DETECTED CATEGORY:",
-            detected_category
+            detected_category,
         )
 
         # =================================================
@@ -771,28 +1235,30 @@ def webhook(request):
             try:
 
                 current_field = (
-                    current_category.request_fields.get(
+                    current_category
+                    .request_fields
+                    .get(
                         name=state.waiting_for,
-                        is_active=True
+                        is_active=True,
                     )
                 )
 
                 print(
                     "CURRENT FIELD:",
-                    current_field
+                    current_field,
                 )
 
-            except RequestField.DoesNotExist:
+            except Exception:
 
                 current_field = None
 
                 print(
                     "CURRENT FIELD NOT FOUND:",
-                    state.waiting_for
+                    state.waiting_for,
                 )
 
         # =================================================
-        # DETERMINE WHETHER MESSAGE STARTS A NEW REQUEST
+        # DETERMINE WHETHER MESSAGE STARTS NEW REQUEST
         # =================================================
 
         new_request = False
@@ -800,7 +1266,6 @@ def webhook(request):
         # -------------------------------------------------
         # CASE 1:
         # No current category.
-        # A detected category means this is a new request.
         # -------------------------------------------------
 
         if not current_category:
@@ -810,60 +1275,58 @@ def webhook(request):
                 new_request = True
 
                 print(
-                    "NEW REQUEST DETECTED - NO CURRENT CATEGORY"
+                    "NEW REQUEST DETECTED - "
+                    "NO CURRENT CATEGORY"
                 )
 
         # -------------------------------------------------
         # CASE 2:
-        # There is already an active request.
+        # Existing active request.
         # -------------------------------------------------
 
         else:
 
             # ---------------------------------------------
-            # Different category
+            # DIFFERENT CATEGORY
             # ---------------------------------------------
 
             if (
                 detected_category
-                and detected_category.id != current_category.id
+                and detected_category.id
+                != current_category.id
             ):
 
-                new_request = is_new_request_message(
-                    text,
-                    current_category=current_category,
-                    current_field=current_field
+                new_request = (
+                    is_new_request_message(
+                        text,
+                        current_category=current_category,
+                        current_field=current_field,
+                    )
                 )
 
                 print(
-                    "DIFFERENT CATEGORY DETECTED."
+                    "DIFFERENT CATEGORY DETECTED"
                 )
 
                 print(
                     "NEW REQUEST DECISION:",
-                    new_request
+                    new_request,
                 )
 
             # ---------------------------------------------
-            # Same category
-            #
-            # A customer can repeat their request while
-            # the bot is waiting for another detail.
-            #
-            # Example:
-            # Bot: Where do you need the network?
-            # Customer: I need networking equipment for my office.
-            #
-            # That is NOT a location answer.
+            # SAME CATEGORY
             # ---------------------------------------------
 
             elif (
                 detected_category
-                and detected_category.id == current_category.id
+                and detected_category.id
+                == current_category.id
                 and state.waiting_for
             ):
 
-                normalized_text = text.lower().strip()
+                normalized_text = (
+                    text.lower().strip()
+                )
 
                 request_phrases = [
                     "i need",
@@ -885,14 +1348,6 @@ def webhook(request):
                     phrase in normalized_text
                     for phrase in request_phrases
                 )
-
-                # -----------------------------------------
-                # For text fields, be conservative.
-                #
-                # If the customer explicitly says "I also..."
-                # or "Actually I need...", treat it as a new
-                # request.
-                # -----------------------------------------
 
                 explicit_new_request_phrases = [
                     "i also need",
@@ -920,13 +1375,11 @@ def webhook(request):
                     for phrase in explicit_new_request_phrases
                 )
 
-                # -----------------------------------------
-                # If the current field is text, only switch
-                # when there is a strong indication of a
-                # new request.
-                # -----------------------------------------
-
                 if current_field:
+
+                    # ---------------------------------
+                    # TEXT FIELD
+                    # ---------------------------------
 
                     if current_field.field_type == "text":
 
@@ -935,19 +1388,14 @@ def webhook(request):
                             new_request = True
 
                             print(
-                                "EXPLICIT NEW REQUEST DETECTED "
-                                "WHILE ANSWERING TEXT FIELD"
+                                "EXPLICIT NEW REQUEST "
+                                "DETECTED WHILE ANSWERING "
+                                "TEXT FIELD"
                             )
 
-                        # ---------------------------------
-                        # Special protection for the common
-                        # situation where the bot asks for
-                        # location and the customer repeats
-                        # their original request.
-                        # ---------------------------------
-
                         elif (
-                            state.waiting_for == "location"
+                            state.waiting_for
+                            == "location"
                             and detected_category
                             and has_request_phrase
                         ):
@@ -959,57 +1407,56 @@ def webhook(request):
                                 "INSTEAD OF LOCATION ANSWER"
                             )
 
-                    else:
+                    # ---------------------------------
+                    # NUMBER / YES-NO / OTHER FIELD
+                    # ---------------------------------
 
-                        # ---------------------------------
-                        # For number / yes-no fields,
-                        # validate the answer first.
-                        #
-                        # If it cannot be understood and
-                        # clearly contains request language,
-                        # allow it to become a new request.
-                        # ---------------------------------
+                    else:
 
                         valid, cleaned_value = (
                             validate_request_field_value(
                                 current_field,
-                                text
+                                text,
                             )
                         )
 
                         print(
                             "CURRENT FIELD VALIDATION:",
                             valid,
-                            cleaned_value
+                            cleaned_value,
                         )
 
-                        if not valid and has_request_phrase:
+                        if (
+                            not valid
+                            and has_request_phrase
+                        ):
 
                             new_request = True
 
                             print(
                                 "INVALID FIELD ANSWER WITH "
-                                "REQUEST LANGUAGE - NEW REQUEST"
+                                "REQUEST LANGUAGE - "
+                                "NEW REQUEST"
                             )
 
         print(
             "CURRENT CATEGORY:",
-            current_category
+            current_category,
         )
 
         print(
             "CURRENT FIELD:",
-            current_field
+            current_field,
         )
 
         print(
             "DETECTED CATEGORY:",
-            detected_category
+            detected_category,
         )
 
         print(
             "NEW REQUEST:",
-            new_request
+            new_request,
         )
 
         # =================================================
@@ -1027,7 +1474,8 @@ def webhook(request):
             if not category:
 
                 print(
-                    "NEW REQUEST FLAGGED BUT NO CATEGORY FOUND"
+                    "NEW REQUEST FLAGGED BUT "
+                    "NO CATEGORY FOUND"
                 )
 
                 reply = process_customer_message(
@@ -1037,9 +1485,7 @@ def webhook(request):
             else:
 
                 # -----------------------------------------
-                # ALWAYS CREATE A NEW BusinessRequest HERE
-                #
-                # Do not reuse the existing request.
+                # CREATE NEW BUSINESS REQUEST
                 # -----------------------------------------
 
                 business_request = (
@@ -1051,17 +1497,17 @@ def webhook(request):
                         department=category.department,
                         status="new",
                         priority="normal",
-                        source="whatsapp"
+                        source="whatsapp",
                     )
                 )
 
                 print(
                     "NEW BUSINESS REQUEST CREATED:",
-                    business_request
+                    business_request,
                 )
 
                 # -----------------------------------------
-                # Link conversation to newest request
+                # LINK CONVERSATION TO REQUEST
                 # -----------------------------------------
 
                 conversation.business_request = (
@@ -1070,17 +1516,12 @@ def webhook(request):
 
                 conversation.save(
                     update_fields=[
-                        "business_request"
+                        "business_request",
                     ]
                 )
 
-                print(
-                    "CONVERSATION LINKED TO NEW REQUEST:",
-                    business_request
-                )
-
                 # -----------------------------------------
-                # Reset state completely
+                # RESET CONVERSATION STATE
                 # -----------------------------------------
 
                 state.data = {
@@ -1088,7 +1529,7 @@ def webhook(request):
                     "category": category.name,
                     "business_request_id": (
                         business_request.id
-                    )
+                    ),
                 }
 
                 state.current_step = None
@@ -1097,28 +1538,32 @@ def webhook(request):
                 state.save()
 
                 print(
-                    "CONVERSATION STATE RESET FOR NEW REQUEST"
+                    "CONVERSATION STATE RESET "
+                    "FOR NEW REQUEST"
                 )
 
                 # -----------------------------------------
-                # Start collecting fields
+                # START FIELD COLLECTION
                 # -----------------------------------------
 
                 reply = process_request_fields(
                     category,
                     state,
-                    text
+                    text,
                 )
 
                 # -----------------------------------------
-                # Update BusinessRequest with collected
-                # details.
+                # UPDATE BUSINESS REQUEST
                 # -----------------------------------------
 
                 update_business_request_details(
                     business_request,
-                    state
-                )
+                    state,
+                ) 
+                if state.current_step == "details_collected":
+                    create_request_workflow(
+                        business_request
+                    )
 
         # =================================================
         # CONTINUE CURRENT REQUEST
@@ -1130,11 +1575,11 @@ def webhook(request):
 
             print(
                 "CONTINUING CURRENT REQUEST:",
-                category
+                category,
             )
 
             # ---------------------------------------------
-            # Get current BusinessRequest
+            # GET CURRENT BUSINESS REQUEST
             # ---------------------------------------------
 
             business_request = (
@@ -1142,7 +1587,7 @@ def webhook(request):
             )
 
             # ---------------------------------------------
-            # Recover BusinessRequest if missing
+            # RECOVER BUSINESS REQUEST IF MISSING
             # ---------------------------------------------
 
             if not business_request:
@@ -1152,7 +1597,7 @@ def webhook(request):
                         customer,
                         text,
                         category,
-                        conversation
+                        conversation,
                     )
                 )
 
@@ -1164,30 +1609,35 @@ def webhook(request):
 
                     conversation.save(
                         update_fields=[
-                            "business_request"
+                            "business_request",
                         ]
                     )
 
             # ---------------------------------------------
-            # Process current field
+            # PROCESS CURRENT FIELD
             # ---------------------------------------------
 
             reply = process_request_fields(
                 category,
                 state,
-                text
+                text,
             )
 
             # ---------------------------------------------
-            # Update BusinessRequest
+            # UPDATE BUSINESS REQUEST
             # ---------------------------------------------
 
             if business_request:
 
                 update_business_request_details(
                     business_request,
-                    state
+                    state,
                 )
+                if state.current_step == "details_collected":
+                    create_request_workflow(
+                        business_request
+            )
+
 
         # =================================================
         # FIRST MESSAGE / CATEGORY DETECTED
@@ -1199,7 +1649,7 @@ def webhook(request):
 
             print(
                 "FIRST REQUEST CATEGORY DETECTED:",
-                category
+                category,
             )
 
             business_request = (
@@ -1207,12 +1657,12 @@ def webhook(request):
                     customer,
                     text,
                     category,
-                    conversation
+                    conversation,
                 )
             )
 
             # ---------------------------------------------
-            # Save initial state
+            # SAVE INITIAL STATE
             # ---------------------------------------------
 
             state_data = {
@@ -1222,16 +1672,16 @@ def webhook(request):
                     business_request.id
                     if business_request
                     else None
-                )
+                ),
             }
 
             update_conversation_state(
                 state,
-                data=state_data
+                data=state_data,
             )
 
             # ---------------------------------------------
-            # Link BusinessRequest
+            # LINK BUSINESS REQUEST
             # ---------------------------------------------
 
             if business_request:
@@ -1242,34 +1692,38 @@ def webhook(request):
 
                 conversation.save(
                     update_fields=[
-                        "business_request"
+                        "business_request",
                     ]
                 )
 
                 print(
                     "CONVERSATION LINKED TO REQUEST:",
-                    business_request
+                    business_request,
                 )
 
             # ---------------------------------------------
-            # Start field collection
+            # START FIELD COLLECTION
             # ---------------------------------------------
 
             reply = process_request_fields(
                 category,
                 state,
-                text
+                text,
             )
 
             # ---------------------------------------------
-            # Update BusinessRequest
+            # UPDATE BUSINESS REQUEST
             # ---------------------------------------------
 
             if business_request:
 
                 update_business_request_details(
                     business_request,
-                    state
+                    state,
+                )
+                if state.current_step == "details_collected":
+                    create_request_workflow(
+                        business_request
                 )
 
         # =================================================
@@ -1279,7 +1733,8 @@ def webhook(request):
         else:
 
             print(
-                "NO CATEGORY IDENTIFIED - USING FALLBACK"
+                "NO CATEGORY IDENTIFIED - "
+                "USING FALLBACK"
             )
 
             reply = process_customer_message(
@@ -1294,9 +1749,24 @@ def webhook(request):
             "SENDING AUTOMATIC REPLY..."
         )
 
-        response = send_whatsapp_message(
-            sender,
-            reply
+        print(
+            "REPLY:",
+            reply,
+        )
+
+        # -------------------------------------------------
+        # TEMPORARY:
+        # send_whatsapp_message() still uses the existing
+        # global WHATSAPP_PHONE_NUMBER_ID and token.
+        #
+        # We will replace this with the business-specific
+        # WhatsApp connection in the next step.
+        # -------------------------------------------------
+
+        response = send_whatsapp_message( 
+            whatsapp_phone, 
+            sender, 
+            reply,
         )
 
         # =================================================
@@ -1308,7 +1778,15 @@ def webhook(request):
             and response.status_code == 200
         ):
 
-            response_data = response.json()
+            try:
+
+                response_data = response.json()
+
+            except ValueError:
+
+                response_data = {
+                    "raw_response": response.text,
+                }
 
             outgoing_whatsapp_message_id = None
 
@@ -1323,12 +1801,13 @@ def webhook(request):
             except (
                 IndexError,
                 AttributeError,
-                TypeError
+                TypeError,
             ):
 
-                pass
+                outgoing_whatsapp_message_id = None
 
             outgoing_message = Message.objects.create(
+                organization=organization,
                 conversation=conversation,
                 direction="outgoing",
                 sender_type="faltasi",
@@ -1338,12 +1817,19 @@ def webhook(request):
                     outgoing_whatsapp_message_id
                 ),
                 delivery_status="sent",
-                metadata=response_data
+                metadata=response_data,
             )
 
             print(
                 "OUTGOING MESSAGE SAVED:",
-                outgoing_message
+                outgoing_message,
+            )
+
+            # Update conversation activity timestamp
+            conversation.save(
+                update_fields=[
+                    "last_message_at",
+                ]
             )
 
         else:
@@ -1358,7 +1844,7 @@ def webhook(request):
         # =================================================
 
         return JsonResponse({
-            "status": "ok"
+            "status": "ok",
         })
 
     # =====================================================
@@ -1369,14 +1855,14 @@ def webhook(request):
 
         print(
             "JSON ERROR:",
-            e
+            str(e),
         )
 
         return JsonResponse(
             {
-                "error": "Invalid JSON"
+                "error": "Invalid JSON",
             },
-            status=400
+            status=400,
         )
 
     # =====================================================
@@ -1387,14 +1873,14 @@ def webhook(request):
 
         print(
             "WEBHOOK ERROR:",
-            str(e)
+            str(e),
         )
 
         return JsonResponse(
             {
-                "error": "Webhook processing failed"
+                "error": "Webhook processing failed",
             },
-            status=500
+            status=500,
         )
 def process_customer_message(text):
     """Return a simple fallback when no request category is identified."""

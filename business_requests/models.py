@@ -3,33 +3,98 @@ from django.contrib.auth.models import User
 from customers.models import Customer
 
 
-class Department(models.Model):
+# =========================================================
+# DEPARTMENT
+# =========================================================
 
-    name = models.CharField(
-        max_length=150,
-        unique=True
+class Department(models.Model):
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="departments",
     )
+
+    name = models.CharField(max_length=150)
 
     description = models.TextField(
         blank=True,
-        null=True
+        null=True,
     )
 
     is_active = models.BooleanField(
-        default=True
+        default=True,
     )
 
     created_at = models.DateTimeField(
-        auto_now_add=True
+        auto_now_add=True,
     )
 
     updated_at = models.DateTimeField(
-        auto_now=True
+        auto_now=True,
     )
 
-    def __str__(self):
-        return self.name
+    class Meta:
+        ordering = ["organization__name", "name"]
 
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "name"],
+                name="unique_department_per_organization",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.organization.name} - {self.name}"
+
+class DepartmentMember(models.Model):
+    ROLE_CHOICES = [
+        ("manager", "Manager"),
+        ("agent", "Agent"),
+        ("staff", "Staff"),
+        ("viewer", "Viewer"),
+    ]
+
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.CASCADE,
+        related_name="members",
+    )
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="department_memberships",
+    )
+
+    role = models.CharField(
+        max_length=20,
+        choices=ROLE_CHOICES,
+        default="staff",
+    )
+
+    is_active = models.BooleanField(default=True)
+
+    joined_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["department__name", "user__username"]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["department", "user"],
+                name="unique_department_member",
+            )
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.department.name} - "
+            f"{self.user.get_full_name() or self.user.username}"
+        )
+# =========================================================
+# REQUEST CATEGORY
+# =========================================================
 
 class RequestCategory(models.Model):
 
@@ -73,9 +138,10 @@ class RequestCategory(models.Model):
         return self.name
 
 
-# -----------------------------------------
+# =========================================================
 # REQUEST FIELD
-# -----------------------------------------
+# =========================================================
+
 class RequestField(models.Model):
     """
     Defines information that may need to be
@@ -137,6 +203,11 @@ class RequestField(models.Model):
 
     def __str__(self):
         return f"{self.category.name} - {self.name}"
+
+
+# =========================================================
+# BUSINESS REQUEST
+# =========================================================
 
 class BusinessRequest(models.Model):
 
@@ -274,6 +345,10 @@ class BusinessRequest(models.Model):
         return self.subject or self.request_text[:60]
 
 
+# =========================================================
+# REQUEST ASSIGNMENT
+# =========================================================
+
 class RequestAssignment(models.Model):
 
     request = models.ForeignKey(
@@ -319,6 +394,10 @@ class RequestAssignment(models.Model):
     def __str__(self):
         return f"{self.request} - Assignment"
 
+
+# =========================================================
+# REQUEST APPROVAL
+# =========================================================
 
 class RequestApproval(models.Model):
 
@@ -370,6 +449,10 @@ class RequestApproval(models.Model):
     def __str__(self):
         return f"{self.request} - {self.status}"
 
+
+# =========================================================
+# WORKFLOW STEP
+# =========================================================
 
 class WorkflowStep(models.Model):
 
@@ -430,6 +513,10 @@ class WorkflowStep(models.Model):
     def __str__(self):
         return f"{self.request} - {self.name}"
 
+
+# =========================================================
+# REQUEST NOTIFICATION
+# =========================================================
 
 class RequestNotification(models.Model):
 
