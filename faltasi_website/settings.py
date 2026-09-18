@@ -58,6 +58,8 @@ INSTALLED_APPS = [
      'products',
      'organizations',
      'billing',
+     'accounts',
+     
 ]
 
 MIDDLEWARE = [
@@ -162,3 +164,7 @@ EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
 
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+
+LOGIN_URL = "/accounts/login/"
+LOGIN_REDIRECT_URL = "/business-requests/"
+LOGOUT_REDIRECT_URL = "/"
