@@ -1,0 +1,352 @@
+{% extends "main/base.html" %}
+
+{% block title %}Business Profile | Faltasi{% endblock %}
+
+{% block content %}
+
+<div class="container py-5">
+
+    <div class="mb-4">
+        <h1>Business Profile</h1>
+        <p class="text-muted">
+            Manage your business information and settings.
+        </p>
+    </div>
+
+    <div class="card shadow-sm">
+
+        <div class="card-body p-4">
+
+            <form method="post" enctype="multipart/form-data">
+
+                {% csrf_token %}
+
+                <h4 class="mb-3">Business Information</h4>
+
+                <div class="row">
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">
+                            Business Name *
+                        </label>
+
+                        <input
+                            type="text"
+                            name="name"
+                            class="form-control"
+                            value="{{ organization.name|default:'' }}"
+                            required
+                        >
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">
+                            Legal Name
+                        </label>
+
+                        <input
+                            type="text"
+                            name="legal_name"
+                            class="form-control"
+                            value="{{ organization.legal_name|default:'' }}"
+                        >
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">
+                            Industry
+                        </label>
+
+                        <input
+                            type="text"
+                            name="industry"
+                            class="form-control"
+                            value="{{ organization.industry|default:'' }}"
+                        >
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">
+                            Website
+                        </label>
+
+                        <input
+                            type="url"
+                            name="website"
+                            class="form-control"
+                            value="{{ organization.website|default:'' }}"
+                            placeholder="https://example.com"
+                        >
+                    </div>
+
+                </div>
+
+                <hr>
+
+                <h4 class="mb-3">Contact Information</h4>
+
+                <div class="row">
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">
+                            Phone
+                        </label>
+
+                        <input
+                            type="text"
+                            name="phone"
+                            class="form-control"
+                            value="{{ organization.phone|default:'' }}"
+                        >
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">
+                            Secondary Phone
+                        </label>
+
+                        <input
+                            type="text"
+                            name="secondary_phone"
+                            class="form-control"
+                            value="{{ organization.secondary_phone|default:'' }}"
+                        >
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">
+                            Email
+                        </label>
+
+                        <input
+                            type="email"
+                            name="email"
+                            class="form-control"
+                            value="{{ organization.email|default:'' }}"
+                        >
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">
+                            Secondary Email
+                        </label>
+
+                        <input
+                            type="email"
+                            name="secondary_email"
+                            class="form-control"
+                            value="{{ organization.secondary_email|default:'' }}"
+                        >
+                    </div>
+
+                </div>
+
+                <hr>
+
+                <h4 class="mb-3">Location</h4>
+
+                <div class="row">
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">
+                            Country
+                        </label>
+
+                        <select
+                            name="country"
+                            class="form-select"
+                        >
+                            <option value="">Select country</option>
+
+                            {% for country in countries %}
+                                <option
+                                    value="{{ country.id }}"
+                                    {% if organization.country_id == country.id %}
+                                        selected
+                                    {% endif %}
+                                >
+                                    {{ country.name }}
+                                </option>
+                            {% endfor %}
+
+                        </select>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">
+                            Region
+                        </label>
+
+                        <input
+                            type="text"
+                            name="region"
+                            class="form-control"
+                            value="{{ organization.region|default:'' }}"
+                        >
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">
+                            City
+                        </label>
+
+                        <input
+                            type="text"
+                            name="city"
+                            class="form-control"
+                            value="{{ organization.city|default:'' }}"
+                        >
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">
+                            Postal Code
+                        </label>
+
+                        <input
+                            type="text"
+                            name="postal_code"
+                            class="form-control"
+                            value="{{ organization.postal_code|default:'' }}"
+                        >
+                    </div>
+
+                    <div class="col-12 mb-3">
+                        <label class="form-label">
+                            Address
+                        </label>
+
+                        <textarea
+                            name="address"
+                            class="form-control"
+                            rows="3"
+                        >{{ organization.address|default:'' }}</textarea>
+                    </div>
+
+                </div>
+
+                <hr>
+
+                <h4 class="mb-3">Business Description</h4>
+
+                <div class="mb-3">
+
+                    <textarea
+                        name="description"
+                        class="form-control"
+                        rows="5"
+                        placeholder="Describe your business..."
+                    >{{ organization.description|default:'' }}</textarea>
+
+                </div>
+
+                <hr>
+
+                <h4 class="mb-3">Platform Settings</h4>
+
+                <div class="row">
+
+                    <div class="col-md-6 mb-3">
+
+                        <label class="form-label">
+                            Timezone
+                        </label>
+
+                        <input
+                            type="text"
+                            name="timezone"
+                            class="form-control"
+                            value="{{ organization.timezone|default:'Africa/Dar_es_Salaam' }}"
+                            placeholder="Africa/Dar_es_Salaam"
+                        >
+
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+
+                        <label class="form-label">
+                            Language
+                        </label>
+
+                        <select
+                            name="language"
+                            class="form-select"
+                        >
+
+                            <option
+                                value="en"
+                                {% if organization.language == "en" %}
+                                    selected
+                                {% endif %}
+                            >
+                                English
+                            </option>
+
+                            <option
+                                value="sw"
+                                {% if organization.language == "sw" %}
+                                    selected
+                                {% endif %}
+                            >
+                                Kiswahili
+                            </option>
+
+                        </select>
+
+                    </div>
+
+                </div>
+
+                <hr>
+
+                <h4 class="mb-3">Business Logo</h4>
+
+                {% if organization.logo %}
+                    <div class="mb-3">
+                        <img
+                            src="{{ organization.logo.url }}"
+                            alt="{{ organization.name }}"
+                            style="max-width: 150px; max-height: 150px;"
+                            class="img-thumbnail"
+                        >
+                    </div>
+                {% endif %}
+
+                <div class="mb-4">
+
+                    <input
+                        type="file"
+                        name="logo"
+                        class="form-control"
+                        accept="image/*"
+                    >
+
+                </div>
+
+                <div class="d-flex gap-2">
+
+                    <button
+                        type="submit"
+                        class="btn btn-primary"
+                    >
+                        Save Changes
+                    </button>
+
+                    <a
+                        href="{% url 'business_requests:business_dashboard' %}"
+                        class="btn btn-secondary"
+                    >
+                        Cancel
+                    </a>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}

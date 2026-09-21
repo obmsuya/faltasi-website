@@ -24,7 +24,15 @@ from business_requests.models import (
     RequestCategory,
     RequestAssignment,
     WorkflowStep,
+    DepartmentMember,
 )
+
+from django.contrib.auth.models import User
+from django.db.models import Count, Q
+from django.utils import timezone
+from django.core.mail import send_mail
+
+
 
 def find_request_category(text):
     """
@@ -585,68 +593,204 @@ def update_business_request_details(business_request, state):
 
 def create_request_workflow(business_request):
     """
-    Create the initial internal workflow for a completed
-    WhatsApp business request.
+    Create the initial workflow for a business request and automatically
+    assign it to the active department member with the fewest active requests.
 
-    The request is assigned to its department first.
-    An individual staff member is NOT automatically selected.
-
-    This function is safe to call multiple times because it
-    checks for existing current assignments and workflow steps.
+    A staff notification is sent only when a new staff assignment is created.
+    Existing assignments do not trigger duplicate notifications.
     """
 
-    if not business_request:
-        print("NO BUSINESS REQUEST FOR WORKFLOW")
-        return business_request
+    # ---------------------------------------------------------
+    # 1. Get department
+    # ---------------------------------------------------------
 
     department = business_request.department
 
     if not department:
+        print("========== WORKFLOW ERROR ==========")
         print(
-            "NO DEPARTMENT ASSIGNED TO BUSINESS REQUEST:",
-            business_request.id
+            f"Request #{business_request.id} has no department."
         )
-        return business_request
+        return None
+
+    organization = department.organization
 
     print("========== CREATE REQUEST WORKFLOW ==========")
-    print("BUSINESS REQUEST:", business_request.id)
-    print("DEPARTMENT:", department)
+    print("REQUEST:", business_request.id)
+    print("ORGANIZATION:", organization.name)
+    print("DEPARTMENT:", department.name)
 
-    # =========================================================
-    # CREATE DEPARTMENT ASSIGNMENT
-    # =========================================================
+    # ---------------------------------------------------------
+    # 2. Check whether this request already has a current
+    #    assignment
+    # ---------------------------------------------------------
 
-    assignment = (
+    current_assignment = (
         RequestAssignment.objects
         .filter(
             request=business_request,
             is_current=True,
         )
+        .select_related(
+            "assigned_to",
+            "department",
+        )
         .first()
     )
 
-    if assignment:
+    new_staff_assignment = False
+
+    if current_assignment:
+
+        assigned_user = current_assignment.assigned_to
+
         print(
-            "EXISTING CURRENT ASSIGNMENT:",
-            assignment.id
+            "CURRENT ASSIGNMENT ALREADY EXISTS:",
+            current_assignment.id,
         )
+
+        if assigned_user:
+            print(
+                "ALREADY ASSIGNED TO:",
+                assigned_user.username,
+                assigned_user.get_full_name(),
+            )
+        else:
+            print(
+                "CURRENT ASSIGNMENT HAS NO STAFF MEMBER."
+            )
+
     else:
-        assignment = RequestAssignment.objects.create(
-            request=business_request,
-            assigned_to=None,
-            department=department,
-            is_current=True,
-            notes="Automatically routed to department after WhatsApp details were collected.",
+
+        # -----------------------------------------------------
+        # 3. Find active members of this department
+        # -----------------------------------------------------
+
+        department_members = (
+            DepartmentMember.objects
+            .filter(
+                department=department,
+                is_active=True,
+                user__is_active=True,
+                user__organization_memberships__organization=organization,
+                user__organization_memberships__is_active=True,
+            )
+            .select_related("user")
+            .distinct()
         )
 
         print(
-            "REQUEST ASSIGNMENT CREATED:",
-            assignment.id
+            "ACTIVE DEPARTMENT MEMBERS:",
+            department_members.count(),
         )
 
-    # =========================================================
-    # CREATE INITIAL WORKFLOW STEP
-    # =========================================================
+        # -----------------------------------------------------
+        # 4. Find staff member with fewest active requests
+        # -----------------------------------------------------
+
+        selected_member = None
+        selected_active_count = None
+
+        for member in department_members:
+
+            active_request_count = (
+                RequestAssignment.objects
+                .filter(
+                    assigned_to=member.user,
+                    is_current=True,
+                    request__status__in=[
+                        "new",
+                        "in_progress",
+                    ],
+                )
+                .count()
+            )
+
+            print(
+                "STAFF:",
+                member.user.username,
+                "| ACTIVE REQUESTS:",
+                active_request_count,
+            )
+
+            if (
+                selected_member is None
+                or active_request_count < selected_active_count
+            ):
+                selected_member = member
+                selected_active_count = active_request_count
+
+        # -----------------------------------------------------
+        # 5. Create assignment
+        # -----------------------------------------------------
+
+        if selected_member:
+
+            assigned_user = selected_member.user
+
+            print(
+                "AUTO ASSIGNING TO:",
+                assigned_user.username,
+                assigned_user.get_full_name(),
+            )
+
+            print(
+                "ACTIVE REQUEST COUNT:",
+                selected_active_count,
+            )
+
+            current_assignment = (
+                RequestAssignment.objects.create(
+                    request=business_request,
+                    department=department,
+                    assigned_to=assigned_user,
+                    is_current=True,
+                    assigned_at=timezone.now(),
+                    notes=(
+                        "Automatically assigned based on "
+                        "current staff workload."
+                    ),
+                )
+            )
+
+            new_staff_assignment = True
+
+            print(
+                "ASSIGNMENT CREATED:",
+                current_assignment.id,
+            )
+
+        else:
+
+            assigned_user = None
+
+            print(
+                "NO ACTIVE STAFF AVAILABLE FOR DEPARTMENT:",
+                department.name,
+            )
+
+            current_assignment = (
+                RequestAssignment.objects.create(
+                    request=business_request,
+                    department=department,
+                    assigned_to=None,
+                    is_current=True,
+                    assigned_at=timezone.now(),
+                    notes=(
+                        "Waiting for an available department "
+                        "staff member."
+                    ),
+                )
+            )
+
+            print(
+                "UNASSIGNED REQUEST CREATED:",
+                current_assignment.id,
+            )
+
+    # ---------------------------------------------------------
+    # 6. Create or update Department Review workflow
+    # ---------------------------------------------------------
 
     workflow_step = (
         WorkflowStep.objects
@@ -657,49 +801,229 @@ def create_request_workflow(business_request):
         .first()
     )
 
-    if workflow_step:
-        print(
-            "EXISTING WORKFLOW STEP:",
-            workflow_step.id
-        )
-    else:
+    if not workflow_step:
+
         workflow_step = WorkflowStep.objects.create(
             request=business_request,
             name="Department Review",
-            description=(
-                "Review the customer's request, verify the collected "
-                "information, and assign the request to an appropriate "
-                "staff member."
-            ),
-            step_order=1,
             status="active",
-            assigned_to=None,
+            assigned_to=assigned_user,
         )
 
         print(
             "WORKFLOW STEP CREATED:",
-            workflow_step.id
+            workflow_step.id,
         )
 
-    # =========================================================
-    # KEEP REQUEST NEW UNTIL A STAFF MEMBER IS ASSIGNED
-    # =========================================================
+    else:
 
-    if business_request.status != "new":
-        business_request.status = "new"
-        business_request.save(
-            update_fields=[
-                "status",
-                "updated_at",
-            ]
+        if workflow_step.assigned_to != assigned_user:
+
+            workflow_step.assigned_to = assigned_user
+
+            workflow_step.save(
+                update_fields=[
+                    "assigned_to",
+                ]
+            )
+
+            print(
+                "WORKFLOW STEP ASSIGNMENT UPDATED:",
+                workflow_step.id,
+            )
+
+        else:
+
+            print(
+                "WORKFLOW STEP ALREADY CORRECTLY ASSIGNED:",
+                workflow_step.id,
+            )
+
+    # ---------------------------------------------------------
+    # 7. Update request status
+    # ---------------------------------------------------------
+
+    if assigned_user:
+
+        if business_request.status != "in_progress":
+
+            business_request.status = "in_progress"
+
+            business_request.save(
+                update_fields=[
+                    "status",
+                    "updated_at",
+                ]
+            )
+
+            print(
+                "REQUEST STATUS UPDATED:",
+                business_request.status,
+            )
+
+        else:
+
+            print(
+                "REQUEST STATUS:",
+                business_request.status,
+            )
+
+    else:
+
+        print(
+            "REQUEST HAS NO STAFF ASSIGNED."
         )
 
-    print(
-        "REQUEST WORKFLOW READY:",
-        business_request.id
+        print(
+            "REQUEST STATUS REMAINS:",
+            business_request.status,
+        )
+
+    # ---------------------------------------------------------
+    # 8. Notify staff only when a NEW assignment was created
+    # ---------------------------------------------------------
+
+    if new_staff_assignment and assigned_user:
+
+        print(
+            "SENDING STAFF ASSIGNMENT NOTIFICATION..."
+        )
+
+        notification_result = notify_assigned_staff(
+            business_request,
+            current_assignment,
+        )
+
+        print(
+            "STAFF NOTIFICATION RESULT:",
+            notification_result,
+        )
+
+    elif assigned_user:
+
+        print(
+            "STAFF NOTIFICATION SKIPPED:",
+            "assignment already existed.",
+        )
+
+    else:
+
+        print(
+            "STAFF NOTIFICATION SKIPPED:",
+            "no staff member assigned.",
+        )
+
+    print("==============================================")
+
+    return current_assignment
+
+
+def notify_assigned_staff(business_request, assignment):
+    """
+    Notify the staff member assigned to a business request.
+
+    The notification is sent by email when:
+    - an assignment exists
+    - a staff member is assigned
+    - the staff member has an email address
+    """
+
+    if not assignment:
+        print("NOTIFICATION SKIPPED: No assignment.")
+        return False
+
+    assigned_user = assignment.assigned_to
+
+    if not assigned_user:
+        print("NOTIFICATION SKIPPED: No staff member assigned.")
+        return False
+
+    if not assigned_user.email:
+        print(
+            "NOTIFICATION SKIPPED:",
+            assigned_user.username,
+            "has no email address."
+        )
+        return False
+
+    customer = business_request.customer
+    department = business_request.department
+
+    subject = (
+        f"New Business Request #{business_request.id} "
+        f"Assigned to You"
     )
 
-    return business_request
+    message = f"""
+Hello {assigned_user.get_full_name() or assigned_user.username},
+
+A new business request has been assigned to you.
+
+Request ID:
+#{business_request.id}
+
+Subject:
+{business_request.subject or "No subject"}
+
+Department:
+{department.name if department else "Not specified"}
+
+Customer:
+{customer.name if customer else "Not specified"}
+
+Customer Phone:
+{customer.phone if customer else "Not specified"}
+
+Request:
+{business_request.request_text}
+
+Priority:
+{business_request.priority}
+
+Status:
+{business_request.status}
+
+Please log in to the Faltasi platform to review and process this request.
+
+Regards,
+Faltasi WhatsApp Platform
+""".strip()
+
+    try:
+
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=None,
+            recipient_list=[assigned_user.email],
+            fail_silently=False,
+        )
+
+        print("========== STAFF NOTIFICATION ==========")
+        print(
+            "NOTIFICATION SENT TO:",
+            assigned_user.email,
+        )
+        print(
+            "REQUEST:",
+            business_request.id,
+        )
+        print(
+            "STAFF:",
+            assigned_user.username,
+        )
+        print("========================================")
+
+        return True
+
+    except Exception as e:
+
+        print("========== STAFF NOTIFICATION ERROR ==========")
+        print("ERROR:", str(e))
+        print("==============================================")
+
+        return False
+    
 @csrf_exempt
 def webhook(request):
     """

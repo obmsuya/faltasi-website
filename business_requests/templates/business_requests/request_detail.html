@@ -63,7 +63,6 @@ View and manage customer business request #{{ business_request.id }}.
                 Request Information
             </h2>
 
-
             <div class="info-grid">
 
                 <div class="info-item">
@@ -182,7 +181,6 @@ View and manage customer business request #{{ business_request.id }}.
                 Customer
             </h2>
 
-
             <div class="info-grid">
 
                 <div class="info-item">
@@ -286,7 +284,6 @@ View and manage customer business request #{{ business_request.id }}.
                 Current Assignment
             </h2>
 
-
             {% if current_assignment %}
 
                 <div class="info-grid">
@@ -371,6 +368,90 @@ View and manage customer business request #{{ business_request.id }}.
         </div>
 
 
+        <!-- UPDATE REQUEST -->
+
+        <div class="dashboard-card">
+
+            <h2>
+                Update Request
+            </h2>
+
+            <form
+                method="post"
+                action="{% url 'business_requests:update_request' business_request.id %}"
+            >
+
+                {% csrf_token %}
+
+                <!-- STATUS -->
+
+                <div class="form-group">
+
+                    <label for="request-status">
+                        Status
+                    </label>
+
+                    <select
+                        id="request-status"
+                        name="status"
+                        required
+                    >
+
+                        {% for value, label in status_choices %}
+
+                            <option
+                                value="{{ value }}"
+                                {% if business_request.status == value %}
+                                    selected
+                                {% endif %}
+                            >
+                                {{ label }}
+                            </option>
+
+                        {% endfor %}
+
+                    </select>
+
+                </div>
+
+
+                <!-- INTERNAL NOTES -->
+
+                <div class="form-group">
+
+                    <label for="internal-notes">
+                        Internal Notes
+                    </label>
+
+                    <textarea
+                        id="internal-notes"
+                        name="internal_notes"
+                        rows="6"
+                        placeholder="Add internal notes about this request..."
+                    >{{ business_request.internal_notes|default:"" }}</textarea>
+
+                    <small>
+                        Internal notes are visible to your organization's staff
+                        and are not automatically sent to the customer.
+                    </small>
+
+                </div>
+
+
+                <!-- SAVE -->
+
+                <button
+                    type="submit"
+                    class="btn btn-primary"
+                >
+                    Save Changes
+                </button>
+
+            </form>
+
+        </div>
+
+
         <!-- ASSIGN STAFF -->
 
         <div class="dashboard-card">
@@ -395,7 +476,6 @@ View and manage customer business request #{{ business_request.id }}.
                 >
 
                     {% csrf_token %}
-
 
                     <div class="form-group">
 
@@ -467,7 +547,6 @@ View and manage customer business request #{{ business_request.id }}.
                 Workflow
             </h2>
 
-
             {% for step in workflow_steps %}
 
                 <div class="workflow-step">
@@ -531,7 +610,7 @@ View and manage customer business request #{{ business_request.id }}.
             <div class="dashboard-card">
 
                 <h2>
-                    Internal Notes
+                    Current Internal Notes
                 </h2>
 
                 <div class="request-description">

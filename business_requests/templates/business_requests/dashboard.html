@@ -19,12 +19,14 @@ Manage and monitor customer business requests through the Faltasi platform.
         <div class="page-header">
 
             <div>
+
                 <h1>Business Requests</h1>
 
                 <p>
                     Manage customer requests, departments,
                     assignments and workflows.
                 </p>
+
             </div>
 
         </div>
@@ -80,7 +82,9 @@ Manage and monitor customer business requests through the Faltasi platform.
                                         selected
                                     {% endif %}
                                 >
+
                                     {{ label }}
+
                                 </option>
 
                             {% endfor %}
@@ -110,12 +114,14 @@ Manage and monitor customer business requests through the Faltasi platform.
                             {% for department in departments %}
 
                                 <option
-                                    value="{{ department.department_id }}"
-                                    {% if selected_department|stringformat:"s" == department.department_id|stringformat:"s" %}
+                                    value="{{ department.id }}"
+                                    {% if selected_department|stringformat:"s" == department.id|stringformat:"s" %}
                                         selected
                                     {% endif %}
                                 >
-                                    {{ department.department__name }}
+
+                                    {{ department.name }}
+
                                 </option>
 
                             {% endfor %}
@@ -156,11 +162,15 @@ Manage and monitor customer business requests through the Faltasi platform.
             <div class="card-header">
 
                 <div>
-                    <h2>Customer Requests</h2>
+
+                    <h2>
+                        Customer Requests
+                    </h2>
 
                     <p>
                         Requests received from customers.
                     </p>
+
                 </div>
 
                 <a
@@ -181,37 +191,21 @@ Manage and monitor customer business requests through the Faltasi platform.
 
                         <tr>
 
-                            <th>
-                                ID
-                            </th>
+                            <th>ID</th>
 
-                            <th>
-                                Customer
-                            </th>
+                            <th>Customer</th>
 
-                            <th>
-                                Subject
-                            </th>
+                            <th>Subject</th>
 
-                            <th>
-                                Department
-                            </th>
+                            <th>Department</th>
 
-                            <th>
-                                Status
-                            </th>
+                            <th>Status</th>
 
-                            <th>
-                                Priority
-                            </th>
+                            <th>Priority</th>
 
-                            <th>
-                                Created
-                            </th>
+                            <th>Created</th>
 
-                            <th>
-                                Action
-                            </th>
+                            <th>Action</th>
 
                         </tr>
 
@@ -257,7 +251,15 @@ Manage and monitor customer business requests through the Faltasi platform.
 
                                 <td>
 
-                                    {{ business_request.department|default:"Not assigned" }}
+                                    {% if business_request.department %}
+
+                                        {{ business_request.department.name }}
+
+                                    {% else %}
+
+                                        Not assigned
+
+                                    {% endif %}
 
                                 </td>
 

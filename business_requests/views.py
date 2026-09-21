@@ -4,7 +4,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.contrib import messages
 from django.db import transaction
 
-
+from organizations.models import (Country, Organization, OrganizationMember,)
+from customers.models import Customer
 
 from .models import (
     Department,
@@ -13,18 +14,39 @@ from .models import (
     RequestAssignment,
     WorkflowStep,
 )
+from django.contrib.auth import login
+
 
 def get_user_organization(user):
     """
-    Return the active organization for a normal user.
+    Return the organization that should be used for the current user.
 
-    Superusers are handled separately because they are
-    platform administrators.
+    Normal users:
+        Use their active organization membership.
+
+    Superusers:
+        Use the active platform-owner organization.
     """
 
+    # Platform administrators
+    if user.is_superuser:
+        return (
+            Organization.objects
+            .filter(
+                organization_type="platform_owner",
+                status="active",
+            )
+            .order_by("id")
+            .first()
+        )
+
+    # Normal organization users
     membership = (
         user.organization_memberships
-        .filter(is_active=True)
+        .filter(
+            is_active=True,
+            organization__status="active",
+        )
         .select_related("organization")
         .first()
     )
@@ -35,11 +57,136 @@ def get_user_organization(user):
     return None
 
 @login_required
+def business_dashboard(request):
+    """
+    Main dashboard for an organization.
+
+    Superusers currently use the Faltasi platform-owner
+    organization.
+
+    Normal users see only their own organization's data.
+    """
+
+    if request.user.is_superuser:
+
+        organization = (
+            Organization.objects
+            .filter(
+                organization_type="platform_owner",
+                status="active",
+            )
+            .order_by("id")
+            .first()
+        )
+
+        if not organization:
+            messages.error(
+                request,
+                "No active platform owner organization was found.",
+            )
+
+            return redirect(
+                "business_requests:dashboard"
+            )
+
+    else:
+
+        organization = get_user_organization(
+            request.user
+        )
+
+        if not organization:
+
+            messages.error(
+                request,
+                "You are not assigned to an organization.",
+            )
+
+            return redirect(
+                "accounts:login"
+            )
+
+    recent_requests = (
+        BusinessRequest.objects
+        .select_related(
+            "customer",
+            "department",
+        )
+        .filter(
+            customer__organization=organization,
+        )
+        .order_by("-created_at")[:10]
+    )
+
+    customer_count = (
+        Customer.objects
+        .filter(
+            organization=organization,
+        )
+        .count()
+    )
+
+    request_count = (
+        BusinessRequest.objects
+        .filter(
+            customer__organization=organization,
+        )
+        .count()
+    )
+
+    staff_count = (
+        OrganizationMember.objects
+        .filter(
+            organization=organization,
+            is_active=True,
+        )
+        .values("user")
+        .distinct()
+        .count()
+    )
+
+    department_count = (
+        Department.objects
+        .filter(
+            organization=organization,
+            is_active=True,
+        )
+        .count()
+    )
+
+    context = {
+        "organization": organization,
+        "recent_requests": recent_requests,
+        "customer_count": customer_count,
+        "request_count": request_count,
+        "staff_count": staff_count,
+        "department_count": department_count,
+    }
+
+    return render(
+        request,
+        "business_requests/business_dashboard.html",
+        context,
+    )
+
+@login_required
 def request_dashboard(request):
     """
     Main internal dashboard for business requests.
+    Only requests belonging to the logged-in user's organization
+    are displayed.
     """
 
+    organization = get_user_organization(request.user)
+
+    if not organization:
+        messages.error(
+            request,
+            "Your account is not connected to a business organization."
+        )
+        return redirect("business_requests:business_dashboard")
+
+    # Get requests belonging to this organization
     requests = (
         BusinessRequest.objects
         .select_related(
@@ -52,54 +199,40 @@ def request_dashboard(request):
             "assignments__assigned_to",
             "workflow_steps__assigned_to",
         )
+        .filter(
+            customer__organization_id=organization.id
+        )
         .order_by("-created_at")
     )
 
-    # Platform administrators can see all requests.
-    # Normal users can only see requests belonging
-    # to their organization.
-
-    if not request.user.is_superuser:
-
-        membership = (
-            request.user
-            .organization_memberships
-            .filter(is_active=True)
-            .select_related("organization")
-            .first()
-        )
-
-        if membership:
-            requests = requests.filter(
-                customer__organization=membership.organization
-            )
-        else:
-            requests = requests.none()
-
     # Optional filters
-    status = request.GET.get("status")
-    department_id = request.GET.get("department")
+    status = request.GET.get("status", "").strip()
+    department_id = request.GET.get("department", "").strip()
 
     if status:
-        requests = requests.filter(status=status)
+        requests = requests.filter(
+            status=status
+        )
 
     if department_id:
         requests = requests.filter(
-            department_id=department_id
+            department_id=department_id,
+            department__organization_id=organization.id,
         )
 
+    # Departments belonging to this organization
     departments = (
-        BusinessRequest.objects
-        .exclude(department=None)
-        .values(
-            "department_id",
-            "department__name",
+        Department.objects
+        .filter(
+            organization_id=organization.id,
+            is_active=True,
         )
-        .distinct()
-        .order_by("department__name")
+        .order_by("name")
     )
 
+
     context = {
+        "organization": organization,
         "requests": requests,
         "departments": departments,
         "selected_status": status,
@@ -112,7 +245,129 @@ def request_dashboard(request):
         "business_requests/dashboard.html",
         context,
     )
+@login_required
+def my_requests(request):
+    """
+    Display business requests assigned to the currently logged-in staff member.
 
+    Staff can only see requests:
+    - assigned to them
+    - belonging to their organization
+    - through a current assignment
+    """
+
+    organization = get_user_organization(request.user)
+
+    if not organization:
+        messages.error(
+            request,
+            "Your account is not connected to a business organization."
+        )
+        return redirect(
+            "business_requests:business_dashboard"
+        )
+
+    # ---------------------------------------------------------
+    # REQUESTS CURRENTLY ASSIGNED TO THIS USER
+    # ---------------------------------------------------------
+
+    requests = (
+        BusinessRequest.objects
+        .select_related(
+            "customer",
+            "customer__organization",
+            "department",
+            "category",
+        )
+        .filter(
+            customer__organization=organization,
+            assignments__assigned_to=request.user,
+            assignments__is_current=True,
+        )
+        .distinct()
+        .order_by("-created_at")
+    )
+
+    # ---------------------------------------------------------
+    # OPTIONAL STATUS FILTER
+    # ---------------------------------------------------------
+
+    status = request.GET.get("status", "").strip()
+
+    if status:
+        requests = requests.filter(
+            status=status
+        )
+
+    # ---------------------------------------------------------
+    # COUNTS
+    # ---------------------------------------------------------
+
+    all_count = (
+        BusinessRequest.objects
+        .filter(
+            customer__organization=organization,
+            assignments__assigned_to=request.user,
+            assignments__is_current=True,
+        )
+        .distinct()
+        .count()
+    )
+
+    new_count = (
+        BusinessRequest.objects
+        .filter(
+            customer__organization=organization,
+            assignments__assigned_to=request.user,
+            assignments__is_current=True,
+            status="new",
+        )
+        .distinct()
+        .count()
+    )
+
+    in_progress_count = (
+        BusinessRequest.objects
+        .filter(
+            customer__organization=organization,
+            assignments__assigned_to=request.user,
+            assignments__is_current=True,
+            status="in_progress",
+        )
+        .distinct()
+        .count()
+    )
+
+    completed_count = (
+        BusinessRequest.objects
+        .filter(
+            customer__organization=organization,
+            assignments__assigned_to=request.user,
+            assignments__is_current=True,
+            status="completed",
+        )
+        .distinct()
+        .count()
+    )
+
+    context = {
+        "organization": organization,
+        "requests": requests,
+        "selected_status": status,
+
+        "all_count": all_count,
+        "new_count": new_count,
+        "in_progress_count": in_progress_count,
+        "completed_count": completed_count,
+
+        "status_choices": BusinessRequest.STATUS_CHOICES,
+    }
+
+    return render(
+        request,
+        "business_requests/my_requests.html",
+        context,
+    )
 
 @login_required
 def request_detail(request, request_id):
@@ -242,6 +497,7 @@ def request_detail(request, request_id):
         "staff_users": staff_users,
         "current_assignment": current_assignment,
         "workflow_steps": workflow_steps,
+        "status_choices": BusinessRequest.STATUS_CHOICES,
     }
 
     return render(
@@ -249,6 +505,137 @@ def request_detail(request, request_id):
         "business_requests/request_detail.html",
         context,
     )
+
+@login_required
+@transaction.atomic
+def update_request(request, request_id):
+    """
+    Update the status and internal notes of a business request.
+
+    Users can only update requests belonging to their organization.
+    Superusers can update requests across organizations.
+    """
+
+    # ---------------------------------------------------------
+    # ONLY POST IS ALLOWED
+    # ---------------------------------------------------------
+
+    if request.method != "POST":
+        return redirect(
+            "business_requests:request_detail",
+            request_id=request_id,
+        )
+
+    # ---------------------------------------------------------
+    # GET BUSINESS REQUEST WITH ORGANIZATION SECURITY
+    # ---------------------------------------------------------
+
+    if request.user.is_superuser:
+
+        business_request = get_object_or_404(
+            BusinessRequest,
+            id=request_id,
+        )
+
+    else:
+
+        organization = get_user_organization(request.user)
+
+        if not organization:
+            messages.error(
+                request,
+                "You are not assigned to an organization.",
+            )
+
+            return redirect(
+                "business_requests:dashboard"
+            )
+
+        business_request = get_object_or_404(
+            BusinessRequest,
+            id=request_id,
+            customer__organization=organization,
+        )
+
+    # ---------------------------------------------------------
+    # STATUS
+    # ---------------------------------------------------------
+
+    status = request.POST.get("status", "").strip()
+
+    valid_statuses = {
+        value
+        for value, label in BusinessRequest.STATUS_CHOICES
+    }
+
+    if status:
+
+        if status not in valid_statuses:
+
+            messages.error(
+                request,
+                "Invalid request status.",
+            )
+
+            return redirect(
+                "business_requests:request_detail",
+                request_id=request_id,
+            )
+
+        business_request.status = status
+
+    # ---------------------------------------------------------
+    # INTERNAL NOTES
+    # ---------------------------------------------------------
+
+    internal_notes = request.POST.get(
+        "internal_notes"
+    )
+
+    if internal_notes is not None:
+        business_request.internal_notes = internal_notes.strip()
+
+    # ---------------------------------------------------------
+    # COMPLETION DATE
+    # ---------------------------------------------------------
+
+    if status == "completed":
+
+        if not business_request.completed_at:
+            business_request.completed_at = timezone.now()
+
+    else:
+
+        business_request.completed_at = None
+
+    # ---------------------------------------------------------
+    # SAVE
+    # ---------------------------------------------------------
+
+    business_request.save(
+        update_fields=[
+            "status",
+            "internal_notes",
+            "completed_at",
+            "updated_at",
+        ]
+    )
+
+    # ---------------------------------------------------------
+    # SUCCESS
+    # ---------------------------------------------------------
+
+    messages.success(
+        request,
+        f"Request #{business_request.id} has been updated successfully.",
+    )
+
+    return redirect(
+        "business_requests:request_detail",
+        request_id=request_id,
+    )
+
+
 @login_required
 @transaction.atomic
 def assign_request(request, request_id):
@@ -481,181 +868,235 @@ def assign_request(request, request_id):
 @login_required
 def staff_management(request):
     """
-    Staff management page.
-
-    Superusers can manage departments and staff
-    across all organizations.
-
-    Normal users can only manage departments and
-    staff belonging to their own organization.
+    Manage staff belonging to the currently logged-in organization.
     """
 
+    # Determine the current organization
     if request.user.is_superuser:
-
-        memberships = (
-            DepartmentMember.objects
-            .select_related(
-                "user",
-                "department",
-                "department__organization",
+        organization = (
+            Organization.objects
+            .filter(
+                organization_type="platform_owner",
+                status="active",
             )
-            .order_by(
-                "department__organization__name",
-                "department__name",
-                "user__username",
-            )
+            .order_by("id")
+            .first()
         )
-
-        departments = (
-            Department.objects
-            .filter(is_active=True)
-            .select_related("organization")
-            .order_by(
-                "organization__name",
-                "name",
-            )
-        )
-
     else:
-
         organization = get_user_organization(request.user)
 
-        if not organization:
-            messages.error(
-                request,
-                "You are not assigned to an organization.",
-            )
-
-            return redirect(
-                "business_requests:dashboard"
-            )
-
-        memberships = (
-            DepartmentMember.objects
-            .select_related(
-                "user",
-                "department",
-                "department__organization",
-            )
-            .filter(
-                department__organization=organization,
-                is_active=True,
-            )
-            .order_by(
-                "department__name",
-                "user__username",
-            )
+    if not organization:
+        messages.error(
+            request,
+            "Your account is not connected to a business organization."
         )
+        return redirect("business_requests:business_dashboard")
 
-        departments = (
-            Department.objects
-            .filter(
-                organization=organization,
-                is_active=True,
-            )
-            .select_related("organization")
-            .order_by("name")
+    # Organization members
+    memberships = (
+        OrganizationMember.objects
+        .filter(
+            organization=organization,
+            is_active=True,
+            user__is_active=True,
         )
-
-    users = (
-        User.objects
-        .filter(is_active=True)
-        .order_by(
-            "first_name",
-            "last_name",
-            "username",
-        )
+        .select_related("user", "organization")
+        .order_by("user__username")
     )
 
+    # Users belonging to this organization.
+    # This prevents one business from seeing another business's users.
+    users = (
+        User.objects
+        .filter(
+            organization_memberships__organization=organization,
+            organization_memberships__is_active=True,
+            is_active=True,
+        )
+        .distinct()
+        .order_by("username")
+    )
+
+    # Departments belonging to this organization
+    departments = (
+        Department.objects
+        .filter(
+            organization=organization,
+            is_active=True,
+        )
+        .order_by("name")
+    )
+
+    
+
     context = {
+        "organization": organization,
         "memberships": memberships,
-        "departments": departments,
         "users": users,
+        "departments": departments,
     }
 
     return render(
         request,
-        "business_requests/staff_management.html",
+        "business_requests/staff.html",
         context,
     )
+
 @login_required
-@transaction.atomic
 def add_department_member(request):
     """
-    Add an existing Django user to a department.
+    Create a new staff user for the current organization and
+    assign the user to a department.
 
-    A normal user can only add staff to departments
-    belonging to their own organization.
-
-    Superusers can manage departments across
-    all organizations.
+    Only organization owners and administrators can perform
+    this action.
     """
 
-    if request.method != "POST":
-        return redirect(
-            "business_requests:staff_management"
-        )
-
-    user_id = request.POST.get("user_id")
-    department_id = request.POST.get("department_id")
-    role = request.POST.get("role")
-
-    if not user_id or not department_id or not role:
-        messages.error(
-            request,
-            "Please provide the user, department and role.",
-        )
-
-        return redirect(
-            "business_requests:staff_management"
-        )
-
-    valid_roles = {
-        "manager",
-        "agent",
-        "staff",
-        "viewer",
-    }
-
-    if role not in valid_roles:
-        messages.error(
-            request,
-            "Invalid staff role.",
-        )
-
-        return redirect(
-            "business_requests:staff_management"
-        )
-
-    staff_user = get_object_or_404(
-        User,
-        id=user_id,
-        is_active=True,
-    )
+    # ---------------------------------------------------------
+    # Determine organization
+    # ---------------------------------------------------------
 
     if request.user.is_superuser:
+        organization = (
+            Organization.objects
+            .filter(
+                organization_type="platform_owner",
+                status="active",
+            )
+            .order_by("id")
+            .first()
+        )
+    else:
+        organization = get_user_organization(request.user)
 
-        department = get_object_or_404(
-            Department,
-            id=department_id,
+    if not organization:
+        messages.error(
+            request,
+            "Your account is not connected to a business organization."
+        )
+        return redirect(
+            "business_requests:business_dashboard"
+        )
+
+    # ---------------------------------------------------------
+    # Check organization-level permission
+    # ---------------------------------------------------------
+
+    membership = (
+        OrganizationMember.objects
+        .filter(
+            organization=organization,
+            user=request.user,
             is_active=True,
         )
+        .first()
+    )
 
-    else:
-
-        organization = get_user_organization(
-            request.user
-        )
-
-        if not organization:
+    if not request.user.is_superuser:
+        if not membership or membership.role not in ["owner", "admin"]:
             messages.error(
                 request,
-                "You are not assigned to an organization.",
+                "You do not have permission to manage staff."
             )
-
             return redirect(
                 "business_requests:staff_management"
             )
+
+    # ---------------------------------------------------------
+    # Departments belonging ONLY to this organization
+    # ---------------------------------------------------------
+
+    departments = (
+        Department.objects
+        .filter(
+            organization=organization,
+            is_active=True,
+        )
+        .order_by("name")
+    )
+
+    # ---------------------------------------------------------
+    # POST - create staff user
+    # ---------------------------------------------------------
+
+    if request.method == "POST":
+
+        username = request.POST.get("username", "").strip()
+        first_name = request.POST.get("first_name", "").strip()
+        last_name = request.POST.get("last_name", "").strip()
+        email = request.POST.get("email", "").strip()
+        password = request.POST.get("password", "")
+        password_confirm = request.POST.get(
+            "password_confirm",
+            ""
+        )
+
+        department_id = request.POST.get("department_id")
+        role = request.POST.get("role", "staff")
+
+        # -----------------------------------------------------
+        # Validate required fields
+        # -----------------------------------------------------
+
+        if not username:
+            messages.error(
+                request,
+                "Username is required."
+            )
+            return redirect(
+                "business_requests:add_department_member"
+            )
+
+        if not email:
+            messages.error(
+                request,
+                "Email address is required."
+            )
+            return redirect(
+                "business_requests:add_department_member"
+            )
+
+        if not password:
+            messages.error(
+                request,
+                "Password is required."
+            )
+            return redirect(
+                "business_requests:add_department_member"
+            )
+
+        if password != password_confirm:
+            messages.error(
+                request,
+                "Passwords do not match."
+            )
+            return redirect(
+                "business_requests:add_department_member"
+            )
+
+        # -----------------------------------------------------
+        # Validate department role
+        # -----------------------------------------------------
+
+        allowed_roles = {
+            "manager",
+            "agent",
+            "staff",
+            "viewer",
+        }
+
+        if role not in allowed_roles:
+            messages.error(
+                request,
+                "Invalid department role."
+            )
+            return redirect(
+                "business_requests:add_department_member"
+            )
+
+        # -----------------------------------------------------
+        # Validate department belongs to organization
+        # -----------------------------------------------------
 
         department = get_object_or_404(
             Department,
@@ -664,69 +1105,1036 @@ def add_department_member(request):
             is_active=True,
         )
 
-        # The user performing the action must be
-        # a member of this department with an active
-        # department membership.
-        allowed = DepartmentMember.objects.filter(
-            department=department,
-            user=request.user,
-            is_active=True,
-        ).exists()
+        # -----------------------------------------------------
+        # Prevent duplicate username
+        # -----------------------------------------------------
 
-        if not allowed:
+        if User.objects.filter(
+            username__iexact=username
+        ).exists():
+
             messages.error(
                 request,
-                "You are not authorized to manage this department.",
+                "A user with this username already exists."
             )
 
             return redirect(
-                "business_requests:staff_management"
+                "business_requests:add_department_member"
             )
 
-    membership, created = (
-        DepartmentMember.objects.get_or_create(
-            department=department,
-            user=staff_user,
-            defaults={
-                "role": role,
-                "is_active": True,
-            },
+        # -----------------------------------------------------
+        # Prevent duplicate email
+        # -----------------------------------------------------
+
+        if User.objects.filter(
+            email__iexact=email
+        ).exists():
+
+            messages.error(
+                request,
+                "A user with this email address already exists."
+            )
+
+            return redirect(
+                "business_requests:add_department_member"
+            )
+
+        # -----------------------------------------------------
+        # Create Django user
+        # -----------------------------------------------------
+
+        new_user = User.objects.create_user(
+            username=username,
+            email=email,
+            password=password,
+            first_name=first_name,
+            last_name=last_name,
         )
-    )
 
-    if not created:
+        # Staff users should not automatically be staff/superusers
+        new_user.is_staff = False
+        new_user.is_superuser = False
+        new_user.is_active = True
 
-        membership.role = role
-        membership.is_active = True
-
-        membership.save(
+        new_user.save(
             update_fields=[
-                "role",
+                "is_staff",
+                "is_superuser",
                 "is_active",
-                "updated_at",
             ]
         )
 
+        # -----------------------------------------------------
+        # Create organization membership
+        # -----------------------------------------------------
+
+        OrganizationMember.objects.create(
+            organization=organization,
+            user=new_user,
+            role="staff",
+            is_active=True,
+        )
+
+        # -----------------------------------------------------
+        # Create department membership
+        # -----------------------------------------------------
+
+        DepartmentMember.objects.create(
+            department=department,
+            user=new_user,
+            role=role,
+            is_active=True,
+        )
+
+        # -----------------------------------------------------
+        # Success
+        # -----------------------------------------------------
+
+        messages.success(
+            request,
+            f"Staff member {new_user.username} was created "
+            f"and assigned to {department.name}."
+        )
+
+        return redirect(
+            "business_requests:staff_management"
+        )
+
+    # ---------------------------------------------------------
+    # GET
+    # ---------------------------------------------------------
+
+    context = {
+        "organization": organization,
+        "departments": departments,
+        "roles": [
+            ("manager", "Manager"),
+            ("agent", "Agent"),
+            ("staff", "Staff"),
+            ("viewer", "Viewer"),
+        ],
+    }
+
+    return render(
+        request,
+        "business_requests/add_department_member.html",
+        context,
+    )
+
+@transaction.atomic
+def business_register(request):
+    """
+    Register a new business and create its owner account.
+
+    Creates:
+        1. Django User
+        2. Organization
+        3. OrganizationMember with Owner role
+    """
+
+    if request.method == "POST":
+
+        business_name = request.POST.get(
+            "business_name",
+            ""
+        ).strip()
+
+        legal_name = request.POST.get(
+            "legal_name",
+            ""
+        ).strip()
+
+        email = request.POST.get(
+            "email",
+            ""
+        ).strip()
+
+        phone = request.POST.get(
+            "phone",
+            ""
+        ).strip()
+
+        country_id = request.POST.get(
+            "country"
+        )
+
+        city = request.POST.get(
+            "city",
+            ""
+        ).strip()
+
+        industry = request.POST.get(
+            "industry",
+            ""
+        ).strip()
+
+        username = request.POST.get(
+            "username",
+            ""
+        ).strip()
+
+        password = request.POST.get(
+            "password",
+            ""
+        )
+
+        password_confirm = request.POST.get(
+            "password_confirm",
+            ""
+        )
+
+        # ---------------------------------------------
+        # BASIC VALIDATION
+        # ---------------------------------------------
+
+        if not business_name:
+            messages.error(
+                request,
+                "Business name is required.",
+            )
+
+            return redirect(
+                "business_requests:business_register"
+            )
+
+        if not email:
+            messages.error(
+                request,
+                "Email address is required.",
+            )
+
+            return redirect(
+                "business_requests:business_register"
+            )
+
+        if not username:
+            messages.error(
+                request,
+                "Username is required.",
+            )
+
+            return redirect(
+                "business_requests:business_register"
+            )
+
+        if not password:
+            messages.error(
+                request,
+                "Password is required.",
+            )
+
+            return redirect(
+                "business_requests:business_register"
+            )
+
+        if password != password_confirm:
+            messages.error(
+                request,
+                "Passwords do not match.",
+            )
+
+            return redirect(
+                "business_requests:business_register"
+            )
+
+        # ---------------------------------------------
+        # CHECK USERNAME
+        # ---------------------------------------------
+
+        if User.objects.filter(
+            username__iexact=username
+        ).exists():
+
+            messages.error(
+                request,
+                "That username is already in use.",
+            )
+
+            return redirect(
+                "business_requests:business_register"
+            )
+
+        # ---------------------------------------------
+        # CHECK EMAIL
+        # ---------------------------------------------
+
+        if User.objects.filter(
+            email__iexact=email
+        ).exists():
+
+            messages.error(
+                request,
+                "That email address is already registered.",
+            )
+
+            return redirect(
+                "business_requests:business_register"
+            )
+
+        # ---------------------------------------------
+        # COUNTRY
+        # ---------------------------------------------
+
+        country = None
+
+        if country_id:
+
+            country = get_object_or_404(
+                Country,
+                id=country_id,
+                is_active=True,
+            )
+
+        # ---------------------------------------------
+        # CREATE USER
+        # ---------------------------------------------
+
+        user = User.objects.create_user(
+            username=username,
+            email=email,
+            password=password,
+        )
+
+        # ---------------------------------------------
+        # CREATE ORGANIZATION
+        # ---------------------------------------------
+
+        organization = Organization.objects.create(
+            name=business_name,
+            legal_name=legal_name or None,
+            organization_type="business",
+            phone=phone or None,
+            email=email,
+            country=country,
+            city=city or None,
+            industry=industry or None,
+            status="active",
+            is_verified=False,
+        )
+
+        # ---------------------------------------------
+        # CREATE OWNER MEMBERSHIP
+        # ---------------------------------------------
+
+        OrganizationMember.objects.create(
+            organization=organization,
+            user=user,
+            role="owner",
+            is_active=True,
+        )
+
+        # ---------------------------------------------
+        # LOG USER IN
+        # ---------------------------------------------
+
+        login(
+            request,
+            user,
+        )
+
         messages.success(
             request,
             (
-                f"{staff_user.get_full_name() or staff_user.username} "
-                f"is already a member of {department.name}. "
-                f"The membership has been updated."
+                f"Welcome to Faltasi, "
+                f"{organization.name}."
             ),
         )
 
-    else:
+        return redirect(
+            "business_requests:business_dashboard"
+        )
+
+    # ---------------------------------------------
+    # GET REQUEST
+    # ---------------------------------------------
+
+    countries = (
+        Country.objects
+        .filter(is_active=True)
+        .order_by("name")
+    )
+
+    context = {
+        "countries": countries,
+    }
+
+    return render(
+        request,
+        "business_requests/business_register.html",
+        context,
+    )
+
+@login_required
+def business_profile(request):
+    """
+    Display and update the logged-in user's organization profile.
+    """
+
+    organization = get_user_organization(request.user)
+
+    if not organization:
+        messages.error(
+            request,
+            "Your account is not connected to a business organization."
+        )
+        return redirect("business_requests:business_dashboard")
+
+    if request.method == "POST":
+        organization.name = request.POST.get("name", "").strip()
+        organization.legal_name = request.POST.get("legal_name", "").strip() or None
+        organization.phone = request.POST.get("phone", "").strip() or None
+        organization.secondary_phone = (
+            request.POST.get("secondary_phone", "").strip() or None
+        )
+        organization.email = request.POST.get("email", "").strip() or None
+        organization.secondary_email = (
+            request.POST.get("secondary_email", "").strip() or None
+        )
+        organization.website = request.POST.get("website", "").strip() or None
+        organization.region = request.POST.get("region", "").strip() or None
+        organization.city = request.POST.get("city", "").strip() or None
+        organization.address = request.POST.get("address", "").strip() or None
+        organization.postal_code = (
+            request.POST.get("postal_code", "").strip() or None
+        )
+        organization.industry = request.POST.get("industry", "").strip() or None
+        organization.description = (
+            request.POST.get("description", "").strip() or None
+        )
+        organization.timezone = (
+            request.POST.get("timezone", "").strip() or None
+        )
+        organization.language = (
+            request.POST.get("language", "").strip() or None
+        )
+
+        country_id = request.POST.get("country")
+
+        if country_id:
+            try:
+                organization.country = Country.objects.get(
+                    id=country_id,
+                    is_active=True,
+                )
+            except Country.DoesNotExist:
+                messages.error(request, "Selected country is invalid.")
+                return redirect("business_requests:business_profile")
+        else:
+            organization.country = None
+
+        if "logo" in request.FILES:
+            organization.logo = request.FILES["logo"]
+
+        if not organization.name:
+            messages.error(request, "Business name is required.")
+            return redirect("business_requests:business_profile")
+
+        organization.save()
 
         messages.success(
             request,
-            (
-                f"{staff_user.get_full_name() or staff_user.username} "
-                f"has been added to {department.name} "
-                f"as {membership.get_role_display()}."
-            ),
+            "Business profile updated successfully."
+        )
+
+        return redirect("business_requests:business_profile")
+
+    countries = Country.objects.filter(
+        is_active=True
+    ).order_by("name")
+
+    context = {
+        "organization": organization,
+        "countries": countries,
+    }
+
+    return render(
+        request,
+        "business_requests/business_profile.html",
+        context,
+    )
+
+@login_required
+def department_management(request):
+    organization = get_user_organization(request.user)
+
+    if not organization:
+        messages.error(
+            request,
+            "Your account is not connected to a business organization."
+        )
+        return redirect("business_requests:business_dashboard")
+
+    departments = Department.objects.filter(
+        organization=organization
+    ).order_by("name")
+
+    return render(
+        request,
+        "business_requests/departments.html",
+        {
+            "organization": organization,
+            "departments": departments,
+        },
+    )
+
+
+@login_required
+def department_add(request):
+    """Create a department for the current organization."""
+
+    organization = get_user_organization(request.user)
+
+    if not organization:
+        messages.error(
+            request,
+            "Your account is not connected to a business organization."
+        )
+        return redirect("business_requests:business_dashboard")
+
+    membership = (
+        OrganizationMember.objects
+        .filter(
+            organization=organization,
+            user=request.user,
+            is_active=True,
+        )
+        .first()
+    )
+
+    if not request.user.is_superuser:
+        if not membership or membership.role not in ["owner", "admin"]:
+            messages.error(
+                request,
+                "You do not have permission to add departments."
+            )
+            return redirect("business_requests:department_management")
+
+    if request.method == "POST":
+        name = request.POST.get("name", "").strip()
+        description = request.POST.get("description", "").strip()
+
+        if not name:
+            messages.error(
+                request,
+                "Department name is required."
+            )
+
+            return render(
+                request,
+                "business_requests/department_form.html",
+                {
+                    "organization": organization,
+                    "department": None,
+                    "form_title": "Add Department",
+                },
+            )
+
+        if Department.objects.filter(
+            organization=organization,
+            name__iexact=name,
+        ).exists():
+            messages.error(
+                request,
+                f"A department named '{name}' already exists."
+            )
+
+            return render(
+                request,
+                "business_requests/department_form.html",
+                {
+                    "organization": organization,
+                    "department": None,
+                    "form_title": "Add Department",
+                },
+            )
+
+        Department.objects.create(
+            organization=organization,
+            name=name,
+            description=description,
+            is_active=True,
+        )
+
+        messages.success(
+            request,
+            f"Department '{name}' was created successfully."
+        )
+
+        return redirect(
+            "business_requests:department_management"
+        )
+
+    return render(
+        request,
+        "business_requests/department_form.html",
+        {
+            "organization": organization,
+            "department": None,
+            "form_title": "Add Department",
+        },
+    )
+
+
+@login_required
+def department_edit(request, department_id):
+    """
+    Edit a department belonging to the current organization.
+
+    Only organization owners and administrators can edit departments.
+    """
+
+    print("\n========== DEPARTMENT EDIT DEBUG ==========")
+    print("USER:", request.user.username)
+    print("USER ID:", request.user.id)
+    print("SUPERUSER:", request.user.is_superuser)
+    print("DEPARTMENT ID:", department_id)
+
+    # Show the user's organization memberships
+    memberships_debug = list(
+        request.user.organization_memberships.values(
+            "organization_id",
+            "organization__name",
+            "role",
+            "is_active",
+        )
+    )
+
+    print("ORG MEMBERSHIPS:", memberships_debug)
+
+    # ---------------------------------------------------------
+    # STEP 1: Get the user's organization
+    # ---------------------------------------------------------
+
+    organization = get_user_organization(request.user)
+
+    print(
+        "RESOLVED ORGANIZATION:",
+        organization.id if organization else None,
+    )
+
+    print(
+        "RESOLVED ORGANIZATION NAME:",
+        organization.name if organization else None,
+    )
+
+    if not organization:
+        print("RESULT: NO ORGANIZATION - REDIRECTING TO DASHBOARD")
+        print("==========================================\n")
+
+        messages.error(
+            request,
+            "Your account is not connected to a business organization."
+        )
+
+        return redirect(
+            "business_requests:business_dashboard"
+        )
+
+    # ---------------------------------------------------------
+    # STEP 2: Check organization membership
+    # ---------------------------------------------------------
+
+    membership = (
+        OrganizationMember.objects
+        .filter(
+            organization=organization,
+            user=request.user,
+            is_active=True,
+        )
+        .first()
+    )
+
+    print(
+        "MEMBERSHIP:",
+        membership.id if membership else None,
+    )
+
+    print(
+        "MEMBERSHIP ROLE:",
+        membership.role if membership else None,
+    )
+
+    # ---------------------------------------------------------
+    # STEP 3: Check permission
+    # ---------------------------------------------------------
+
+    if not request.user.is_superuser:
+
+        if not membership:
+            print("RESULT: NO ACTIVE MEMBERSHIP")
+            print("REDIRECTING TO DEPARTMENTS")
+            print("==========================================\n")
+
+            messages.error(
+                request,
+                "You are not an active member of this organization."
+            )
+
+            return redirect(
+                "business_requests:department_management"
+            )
+
+        if membership.role not in ["owner", "admin"]:
+            print(
+                "RESULT: INSUFFICIENT ROLE:",
+                membership.role,
+            )
+
+            print("REDIRECTING TO DEPARTMENTS")
+            print("==========================================\n")
+
+            messages.error(
+                request,
+                "You do not have permission to edit departments."
+            )
+
+            return redirect(
+                "business_requests:department_management"
+            )
+
+    # ---------------------------------------------------------
+    # STEP 4: Get department
+    # ---------------------------------------------------------
+
+    department = get_object_or_404(
+        Department,
+        id=department_id,
+        organization=organization,
+    )
+
+    print(
+        "DEPARTMENT FOUND:",
+        department.id,
+        department.name,
+    )
+
+    # ---------------------------------------------------------
+    # STEP 5: Handle form submission
+    # ---------------------------------------------------------
+
+    if request.method == "POST":
+
+        name = request.POST.get("name", "").strip()
+        description = request.POST.get("description", "").strip()
+
+        print("POST NAME:", name)
+        print("POST DESCRIPTION:", description)
+
+        # Validate department name
+        if not name:
+
+            messages.error(
+                request,
+                "Department name is required."
+            )
+
+            return render(
+                request,
+                "business_requests/department_form.html",
+                {
+                    "organization": organization,
+                    "department": department,
+                    "form_title": "Edit Department",
+                },
+            )
+
+        # -----------------------------------------------------
+        # Prevent duplicate department names
+        # -----------------------------------------------------
+
+        duplicate = (
+            Department.objects
+            .filter(
+                organization=organization,
+                name__iexact=name,
+            )
+            .exclude(
+                id=department.id
+            )
+            .exists()
+        )
+
+        if duplicate:
+
+            messages.error(
+                request,
+                f"A department named '{name}' already exists."
+            )
+
+            return render(
+                request,
+                "business_requests/department_form.html",
+                {
+                    "organization": organization,
+                    "department": department,
+                    "form_title": "Edit Department",
+                },
+            )
+
+        # -----------------------------------------------------
+        # Update department
+        # -----------------------------------------------------
+
+        department.name = name
+        department.description = description
+
+        department.save()
+
+        print(
+            "DEPARTMENT UPDATED:",
+            department.id,
+            department.name,
+        )
+
+        messages.success(
+            request,
+            f"Department '{department.name}' was updated successfully."
+        )
+
+        print(
+            "RESULT: SUCCESS - REDIRECTING TO DEPARTMENTS"
+        )
+
+        print("==========================================\n")
+
+        return redirect(
+            "business_requests:department_management"
+        )
+
+    # ---------------------------------------------------------
+    # STEP 6: Display edit form
+    # ---------------------------------------------------------
+
+    print(
+        "RESULT: DISPLAYING EDIT FORM"
+    )
+
+    print("==========================================\n")
+
+    return render(
+        request,
+        "business_requests/department_form.html",
+        {
+            "organization": organization,
+            "department": department,
+            "form_title": "Edit Department",
+        },
+    )
+@login_required
+def department_toggle(request, department_id):
+    """Activate or deactivate a department."""
+
+    organization = get_user_organization(request.user)
+
+    if not organization:
+        messages.error(
+            request,
+            "Your account is not connected to a business organization."
+        )
+        return redirect("business_requests:business_dashboard")
+
+    membership = (
+        OrganizationMember.objects
+        .filter(
+            organization=organization,
+            user=request.user,
+            is_active=True,
+        )
+        .first()
+    )
+
+    if not request.user.is_superuser:
+        if not membership or membership.role not in ["owner", "admin"]:
+            messages.error(
+                request,
+                "You do not have permission to change department status."
+            )
+            return redirect("business_requests:department_management")
+
+    department = get_object_or_404(
+        Department,
+        id=department_id,
+        organization=organization,
+    )
+
+    department.is_active = not department.is_active
+    department.save(update_fields=["is_active", "updated_at"])
+
+    status = "activated" if department.is_active else "deactivated"
+
+    messages.success(
+        request,
+        f"Department '{department.name}' has been {status}."
+    )
+
+    return redirect(
+        "business_requests:department_management"
+    )
+
+@login_required
+def department_edit(request, department_id):
+    """
+    Edit a department belonging to the logged-in user's organization.
+    """
+
+    organization = get_user_organization(request.user)
+
+    if not organization:
+        messages.error(
+            request,
+            "Your account is not connected to a business organization."
+        )
+        return redirect("business_requests:business_dashboard")
+
+    membership = (
+        OrganizationMember.objects
+        .filter(
+            organization=organization,
+            user=request.user,
+            is_active=True,
+        )
+        .first()
+    )
+
+    if not membership or membership.role not in ["owner", "admin"]:
+        messages.error(
+            request,
+            "You do not have permission to edit departments."
+        )
+        return redirect("business_requests:department_management")
+
+    department = get_object_or_404(
+        Department,
+        id=department_id,
+        organization=organization,
+    )
+
+    if request.method == "POST":
+
+        name = request.POST.get("name", "").strip()
+        description = request.POST.get("description", "").strip()
+
+        if not name:
+            messages.error(
+                request,
+                "Department name is required."
+            )
+
+            return render(
+                request,
+                "business_requests/department_form.html",
+                {
+                    "organization": organization,
+                    "department": department,
+                },
+            )
+
+        duplicate = (
+            Department.objects
+            .filter(
+                organization=organization,
+                name__iexact=name,
+            )
+            .exclude(id=department.id)
+            .exists()
+        )
+
+        if duplicate:
+            messages.error(
+                request,
+                "Another department with this name already exists."
+            )
+
+            return render(
+                request,
+                "business_requests/department_form.html",
+                {
+                    "organization": organization,
+                    "department": department,
+                },
+            )
+
+        department.name = name
+        department.description = description or None
+
+        department.save()
+
+        messages.success(
+            request,
+            f"Department '{department.name}' updated successfully."
+        )
+
+        return redirect(
+            "business_requests:department_management"
+        )
+
+    return render(
+        request,
+        "business_requests/department_form.html",
+        {
+            "organization": organization,
+            "department": department,
+        },
+    )
+
+
+@login_required
+def department_toggle(request, department_id):
+    """
+    Activate or deactivate a department.
+    """
+
+    organization = get_user_organization(request.user)
+
+    if not organization:
+        messages.error(
+            request,
+            "Your account is not connected to a business organization."
+        )
+        return redirect("business_requests:business_dashboard")
+
+    membership = (
+        OrganizationMember.objects
+        .filter(
+            organization=organization,
+            user=request.user,
+            is_active=True,
+        )
+        .first()
+    )
+
+    if not membership or membership.role not in ["owner", "admin"]:
+        messages.error(
+            request,
+            "You do not have permission to change department status."
+        )
+        return redirect("business_requests:department_management")
+
+    department = get_object_or_404(
+        Department,
+        id=department_id,
+        organization=organization,
+    )
+
+    if request.method != "POST":
+        return redirect(
+            "business_requests:department_management"
+        )
+
+    department.is_active = not department.is_active
+    department.save(update_fields=["is_active", "updated_at"])
+
+    if department.is_active:
+        messages.success(
+            request,
+            f"{department.name} has been activated."
+        )
+    else:
+        messages.success(
+            request,
+            f"{department.name} has been deactivated."
         )
 
     return redirect(
-        "business_requests:staff_management"
+        "business_requests:department_management"
     )
