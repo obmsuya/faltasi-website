@@ -1,0 +1,771 @@
+{% extends "main/base.html" %}
+
+{% block title %}
+{{ customer.name }} | Customers
+{% endblock %}
+
+{% block meta_description %}
+Customer details for {{ customer.name }}.
+{% endblock %}
+
+{% block content %}
+
+<section class="page-section">
+
+    <div class="container">
+
+        <!-- HEADER -->
+        <div class="page-header">
+
+            <div>
+
+                <a
+                    href="{% url 'customers:list' %}"
+                    class="back-link"
+                >
+                    ← Back to Customers
+                </a>
+
+                <h1>
+                    {{ customer.name }}
+                </h1>
+
+                {% if customer.company %}
+
+                    <p>
+                        {{ customer.company }}
+                    </p>
+
+                {% endif %}
+
+            </div>
+
+
+            <div>
+
+                <a
+                    href="{% url 'customers:edit' customer.id %}"
+                    class="btn btn-primary"
+                >
+                    Edit Customer
+                </a>
+
+            </div>
+
+        </div>
+
+
+        <!-- MESSAGES -->
+        {% if messages %}
+
+            {% for message in messages %}
+
+                <div class="alert alert-success">
+                    {{ message }}
+                </div>
+
+            {% endfor %}
+
+        {% endif %}
+
+
+        <!-- ================================================= -->
+        <!-- CUSTOMER INFORMATION -->
+        <!-- ================================================= -->
+
+        <div class="dashboard-card">
+
+            <h2>
+                Customer Information
+            </h2>
+
+
+            <div class="info-grid">
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Name
+                    </span>
+
+                    <span class="info-value">
+                        {{ customer.name }}
+                    </span>
+
+                </div>
+
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Customer Type
+                    </span>
+
+                    <span class="info-value">
+                        {{ customer.get_customer_type_display }}
+                    </span>
+
+                </div>
+
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Company
+                    </span>
+
+                    <span class="info-value">
+
+                        {% if customer.company %}
+                            {{ customer.company }}
+                        {% else %}
+                            —
+                        {% endif %}
+
+                    </span>
+
+                </div>
+
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Phone
+                    </span>
+
+                    <span class="info-value">
+                        {{ customer.phone }}
+                    </span>
+
+                </div>
+
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Email
+                    </span>
+
+                    <span class="info-value">
+
+                        {% if customer.email %}
+                            {{ customer.email }}
+                        {% else %}
+                            —
+                        {% endif %}
+
+                    </span>
+
+                </div>
+
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Preferred Contact
+                    </span>
+
+                    <span class="info-value">
+                        {{ customer.get_preferred_contact_method_display }}
+                    </span>
+
+                </div>
+
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Country
+                    </span>
+
+                    <span class="info-value">
+                        {{ customer.country|default:"—" }}
+                    </span>
+
+                </div>
+
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        City
+                    </span>
+
+                    <span class="info-value">
+                        {{ customer.city|default:"—" }}
+                    </span>
+
+                </div>
+
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Status
+                    </span>
+
+                    <span class="info-value">
+                        {{ customer.get_status_display }}
+                    </span>
+
+                </div>
+
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Date Added
+                    </span>
+
+                    <span class="info-value">
+                        {{ customer.created_at|date:"d M Y H:i" }}
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            {% if customer.address %}
+
+                <div class="info-section">
+
+                    <h3>
+                        Address
+                    </h3>
+
+                    <p>
+                        {{ customer.address|linebreaksbr }}
+                    </p>
+
+                </div>
+
+            {% endif %}
+
+
+            {% if customer.notes %}
+
+                <div class="info-section">
+
+                    <h3>
+                        Internal Notes
+                    </h3>
+
+                    <p>
+                        {{ customer.notes|linebreaksbr }}
+                    </p>
+
+                </div>
+
+            {% endif %}
+
+        </div>
+
+
+        <!-- ================================================= -->
+        <!-- CUSTOMER ACTIVITY SUMMARY -->
+        <!-- ================================================= -->
+
+        <div class="dashboard-card">
+
+            <h2>
+                Customer Activity
+            </h2>
+
+            <div style="margin-bottom: 20px;">
+
+                <a
+                    href="{% url 'whatsapp:conversation_list' %}"
+                    class="btn btn-primary"
+                >
+                    View WhatsApp Conversations
+                </a>
+
+            </div>
+
+            <div class="info-grid">
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        WhatsApp Conversations
+                    </span>
+
+                    <span class="info-value">
+                        {{ conversation_count }}
+                    </span>
+
+                </div>
+
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Business Requests
+                    </span>
+
+                    <span class="info-value">
+                        {{ business_request_count }}
+                    </span>
+
+                </div>
+
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        WhatsApp Messages
+                    </span>
+
+                    <span class="info-value">
+                        {{ message_count }}
+                    </span>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- ================================================= -->
+        <!-- WHATSAPP CONVERSATIONS -->
+        <!-- ================================================= -->
+
+        <div class="dashboard-card">
+
+            <h2>
+                WhatsApp Conversations
+            </h2>
+
+            <p>
+                Conversations associated with this customer.
+            </p>
+
+
+            {% if conversations %}
+
+                <div class="data-table-wrapper">
+
+                    <table class="data-table">
+
+                        <thead>
+
+                            <tr>
+
+                                <th>
+                                    Phone
+                                </th>
+
+                                <th>
+                                    WhatsApp Number
+                                </th>
+
+                                <th>
+                                    Status
+                                </th>
+
+                                <th>
+                                    Business Request
+                                </th>
+
+                                <th>
+                                    Last Message
+                                </th>
+
+                            </tr>
+
+                        </thead>
+
+
+                        <tbody>
+
+                            {% for conversation in conversations %}
+
+                                <tr>
+
+                                    <td>
+                                        {{ conversation.phone_number }}
+                                    </td>
+
+
+                                    <td>
+
+                                        {% if conversation.whatsapp_phone_number %}
+
+                                            {{ conversation.whatsapp_phone_number.phone_number }}
+
+                                        {% else %}
+
+                                            —
+
+                                        {% endif %}
+
+                                    </td>
+
+
+                                    <td>
+                                        {{ conversation.get_status_display }}
+                                    </td>
+
+
+                                    <td>
+
+                                        {% if conversation.business_request %}
+
+                                            <a
+                                                href="{% url 'business_requests:request_detail' conversation.business_request.id %}"
+                                            >
+                                                #{{ conversation.business_request.id }}
+                                            </a>
+
+                                            {% if conversation.business_request.subject %}
+
+                                                —
+                                                {{ conversation.business_request.subject }}
+
+                                            {% endif %}
+
+                                        {% else %}
+
+                                            —
+
+                                        {% endif %}
+
+                                    </td>
+
+
+                                    <td>
+                                        {{ conversation.last_message_at|date:"d M Y H:i" }}
+                                    </td>
+
+                                </tr>
+
+                            {% endfor %}
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            {% else %}
+
+                <div class="empty-state">
+
+                    <p>
+                        No WhatsApp conversations have been recorded
+                        for this customer yet.
+                    </p>
+
+                </div>
+
+            {% endif %}
+
+        </div>
+
+
+        <!-- ================================================= -->
+        <!-- BUSINESS REQUESTS -->
+        <!-- ================================================= -->
+
+        <div class="dashboard-card">
+
+            <h2>
+                Business Requests
+            </h2>
+
+            <p>
+                Requests associated with this customer.
+            </p>
+
+
+            {% if business_requests %}
+
+                <div class="data-table-wrapper">
+
+                    <table class="data-table">
+
+                        <thead>
+
+                            <tr>
+
+                                <th>
+                                    Request
+                                </th>
+
+                                <th>
+                                    Subject
+                                </th>
+
+                                <th>
+                                    Category
+                                </th>
+
+                                <th>
+                                    Department
+                                </th>
+
+                                <th>
+                                    Status
+                                </th>
+
+                                <th>
+                                    Priority
+                                </th>
+
+                                <th>
+                                    Created
+                                </th>
+
+                            </tr>
+
+                        </thead>
+
+
+                        <tbody>
+
+                            {% for business_request in business_requests %}
+
+                                <tr>
+
+                                    <td>
+
+                                        <a
+                                            href="{% url 'business_requests:request_detail' business_request.id %}"
+                                        >
+                                            #{{ business_request.id }}
+                                        </a>
+
+                                    </td>
+
+
+                                    <td>
+
+                                        {% if business_request.subject %}
+
+                                            {{ business_request.subject }}
+
+                                        {% else %}
+
+                                            —
+
+                                        {% endif %}
+
+                                    </td>
+
+
+                                    <td>
+
+                                        {% if business_request.category %}
+
+                                            {{ business_request.category }}
+
+                                        {% else %}
+
+                                            —
+
+                                        {% endif %}
+
+                                    </td>
+
+
+                                    <td>
+
+                                        {% if business_request.department %}
+
+                                            {{ business_request.department }}
+
+                                        {% else %}
+
+                                            —
+
+                                        {% endif %}
+
+                                    </td>
+
+
+                                    <td>
+                                        {{ business_request.get_status_display }}
+                                    </td>
+
+
+                                    <td>
+                                        {{ business_request.get_priority_display }}
+                                    </td>
+
+
+                                    <td>
+                                        {{ business_request.created_at|date:"d M Y H:i" }}
+                                    </td>
+
+                                </tr>
+
+                            {% endfor %}
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            {% else %}
+
+                <div class="empty-state">
+
+                    <p>
+                        No business requests have been recorded
+                        for this customer yet.
+                    </p>
+
+                </div>
+
+            {% endif %}
+
+        </div>
+
+
+        <!-- ================================================= -->
+        <!-- RECENT WHATSAPP MESSAGES -->
+        <!-- ================================================= -->
+
+        <div class="dashboard-card">
+
+            <h2>
+                Recent WhatsApp Messages
+            </h2>
+
+            <p>
+                The latest messages associated with this customer.
+            </p>
+
+
+            {% if recent_messages %}
+
+                <div class="data-table-wrapper">
+
+                    <table class="data-table">
+
+                        <thead>
+
+                            <tr>
+
+                                <th>
+                                    Time
+                                </th>
+
+                                <th>
+                                    Direction
+                                </th>
+
+                                <th>
+                                    Sender
+                                </th>
+
+                                <th>
+                                    Message
+                                </th>
+
+                                <th>
+                                    Status
+                                </th>
+
+                            </tr>
+
+                        </thead>
+
+
+                        <tbody>
+
+                            {% for message in recent_messages %}
+
+                                <tr>
+
+                                    <td>
+                                        {{ message.created_at|date:"d M Y H:i" }}
+                                    </td>
+
+
+                                    <td>
+                                        {{ message.get_direction_display }}
+                                    </td>
+
+
+                                    <td>
+                                        {{ message.get_sender_type_display }}
+                                    </td>
+
+
+                                    <td>
+
+                                        {% if message.content %}
+
+                                            {{ message.content|truncatechars:100 }}
+
+                                        {% else %}
+
+                                            {{ message.get_message_type_display }}
+
+                                        {% endif %}
+
+                                    </td>
+
+
+                                    <td>
+                                        {{ message.get_delivery_status_display }}
+                                    </td>
+
+                                </tr>
+
+                            {% endfor %}
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            {% else %}
+
+                <div class="empty-state">
+
+                    <p>
+                        No WhatsApp messages have been recorded
+                        for this customer yet.
+                    </p>
+
+                </div>
+
+            {% endif %}
+
+        </div>
+
+
+        <!-- ================================================= -->
+        <!-- DELETE -->
+        <!-- ================================================= -->
+
+        <div class="dashboard-card danger-card">
+
+            <h2>
+                Customer Management
+            </h2>
+
+            <p>
+                Deleting this customer is permanent.
+            </p>
+
+            <a
+                href="{% url 'customers:delete' customer.id %}"
+                class="btn btn-danger"
+            >
+                Delete Customer
+            </a>
+
+        </div>
+
+    </div>
+
+</section>
+
+{% endblock %}

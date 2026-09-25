@@ -1,0 +1,279 @@
+{% extends "main/base.html" %}
+
+{% block title %}
+WhatsApp Conversations
+{% endblock %}
+
+{% block meta_description %}
+Manage WhatsApp conversations for {{ organization.name }}.
+{% endblock %}
+
+{% block content %}
+
+<section class="page-section">
+
+    <div class="container">
+
+        <div class="page-header">
+
+            <div>
+                <h1>WhatsApp Conversations</h1>
+
+                <p>
+                    Manage WhatsApp conversations for
+                    <strong>{{ organization.name }}</strong>
+                </p>
+            </div>
+
+        </div>
+
+
+        <!-- SEARCH -->
+
+        <div class="dashboard-card">
+
+            <form method="get">
+
+                <div class="form-grid">
+
+                    <div>
+                        <label for="search">
+                            Search
+                        </label>
+
+                        <input
+                            type="text"
+                            id="search"
+                            name="search"
+                            value="{{ search }}"
+                            placeholder="Customer name or phone"
+                        >
+                    </div>
+
+
+                    <div>
+
+                        <label for="status">
+                            Status
+                        </label>
+
+                        <select
+                            id="status"
+                            name="status"
+                        >
+
+                            <option value="">
+                                All Statuses
+                            </option>
+
+                            {% for value, label in status_choices %}
+
+                                <option
+                                    value="{{ value }}"
+                                    {% if selected_status == value %}
+                                        selected
+                                    {% endif %}
+                                >
+                                    {{ label }}
+                                </option>
+
+                            {% endfor %}
+
+                        </select>
+
+                    </div>
+
+
+                    <div>
+
+                        <button
+                            type="submit"
+                            class="btn btn-primary"
+                        >
+                            Search
+                        </button>
+
+                        <a
+                            href="{% url 'whatsapp:conversation_list' %}"
+                            class="btn btn-secondary"
+                        >
+                            Clear
+                        </a>
+
+                    </div>
+
+                </div>
+
+            </form>
+
+        </div>
+
+
+        <!-- CONVERSATIONS -->
+
+        <div class="dashboard-card">
+
+            <div class="card-header">
+
+                <h2>
+                    Conversations
+                </h2>
+
+                <span>
+                    {{ conversations|length }} conversation{{ conversations|length|pluralize }}
+                </span>
+
+            </div>
+
+
+            {% if conversations %}
+
+                <div class="table-responsive">
+
+                    <table>
+
+                        <thead>
+
+                            <tr>
+
+                                <th>
+                                    Customer
+                                </th>
+
+                                <th>
+                                    Phone
+                                </th>
+
+                                <th>
+                                    WhatsApp Number
+                                </th>
+
+                                <th>
+                                    Status
+                                </th>
+
+                                <th>
+                                    Business Request
+                                </th>
+
+                                <th>
+                                    Last Message
+                                </th>
+
+                                <th>
+                                    Action
+                                </th>
+
+                            </tr>
+
+                        </thead>
+
+
+                        <tbody>
+
+                            {% for conversation in conversations %}
+
+                                <tr>
+
+                                    <td>
+
+                                        <strong>
+                                            {{ conversation.customer.name }}
+                                        </strong>
+
+                                    </td>
+
+
+                                    <td>
+                                        {{ conversation.phone_number }}
+                                    </td>
+
+
+                                    <td>
+
+                                        {% if conversation.whatsapp_phone_number %}
+
+                                            {{ conversation.whatsapp_phone_number.phone_number }}
+
+                                        {% else %}
+
+                                            —
+
+                                        {% endif %}
+
+                                    </td>
+
+
+                                    <td>
+                                        {{ conversation.get_status_display }}
+                                    </td>
+
+
+                                    <td>
+
+                                        {% if conversation.business_request %}
+
+                                            <a
+                                                href="{% url 'business_requests:request_detail' conversation.business_request.id %}"
+                                            >
+                                                #{{ conversation.business_request.id }}
+                                                —
+                                                {{ conversation.business_request.subject }}
+                                            </a>
+
+                                        {% else %}
+
+                                            —
+
+                                        {% endif %}
+
+                                    </td>
+
+
+                                    <td>
+
+                                        {{ conversation.last_message_at|date:"d M Y H:i" }}
+
+                                    </td>
+
+
+                                    <td>
+
+                                        <a
+                                            href="{% url 'whatsapp:conversation_detail' conversation.id %}"
+                                            class="btn btn-primary"
+                                        >
+                                            Open
+                                        </a>
+
+                                    </td>
+
+                                </tr>
+
+                            {% endfor %}
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            {% else %}
+
+                <div class="empty-state">
+
+                    <p>
+                        No WhatsApp conversations were found.
+                    </p>
+
+                </div>
+
+            {% endif %}
+
+        </div>
+
+    </div>
+
+</section>
+
+{% endblock %}

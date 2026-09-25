@@ -14,6 +14,8 @@ urlpatterns = [
     path("whatsapp/", include("whatsapp.urls")),
     path("business-requests/", include("business_requests.urls")),
     path("accounts/", include("accounts.urls"),),
+    path("customers/", include("customers.urls"),),
+    path("whatsapp/", include("whatsapp.urls"),),
     
 ]
 

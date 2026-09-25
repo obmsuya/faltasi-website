@@ -26,4 +26,5 @@ urlpatterns = [
     ),
     path("partners/", views.partners, name="partners"),
     path("privacy-policy/", views.privacy_policy, name="privacy_policy"),
+    
 ]

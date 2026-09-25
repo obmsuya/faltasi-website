@@ -119,4 +119,12 @@ urlpatterns = [
         views.update_request,
         name="update_request",
     ),
+
+    path(
+        "<int:request_id>/send-whatsapp/",
+        views.send_request_whatsapp_message,
+        name="send_request_whatsapp_message",
+    ),
+
+    
 ]

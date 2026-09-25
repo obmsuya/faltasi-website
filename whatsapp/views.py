@@ -1,10 +1,10 @@
-from unicodedata import category
-
-from django.db.migrations import state
+from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
-from django.utils import text, timezone
+from django.utils import timezone
+from django.shortcuts import render, redirect, get_object_or_404
+from django.db import transaction
 
 import json
 import requests
@@ -65,18 +65,15 @@ def find_request_category(text):
         print('NO REQUEST CATEGORY IDENTIFIED')
     return best_category
 
+
 def send_whatsapp_message(whatsapp_phone, phone_number, message):
-    """
-    Send a WhatsApp text message.
-
-    Multi-tenant routing:
-    - The WhatsApp phone number determines the organization.
-    - If that organization's connection has a token, use it.
-    - During development, fall back to the platform .env token.
-    """
-
     try:
-        # Find the connection belonging to this WhatsApp phone
+        print("========== WHATSAPP SEND ==========")
+
+        # =====================================================
+        # GET WHATSAPP CONNECTION
+        # =====================================================
+
         connection = (
             WhatsAppConnection.objects
             .select_related(
@@ -98,33 +95,64 @@ def send_whatsapp_message(whatsapp_phone, phone_number, message):
             print("PHONE NUMBER:", whatsapp_phone.phone_number)
             return None
 
-        # First try the business connection token.
-        # If it is not available, temporarily use the platform
-        # environment token for development.
-        access_token = connection.access_token
+        # =====================================================
+        # ACCESS TOKEN
+        # =====================================================
+        #
+        # DEVELOPMENT:
+        # Use the current environment token.
+        #
+        # We intentionally DO NOT use connection.access_token
+        # here because the database token may be expired.
+        #
+        # Later, when each business connects its own WhatsApp,
+        # we will use that business's valid connection token.
+        # =====================================================
 
-        if not access_token:
-            print("BUSINESS ACCESS TOKEN NOT STORED")
-            print("USING PLATFORM DEVELOPMENT TOKEN")
+        database_token_exists = bool(connection.access_token)
 
-            access_token = settings.WHATSAPP_ACCESS_TOKEN
+        access_token = getattr(
+            settings,
+            "WHATSAPP_ACCESS_TOKEN",
+            None,
+        )
+
+        print(
+            "DATABASE CONNECTION TOKEN EXISTS:",
+            database_token_exists,
+        )
+
+        print(
+            "USING PLATFORM ENVIRONMENT ACCESS TOKEN:",
+            bool(access_token),
+        )
+
+        print(
+            "WHATSAPP ACCESS TOKEN LENGTH:",
+            len(access_token) if access_token else 0,
+        )
 
         if not access_token:
             print("========== WHATSAPP SEND ERROR ==========")
             print("NO WHATSAPP ACCESS TOKEN AVAILABLE")
             return None
 
-        # The phone number ID always comes from the
-        # WhatsApp phone record belonging to this organization.
+        # =====================================================
+        # PHONE NUMBER ID
+        # =====================================================
+
         phone_number_id = whatsapp_phone.phone_number_id
 
         if not phone_number_id:
             print("========== WHATSAPP SEND ERROR ==========")
-            print("WHATSAPP PHONE NUMBER ID NOT AVAILABLE")
-            print("ORGANIZATION:", whatsapp_phone.organization.name)
+            print("NO PHONE NUMBER ID FOUND")
+            print("WHATSAPP PHONE:", whatsapp_phone.phone_number)
             return None
 
-        # Meta WhatsApp Cloud API endpoint
+        # =====================================================
+        # META GRAPH API
+        # =====================================================
+
         url = (
             f"https://graph.facebook.com/v26.0/"
             f"{phone_number_id}/messages"
@@ -140,11 +168,10 @@ def send_whatsapp_message(whatsapp_phone, phone_number, message):
             "to": phone_number,
             "type": "text",
             "text": {
-                "body": message
+                "body": message,
             },
         }
 
-        print("========== WHATSAPP SEND ==========")
         print("ORGANIZATION:", whatsapp_phone.organization.name)
         print("WHATSAPP PHONE:", whatsapp_phone.phone_number)
         print("PHONE NUMBER ID:", phone_number_id)
@@ -152,6 +179,10 @@ def send_whatsapp_message(whatsapp_phone, phone_number, message):
         print("TOKEN AVAILABLE:", bool(access_token))
         print("API URL:", url)
         print("MESSAGE:", message)
+
+        # =====================================================
+        # SEND TO META
+        # =====================================================
 
         response = requests.post(
             url,
@@ -163,10 +194,7 @@ def send_whatsapp_message(whatsapp_phone, phone_number, message):
         print("WHATSAPP SEND STATUS:", response.status_code)
         print("WHATSAPP SEND RESPONSE:", response.text)
 
-        if response.status_code == 200:
-            return response
-
-        return None
+        return response
 
     except requests.RequestException as e:
         print("========== WHATSAPP SEND REQUEST ERROR ==========")
@@ -174,9 +202,10 @@ def send_whatsapp_message(whatsapp_phone, phone_number, message):
         return None
 
     except Exception as e:
-        print("========== WHATSAPP SEND ERROR ==========")
+        print("========== WHATSAPP SEND GENERAL ERROR ==========")
         print("ERROR:", str(e))
         return None
+
 def get_or_create_customer(phone_number):
     """
     Find an existing customer by WhatsApp phone number.
@@ -2079,12 +2108,7 @@ def webhook(request):
         )
 
         # -------------------------------------------------
-        # TEMPORARY:
-        # send_whatsapp_message() still uses the existing
-        # global WHATSAPP_PHONE_NUMBER_ID and token.
-        #
-        # We will replace this with the business-specific
-        # WhatsApp connection in the next step.
+        # Send through the business-specific WhatsApp connection.
         # -------------------------------------------------
 
         response = send_whatsapp_message( 

@@ -63,6 +63,7 @@ View and manage customer business request #{{ business_request.id }}.
                 Request Information
             </h2>
 
+
             <div class="info-grid">
 
                 <div class="info-item">
@@ -181,6 +182,7 @@ View and manage customer business request #{{ business_request.id }}.
                 Customer
             </h2>
 
+
             <div class="info-grid">
 
                 <div class="info-item">
@@ -284,6 +286,7 @@ View and manage customer business request #{{ business_request.id }}.
                 Current Assignment
             </h2>
 
+
             {% if current_assignment %}
 
                 <div class="info-grid">
@@ -383,7 +386,6 @@ View and manage customer business request #{{ business_request.id }}.
 
                 {% csrf_token %}
 
-                <!-- STATUS -->
 
                 <div class="form-group">
 
@@ -415,8 +417,6 @@ View and manage customer business request #{{ business_request.id }}.
                 </div>
 
 
-                <!-- INTERNAL NOTES -->
-
                 <div class="form-group">
 
                     <label for="internal-notes">
@@ -438,13 +438,95 @@ View and manage customer business request #{{ business_request.id }}.
                 </div>
 
 
-                <!-- SAVE -->
-
                 <button
                     type="submit"
                     class="btn btn-primary"
                 >
                     Save Changes
+                </button>
+
+            </form>
+
+        </div>
+
+
+        <!-- CUSTOMER COMMUNICATION -->
+
+        <div class="dashboard-card">
+
+            <h2>
+                Customer Communication
+            </h2>
+
+            <p>
+                Send a WhatsApp message directly to this customer.
+            </p>
+
+
+            <div class="info-grid">
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        Customer
+                    </span>
+
+                    <span class="info-value">
+                        {{ business_request.customer.name }}
+                    </span>
+
+                </div>
+
+
+                <div class="info-item">
+
+                    <span class="info-label">
+                        WhatsApp
+                    </span>
+
+                    <span class="info-value">
+                        {{ business_request.customer.phone }}
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <form
+                method="post"
+                action="{% url 'business_requests:send_request_whatsapp_message' business_request.id %}"
+            >
+
+                {% csrf_token %}
+
+
+                <div class="form-group">
+
+                    <label for="whatsapp-message">
+                        Message
+                    </label>
+
+                    <textarea
+                        id="whatsapp-message"
+                        name="message"
+                        rows="6"
+                        placeholder="Type your WhatsApp message..."
+                        required
+                    ></textarea>
+
+                    <small>
+                        The message will be sent to the customer's WhatsApp number.
+                    </small>
+
+                </div>
+
+
+                <button
+                    type="submit"
+                    class="btn btn-primary"
+                >
+                    Send WhatsApp Message
                 </button>
 
             </form>
@@ -476,6 +558,7 @@ View and manage customer business request #{{ business_request.id }}.
                 >
 
                     {% csrf_token %}
+
 
                     <div class="form-group">
 
@@ -547,6 +630,7 @@ View and manage customer business request #{{ business_request.id }}.
                 Workflow
             </h2>
 
+
             {% for step in workflow_steps %}
 
                 <div class="workflow-step">
@@ -610,7 +694,7 @@ View and manage customer business request #{{ business_request.id }}.
             <div class="dashboard-card">
 
                 <h2>
-                    Current Internal Notes
+                    Internal Notes
                 </h2>
 
                 <div class="request-description">

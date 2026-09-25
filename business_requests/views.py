@@ -15,6 +15,12 @@ from .models import (
     WorkflowStep,
 )
 from django.contrib.auth import login
+from django.core.mail import send_mail
+from django.utils import timezone
+from whatsapp.models import Conversation, Message, WhatsAppPhoneNumber
+from whatsapp.views import send_whatsapp_message
+from django.conf import settings
+
 
 
 def get_user_organization(user):
@@ -635,6 +641,696 @@ def update_request(request, request_id):
         request_id=request_id,
     )
 
+@login_required
+def send_request_whatsapp_message(request, request_id):
+    """
+    Send a WhatsApp message to the customer attached to a business request.
+
+    The message is sent through the customer's existing WhatsApp conversation
+    and the organization's configured WhatsApp connection.
+    """
+
+    print("====================================================")
+    print("SEND REQUEST WHATSAPP VIEW STARTED")
+    print("REQUEST ID:", request_id)
+    print("HTTP METHOD:", request.method)
+    print("USER:", request.user.username)
+    print("====================================================")
+
+    # =====================================================
+    # CHECK REQUEST METHOD
+    # =====================================================
+
+    if request.method != "POST":
+
+        print("INVALID METHOD:", request.method)
+
+        return redirect(
+            "business_requests:request_detail",
+            request_id=request_id,
+        )
+
+    # =====================================================
+    # GET BUSINESS REQUEST
+    # =====================================================
+
+    print("STEP 1: Getting business request...")
+
+    if request.user.is_superuser:
+
+        business_request = get_object_or_404(
+            BusinessRequest.objects.select_related(
+                "customer",
+                "customer__organization",
+            ),
+            id=request_id,
+        )
+
+    else:
+
+        organization = get_user_organization(request.user)
+
+        print(
+            "USER ORGANIZATION:",
+            organization,
+        )
+
+        if not organization:
+
+            print(
+                "ERROR: User is not connected to an organization."
+            )
+
+            messages.error(
+                request,
+                "Your account is not connected to an organization.",
+            )
+
+            return redirect(
+                "business_requests:business_dashboard"
+            )
+
+        business_request = get_object_or_404(
+            BusinessRequest.objects.select_related(
+                "customer",
+                "customer__organization",
+            ),
+            id=request_id,
+            customer__organization=organization,
+        )
+
+    print(
+        "BUSINESS REQUEST FOUND:",
+        business_request.id,
+    )
+
+    print(
+        "REQUEST SUBJECT:",
+        business_request.subject,
+    )
+
+    # =====================================================
+    # GET MESSAGE
+    # =====================================================
+
+    print("STEP 2: Reading WhatsApp message...")
+
+    message_text = request.POST.get(
+        "message",
+        "",
+    ).strip()
+
+    print(
+        "MESSAGE LENGTH:",
+        len(message_text),
+    )
+
+    if not message_text:
+
+        print(
+            "ERROR: Empty WhatsApp message."
+        )
+
+        messages.error(
+            request,
+            "Please enter a message before sending.",
+        )
+
+        return redirect(
+            "business_requests:request_detail",
+            request_id=request_id,
+        )
+
+    # =====================================================
+    # GET CUSTOMER
+    # =====================================================
+
+    print("STEP 3: Getting customer...")
+
+    customer = business_request.customer
+
+    print(
+        "CUSTOMER:",
+        customer,
+    )
+
+    if not customer:
+
+        print(
+            "ERROR: Business request has no customer."
+        )
+
+        messages.error(
+            request,
+            "This request does not have a customer.",
+        )
+
+        return redirect(
+            "business_requests:request_detail",
+            request_id=request_id,
+        )
+
+    print(
+        "CUSTOMER NAME:",
+        customer.name,
+    )
+
+    print(
+        "CUSTOMER PHONE:",
+        customer.phone,
+    )
+
+    print(
+        "CUSTOMER ORGANIZATION:",
+        customer.organization,
+    )
+
+    if not customer.phone:
+
+        print(
+            "ERROR: Customer has no phone number."
+        )
+
+        messages.error(
+            request,
+            "The customer does not have a WhatsApp phone number.",
+        )
+
+        return redirect(
+            "business_requests:request_detail",
+            request_id=request_id,
+        )
+
+    # =====================================================
+    # FIND EXISTING WHATSAPP CONVERSATION
+    # =====================================================
+
+    print(
+        "STEP 4: Searching for WhatsApp conversation..."
+    )
+
+    conversation = (
+        Conversation.objects
+        .select_related(
+            "organization",
+            "whatsapp_phone_number",
+            "customer",
+        )
+        .filter(
+            organization=customer.organization,
+            customer=customer,
+            phone_number=customer.phone,
+            status="active",
+        )
+        .order_by(
+            "-last_message_at",
+            "-id",
+        )
+        .first()
+    )
+
+    print(
+        "CONVERSATION RESULT:",
+        conversation,
+    )
+
+    if not conversation:
+
+        print("NO ACTIVE CONVERSATION FOUND.")
+        print("STEP 5: Searching for WhatsApp phone number...")
+
+        whatsapp_phone = (
+            WhatsAppPhoneNumber.objects
+            .select_related("whatsapp_business_account", "organization")
+            .filter(
+                organization=customer.organization,
+                status="connected",
+                is_active=True,
+            )
+            .order_by("-is_default", "id")
+            .first()
+        )
+
+        print("WHATSAPP PHONE RESULT:", whatsapp_phone)
+
+        # ---------------------------------------------------------
+        # TEMPORARY DEVELOPMENT FALLBACK
+        # ---------------------------------------------------------
+        # If the business does not yet have its own WhatsApp
+        # connection, temporarily use the platform owner's
+        # connected WhatsApp phone during local development.
+        #
+        # This is enabled only when DEBUG=True.
+        # It is NOT the production multi-tenant setup.
+        # ---------------------------------------------------------
+        if not whatsapp_phone and settings.DEBUG:
+
+            fallback_phone_number_id = getattr(
+                settings,
+                "WHATSAPP_PHONE_NUMBER_ID",
+                None,
+            )
+
+            if fallback_phone_number_id:
+                whatsapp_phone = (
+                    WhatsAppPhoneNumber.objects
+                    .filter(
+                        phone_number_id=fallback_phone_number_id,
+                        organization__organization_type="platform_owner",
+                        status="connected",
+                        is_active=True,
+                    )
+                    .select_related(
+                        "whatsapp_business_account",
+                        "organization",
+                    )
+                    .first()
+                )
+
+                if whatsapp_phone:
+                    print(
+                        "TEMPORARY DEVELOPMENT FALLBACK ENABLED"
+                    )
+                    print(
+                        "REQUEST ORGANIZATION:",
+                        customer.organization.name,
+                    )
+                    print(
+                        "WHATSAPP PHONE OWNER:",
+                        whatsapp_phone.organization.name,
+                    )
+
+        print("FINAL WHATSAPP PHONE RESULT:", whatsapp_phone)
+
+        if not whatsapp_phone:
+            print("ERROR: No active WhatsApp phone number found.")
+            messages.error(
+                request,
+                "No active WhatsApp phone number is connected to this business.",
+            )
+            return redirect(
+                "business_requests:request_detail",
+                request_id=request_id,
+            )
+
+        print("WHATSAPP PHONE:", whatsapp_phone.phone_number)
+        print("PHONE NUMBER ID:", whatsapp_phone.phone_number_id)
+        print("PHONE STATUS:", whatsapp_phone.status)
+
+        conversation = Conversation.objects.create(
+            organization=customer.organization,
+            whatsapp_phone_number=whatsapp_phone,
+            customer=customer,
+            phone_number=customer.phone,
+            business_request=business_request,
+            status="active",
+        )
+
+        print("CONVERSATION CREATED:", conversation.id)
+
+    else:
+        print("EXISTING CONVERSATION FOUND:", conversation.id)
+
+        if conversation.business_request_id != business_request.id:
+            conversation.business_request = business_request
+            conversation.save(
+                update_fields=["business_request", "last_message_at"]
+            )
+            print("CONVERSATION LINKED TO REQUEST:", business_request.id)
+
+    print("CONVERSATION ID:", conversation.id)
+
+    print(
+        "CONVERSATION PHONE:",
+        conversation.phone_number,
+    )
+
+    print(
+        "CONVERSATION STATUS:",
+        conversation.status,
+    )
+
+    # =====================================================
+    # GET WHATSAPP PHONE
+    # =====================================================
+
+    print(
+        "STEP 5: Getting WhatsApp phone connection..."
+    )
+
+    whatsapp_phone = conversation.whatsapp_phone_number
+
+    print(
+        "WHATSAPP PHONE OBJECT:",
+        whatsapp_phone,
+    )
+
+    if not whatsapp_phone:
+
+        print(
+            "ERROR: Conversation has no WhatsApp phone connection."
+        )
+
+        messages.error(
+            request,
+            "No WhatsApp phone number is connected to this conversation.",
+        )
+
+        return redirect(
+            "business_requests:request_detail",
+            request_id=request_id,
+        )
+
+    print(
+        "WHATSAPP PHONE ID:",
+        whatsapp_phone.id,
+    )
+
+    # =====================================================
+    # SEND WHATSAPP MESSAGE
+    # =====================================================
+
+    print(
+        "STEP 6: Calling send_whatsapp_message()..."
+    )
+
+    print(
+        "RECIPIENT:",
+        customer.phone,
+    )
+
+    print(
+        "MESSAGE:",
+        message_text,
+    )
+
+    try:
+
+        response = send_whatsapp_message(
+            whatsapp_phone,
+            customer.phone,
+            message_text,
+        )
+
+    except Exception as e:
+
+        print(
+            "===================================================="
+        )
+        print(
+            "EXCEPTION INSIDE send_whatsapp_message()"
+        )
+        print(
+            "ERROR TYPE:",
+            type(e).__name__,
+        )
+        print(
+            "ERROR:",
+            str(e),
+        )
+        print(
+            "===================================================="
+        )
+
+        messages.error(
+            request,
+            "An error occurred while sending the WhatsApp message.",
+        )
+
+        return redirect(
+            "business_requests:request_detail",
+            request_id=request_id,
+        )
+
+    print(
+        "SEND WHATSAPP FUNCTION RETURNED:"
+    )
+
+    print(
+        "RESPONSE:",
+        response,
+    )
+
+    # =====================================================
+    # CHECK WHATSAPP RESPONSE
+    # =====================================================
+
+    if response is None:
+
+        print(
+            "ERROR: send_whatsapp_message() returned None."
+        )
+
+        messages.error(
+            request,
+            "WhatsApp message could not be sent. Please check the WhatsApp connection.",
+        )
+
+        return redirect(
+            "business_requests:request_detail",
+            request_id=request_id,
+        )
+
+    print(
+        "META RESPONSE STATUS:",
+        response.status_code,
+    )
+
+    print(
+        "META RESPONSE TEXT:",
+        response.text,
+    )
+
+    # =====================================================
+    # CHECK HTTP STATUS
+    # =====================================================
+
+    if response.status_code not in [200, 201]:
+
+        try:
+
+            response_data = response.json()
+
+        except ValueError:
+
+            response_data = {
+                "raw_response": response.text,
+            }
+
+        print(
+            "===================================================="
+        )
+
+        print(
+            "REQUEST WHATSAPP SEND FAILED"
+        )
+
+        print(
+            "STATUS:",
+            response.status_code,
+        )
+
+        print(
+            "RESPONSE:",
+            response_data,
+        )
+
+        print(
+            "===================================================="
+        )
+
+        messages.error(
+            request,
+            "WhatsApp rejected the message. Please check the WhatsApp connection and messaging window.",
+        )
+
+        return redirect(
+            "business_requests:request_detail",
+            request_id=request_id,
+        )
+
+    # =====================================================
+    # READ META RESPONSE
+    # =====================================================
+
+    print(
+        "STEP 7: Reading Meta response..."
+    )
+
+    try:
+
+        response_data = response.json()
+
+    except ValueError:
+
+        response_data = {
+            "raw_response": response.text,
+        }
+
+    print(
+        "META RESPONSE DATA:",
+        response_data,
+    )
+
+    # =====================================================
+    # GET WHATSAPP MESSAGE ID
+    # =====================================================
+
+    whatsapp_message_id = None
+
+    try:
+
+        whatsapp_message_id = (
+            response_data
+            .get("messages", [{}])[0]
+            .get("id")
+        )
+
+    except (
+        IndexError,
+        AttributeError,
+        TypeError,
+    ):
+
+        whatsapp_message_id = None
+
+    print(
+        "WHATSAPP MESSAGE ID:",
+        whatsapp_message_id,
+    )
+
+    # =====================================================
+    # SAVE OUTGOING MESSAGE
+    # =====================================================
+
+    print(
+        "STEP 8: Saving outgoing message to database..."
+    )
+
+    try:
+
+        outgoing_message = Message.objects.create(
+            organization=customer.organization,
+            conversation=conversation,
+            direction="outgoing",
+            sender_type="agent",
+            message_type="text",
+            content=message_text,
+            whatsapp_message_id=whatsapp_message_id,
+            delivery_status="sent",
+            metadata={
+                "source": "business_request",
+                "business_request_id": business_request.id,
+                "sent_by_user_id": request.user.id,
+                "sent_by_username": request.user.username,
+                "whatsapp_response": response_data,
+            },
+        )
+
+    except Exception as e:
+
+        print(
+            "===================================================="
+        )
+
+        print(
+            "DATABASE ERROR WHILE SAVING MESSAGE"
+        )
+
+        print(
+            "ERROR TYPE:",
+            type(e).__name__,
+        )
+
+        print(
+            "ERROR:",
+            str(e),
+        )
+
+        print(
+            "===================================================="
+        )
+
+        messages.error(
+            request,
+            "WhatsApp was sent, but the message could not be saved to the database.",
+        )
+
+        return redirect(
+            "business_requests:request_detail",
+            request_id=request_id,
+        )
+
+    print(
+        "OUTGOING MESSAGE SAVED:",
+        outgoing_message.id,
+    )
+
+    # =====================================================
+    # UPDATE CONVERSATION ACTIVITY
+    # =====================================================
+
+    print(
+        "STEP 9: Updating conversation activity..."
+    )
+
+    conversation.last_message_at = timezone.now()
+
+    conversation.save(
+        update_fields=[
+            "last_message_at",
+        ]
+    )
+
+    print(
+        "CONVERSATION LAST MESSAGE UPDATED."
+    )
+
+    # =====================================================
+    # SUCCESS
+    # =====================================================
+
+    print(
+        "===================================================="
+    )
+
+    print(
+        "REQUEST WHATSAPP MESSAGE SENT SUCCESSFULLY"
+    )
+
+    print(
+        "REQUEST ID:",
+        business_request.id,
+    )
+
+    print(
+        "CUSTOMER:",
+        customer.name,
+    )
+
+    print(
+        "CUSTOMER PHONE:",
+        customer.phone,
+    )
+
+    print(
+        "WHATSAPP MESSAGE ID:",
+        whatsapp_message_id,
+    )
+
+    print(
+        "===================================================="
+    )
+
+    messages.success(
+        request,
+        "WhatsApp message sent successfully.",
+    )
+
+    return redirect(
+        "business_requests:request_detail",
+        request_id=request_id,
+    )
 
 @login_required
 @transaction.atomic
@@ -1966,174 +2662,6 @@ def department_toggle(request, department_id):
         request,
         f"Department '{department.name}' has been {status}."
     )
-
-    return redirect(
-        "business_requests:department_management"
-    )
-
-@login_required
-def department_edit(request, department_id):
-    """
-    Edit a department belonging to the logged-in user's organization.
-    """
-
-    organization = get_user_organization(request.user)
-
-    if not organization:
-        messages.error(
-            request,
-            "Your account is not connected to a business organization."
-        )
-        return redirect("business_requests:business_dashboard")
-
-    membership = (
-        OrganizationMember.objects
-        .filter(
-            organization=organization,
-            user=request.user,
-            is_active=True,
-        )
-        .first()
-    )
-
-    if not membership or membership.role not in ["owner", "admin"]:
-        messages.error(
-            request,
-            "You do not have permission to edit departments."
-        )
-        return redirect("business_requests:department_management")
-
-    department = get_object_or_404(
-        Department,
-        id=department_id,
-        organization=organization,
-    )
-
-    if request.method == "POST":
-
-        name = request.POST.get("name", "").strip()
-        description = request.POST.get("description", "").strip()
-
-        if not name:
-            messages.error(
-                request,
-                "Department name is required."
-            )
-
-            return render(
-                request,
-                "business_requests/department_form.html",
-                {
-                    "organization": organization,
-                    "department": department,
-                },
-            )
-
-        duplicate = (
-            Department.objects
-            .filter(
-                organization=organization,
-                name__iexact=name,
-            )
-            .exclude(id=department.id)
-            .exists()
-        )
-
-        if duplicate:
-            messages.error(
-                request,
-                "Another department with this name already exists."
-            )
-
-            return render(
-                request,
-                "business_requests/department_form.html",
-                {
-                    "organization": organization,
-                    "department": department,
-                },
-            )
-
-        department.name = name
-        department.description = description or None
-
-        department.save()
-
-        messages.success(
-            request,
-            f"Department '{department.name}' updated successfully."
-        )
-
-        return redirect(
-            "business_requests:department_management"
-        )
-
-    return render(
-        request,
-        "business_requests/department_form.html",
-        {
-            "organization": organization,
-            "department": department,
-        },
-    )
-
-
-@login_required
-def department_toggle(request, department_id):
-    """
-    Activate or deactivate a department.
-    """
-
-    organization = get_user_organization(request.user)
-
-    if not organization:
-        messages.error(
-            request,
-            "Your account is not connected to a business organization."
-        )
-        return redirect("business_requests:business_dashboard")
-
-    membership = (
-        OrganizationMember.objects
-        .filter(
-            organization=organization,
-            user=request.user,
-            is_active=True,
-        )
-        .first()
-    )
-
-    if not membership or membership.role not in ["owner", "admin"]:
-        messages.error(
-            request,
-            "You do not have permission to change department status."
-        )
-        return redirect("business_requests:department_management")
-
-    department = get_object_or_404(
-        Department,
-        id=department_id,
-        organization=organization,
-    )
-
-    if request.method != "POST":
-        return redirect(
-            "business_requests:department_management"
-        )
-
-    department.is_active = not department.is_active
-    department.save(update_fields=["is_active", "updated_at"])
-
-    if department.is_active:
-        messages.success(
-            request,
-            f"{department.name} has been activated."
-        )
-    else:
-        messages.success(
-            request,
-            f"{department.name} has been deactivated."
-        )
 
     return redirect(
         "business_requests:department_management"

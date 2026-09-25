@@ -1,0 +1,316 @@
+{% extends "main/base.html" %}
+
+{% block title %}
+WhatsApp Conversation
+{% endblock %}
+
+{% block meta_description %}
+WhatsApp conversation with {{ conversation.customer.name }}.
+{% endblock %}
+
+{% block content %}
+
+<section class="page-section">
+
+    <div class="container">
+
+        <!-- HEADER -->
+
+        <div class="page-header">
+
+            <div>
+
+                <h1>
+                    {{ conversation.customer.name }}
+                </h1>
+
+                <p>
+                    {{ conversation.phone_number }}
+                </p>
+
+            </div>
+
+
+            <div>
+
+                <a
+                    href="{% url 'whatsapp:conversation_list' %}"
+                    class="btn btn-secondary"
+                >
+                    Back to Conversations
+                </a>
+
+            </div>
+
+        </div>
+
+
+        <!-- CUSTOMER INFORMATION -->
+
+        <div class="dashboard-card">
+
+            <h2>
+                Customer Information
+            </h2>
+
+            <div class="info-grid">
+
+                <div>
+                    <strong>Name</strong>
+                    <span>
+                        {{ conversation.customer.name }}
+                    </span>
+                </div>
+
+
+                <div>
+                    <strong>Phone</strong>
+                    <span>
+                        {{ conversation.customer.phone }}
+                    </span>
+                </div>
+
+
+                <div>
+                    <strong>Email</strong>
+                    <span>
+                        {{ conversation.customer.email|default:"—" }}
+                    </span>
+                </div>
+
+
+                <div>
+                    <strong>WhatsApp Number</strong>
+                    <span>
+
+                        {% if conversation.whatsapp_phone_number %}
+
+                            {{ conversation.whatsapp_phone_number.phone_number }}
+
+                        {% else %}
+
+                            —
+
+                        {% endif %}
+
+                    </span>
+                </div>
+
+
+                <div>
+                    <strong>Status</strong>
+                    <span>
+                        {{ conversation.get_status_display }}
+                    </span>
+                </div>
+
+
+                <div>
+                    <strong>Started</strong>
+                    <span>
+                        {{ conversation.started_at|date:"d M Y H:i" }}
+                    </span>
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- BUSINESS REQUEST -->
+
+        {% if conversation.business_request %}
+
+            <div class="dashboard-card">
+
+                <h2>
+                    Business Request
+                </h2>
+
+                <p>
+
+                    <a
+                        href="{% url 'business_requests:request_detail' conversation.business_request.id %}"
+                    >
+                        #{{ conversation.business_request.id }}
+                        —
+                        {{ conversation.business_request.subject }}
+                    </a>
+
+                </p>
+
+            </div>
+
+        {% endif %}
+
+
+        <!-- CHAT -->
+
+        <div class="dashboard-card">
+
+            <h2>
+                WhatsApp Chat
+            </h2>
+
+
+            <div class="whatsapp-chat">
+
+                {% for message in conversation_messages %}
+
+                    {% if message.direction == "incoming" %}
+
+                        <div class="chat-message incoming">
+
+                            <div class="chat-bubble">
+
+                                <div class="chat-sender">
+                                    {{ message.get_sender_type_display }}
+                                </div>
+
+                                <div class="chat-content">
+                                    {{ message.content|linebreaksbr }}
+                                </div>
+
+                                <div class="chat-time">
+
+                                    {{ message.created_at|date:"d M Y H:i" }}
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    {% else %}
+
+                        <div class="chat-message outgoing">
+
+                            <div class="chat-bubble">
+
+                                <div class="chat-sender">
+                                    {{ message.get_sender_type_display }}
+                                </div>
+
+                                <div class="chat-content">
+                                    {{ message.content|linebreaksbr }}
+                                </div>
+
+                                <div class="chat-time">
+
+                                    {{ message.created_at|date:"d M Y H:i" }}
+
+                                    ·
+
+                                    {{ message.get_delivery_status_display }}
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    {% endif %}
+
+                {% empty %}
+
+                    <div class="empty-state">
+
+                        <p>
+                            No messages have been recorded for this conversation yet.
+                        </p>
+
+                    </div>
+
+                {% endfor %}
+
+            </div>
+
+        </div>
+
+
+        <!-- SEND MESSAGE -->
+
+        {% if conversation.status == "active" %}
+
+            <div class="dashboard-card">
+
+                <h2>
+                    Send WhatsApp Message
+                </h2>
+
+                <form
+                    method="post"
+                    action="{% url 'whatsapp:send_conversation_message' conversation.id %}"
+                >
+
+                    {% csrf_token %}
+
+                    <div>
+
+                        <label for="message">
+                            Message
+                        </label>
+
+                        <textarea
+                            id="message"
+                            name="message"
+                            rows="4"
+                            placeholder="Type your WhatsApp message..."
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <br>
+
+
+                    <button
+                        type="submit"
+                        class="btn btn-primary"
+                    >
+                        Send Message
+                    </button>
+
+                </form>
+
+            </div>
+
+        {% endif %}
+
+
+        <!-- CLOSE -->
+
+        {% if conversation.status == "active" %}
+
+            <div class="dashboard-card">
+
+                <h2>
+                    Conversation Management
+                </h2>
+
+                <form
+                    method="post"
+                    action="{% url 'whatsapp:close_conversation' conversation.id %}"
+                >
+
+                    {% csrf_token %}
+
+                    <button
+                        type="submit"
+                        class="btn btn-secondary"
+                    >
+                        Close Conversation
+                    </button>
+
+                </form>
+
+            </div>
+
+        {% endif %}
+
+    </div>
+
+</section>
+
+{% endblock %}

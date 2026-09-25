@@ -1,0 +1,317 @@
+{% extends "main/base.html" %}
+
+{% block title %}
+{{ page_title }} | {{ organization.name }}
+{% endblock %}
+
+{% block meta_description %}
+{{ page_title }} for {{ organization.name }}.
+{% endblock %}
+
+{% block content %}
+
+<section class="page-section">
+
+    <div class="container">
+
+        <!-- HEADER -->
+        <div class="page-header">
+
+            <div>
+
+                <a
+                    href="{% url 'customers:list' %}"
+                    class="back-link"
+                >
+                    ← Back to Customers
+                </a>
+
+                <h1>
+                    {{ page_title }}
+                </h1>
+
+                <p>
+                    {{ organization.name }}
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <!-- FORM -->
+        <div class="dashboard-card">
+
+            <form method="post">
+
+                {% csrf_token %}
+
+
+                {% if form.non_field_errors %}
+
+                    <div class="alert alert-error">
+
+                        {% for error in form.non_field_errors %}
+
+                            {{ error }}
+
+                        {% endfor %}
+
+                    </div>
+
+                {% endif %}
+
+
+                <div class="form-grid">
+
+
+                    <!-- NAME -->
+                    <div class="form-group">
+
+                        <label for="{{ form.name.id_for_label }}">
+                            Customer Name
+                        </label>
+
+                        {{ form.name }}
+
+                        {% for error in form.name.errors %}
+
+                            <div class="field-error">
+                                {{ error }}
+                            </div>
+
+                        {% endfor %}
+
+                    </div>
+
+
+                    <!-- CUSTOMER TYPE -->
+                    <div class="form-group">
+
+                        <label for="{{ form.customer_type.id_for_label }}">
+                            Customer Type
+                        </label>
+
+                        {{ form.customer_type }}
+
+                        {% for error in form.customer_type.errors %}
+
+                            <div class="field-error">
+                                {{ error }}
+                            </div>
+
+                        {% endfor %}
+
+                    </div>
+
+
+                    <!-- COMPANY -->
+                    <div class="form-group">
+
+                        <label for="{{ form.company.id_for_label }}">
+                            Company / Organization
+                        </label>
+
+                        {{ form.company }}
+
+                        {% for error in form.company.errors %}
+
+                            <div class="field-error">
+                                {{ error }}
+                            </div>
+
+                        {% endfor %}
+
+                    </div>
+
+
+                    <!-- PHONE -->
+                    <div class="form-group">
+
+                        <label for="{{ form.phone.id_for_label }}">
+                            Phone Number *
+                        </label>
+
+                        {{ form.phone }}
+
+                        {% for error in form.phone.errors %}
+
+                            <div class="field-error">
+                                {{ error }}
+                            </div>
+
+                        {% endfor %}
+
+                    </div>
+
+
+                    <!-- EMAIL -->
+                    <div class="form-group">
+
+                        <label for="{{ form.email.id_for_label }}">
+                            Email
+                        </label>
+
+                        {{ form.email }}
+
+                        {% for error in form.email.errors %}
+
+                            <div class="field-error">
+                                {{ error }}
+                            </div>
+
+                        {% endfor %}
+
+                    </div>
+
+
+                    <!-- CONTACT METHOD -->
+                    <div class="form-group">
+
+                        <label for="{{ form.preferred_contact_method.id_for_label }}">
+                            Preferred Contact Method
+                        </label>
+
+                        {{ form.preferred_contact_method }}
+
+                        {% for error in form.preferred_contact_method.errors %}
+
+                            <div class="field-error">
+                                {{ error }}
+                            </div>
+
+                        {% endfor %}
+
+                    </div>
+
+
+                    <!-- COUNTRY -->
+                    <div class="form-group">
+
+                        <label for="{{ form.country.id_for_label }}">
+                            Country
+                        </label>
+
+                        {{ form.country }}
+
+                        {% for error in form.country.errors %}
+
+                            <div class="field-error">
+                                {{ error }}
+                            </div>
+
+                        {% endfor %}
+
+                    </div>
+
+
+                    <!-- CITY -->
+                    <div class="form-group">
+
+                        <label for="{{ form.city.id_for_label }}">
+                            City
+                        </label>
+
+                        {{ form.city }}
+
+                        {% for error in form.city.errors %}
+
+                            <div class="field-error">
+                                {{ error }}
+                            </div>
+
+                        {% endfor %}
+
+                    </div>
+
+
+                    <!-- ADDRESS -->
+                    <div class="form-group form-group-full">
+
+                        <label for="{{ form.address.id_for_label }}">
+                            Address
+                        </label>
+
+                        {{ form.address }}
+
+                        {% for error in form.address.errors %}
+
+                            <div class="field-error">
+                                {{ error }}
+                            </div>
+
+                        {% endfor %}
+
+                    </div>
+
+
+                    <!-- STATUS -->
+                    <div class="form-group">
+
+                        <label for="{{ form.status.id_for_label }}">
+                            Status
+                        </label>
+
+                        {{ form.status }}
+
+                        {% for error in form.status.errors %}
+
+                            <div class="field-error">
+                                {{ error }}
+                            </div>
+
+                        {% endfor %}
+
+                    </div>
+
+
+                    <!-- NOTES -->
+                    <div class="form-group form-group-full">
+
+                        <label for="{{ form.notes.id_for_label }}">
+                            Internal Notes
+                        </label>
+
+                        {{ form.notes }}
+
+                        {% for error in form.notes.errors %}
+
+                            <div class="field-error">
+                                {{ error }}
+                            </div>
+
+                        {% endfor %}
+
+                    </div>
+
+                </div>
+
+
+                <!-- ACTIONS -->
+                <div class="form-actions">
+
+                    <button
+                        type="submit"
+                        class="btn btn-primary"
+                    >
+                        Save Customer
+                    </button>
+
+                    <a
+                        href="{% url 'customers:list' %}"
+                        class="btn btn-secondary"
+                    >
+                        Cancel
+                    </a>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</section>
+
+{% endblock %}
