@@ -126,5 +126,19 @@ urlpatterns = [
         name="send_request_whatsapp_message",
     ),
 
+    path(
+        "admin-upload-category-questions/",
+        views.upload_category_questions,
+        name="upload_category_questions",
+    ),
+
+    path(
+        "admin-upload-category-questions/",
+        views.upload_category_questions,
+        name="upload_category_questions",
+    ),
+
+    
+
     
 ]

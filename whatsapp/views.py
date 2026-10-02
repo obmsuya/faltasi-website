@@ -34,36 +34,117 @@ from django.core.mail import send_mail
 
 
 
-def find_request_category(text):
+def find_request_category(text, organization=None):
     """
     Identify a RequestCategory using keywords stored
     in the Django database.
 
     Categories and keywords are managed through
     Django Admin.
+
+    If an organization is supplied, only categories
+    belonging to that organization are searched.
     """
+
     if not text:
         return None
+
     message = text.lower().strip()
-    categories = RequestCategory.objects.filter(is_active=True).order_by('name')
+
+    categories = RequestCategory.objects.filter(
+        is_active=True
+    )
+
+    # -----------------------------------------
+    # ORGANIZATION ISOLATION
+    # -----------------------------------------
+
+    if organization:
+        categories = categories.filter(
+            organization=organization
+        )
+
+    categories = categories.order_by("name")
+
     best_category = None
     best_score = 0
+
     for category in categories:
+
         if not category.keywords:
             continue
-        keywords = [keyword.strip().lower() for keyword in category.keywords.split(',') if keyword.strip()]
+
+        keywords = [
+            keyword.strip().lower()
+            for keyword in category.keywords.split(",")
+            if keyword.strip()
+        ]
+
         score = 0
+
         for keyword in keywords:
+
             if keyword in message:
                 score += 1
+
         if score > best_score:
+
             best_score = score
             best_category = category
+
     if best_category:
-        print('CATEGORY IDENTIFIED:', best_category.name, '| SCORE:', best_score)
+
+        print(
+            "CATEGORY IDENTIFIED:",
+            best_category.name,
+            "| ORGANIZATION:",
+            best_category.organization.name,
+            "| SCORE:",
+            best_score,
+        )
+
     else:
-        print('NO REQUEST CATEGORY IDENTIFIED')
+
+        print(
+            "NO REQUEST CATEGORY IDENTIFIED",
+            "| ORGANIZATION:",
+            organization.name if organization else None,
+        )
+
     return best_category
+
+def normalize_phone_number(phone_number):
+    """
+    Normalize Tanzanian phone numbers to international format.
+
+    Examples:
+        0764819996  -> +255764819996
+        255764819996 -> +255764819996
+        +255764819996 -> +255764819996
+    """
+
+    if not phone_number:
+        return ""
+
+    phone = str(phone_number).strip()
+
+    # Remove spaces, hyphens, brackets, etc.
+    phone = re.sub(r"[^\d+]", "", phone)
+
+    # Already international format
+    if phone.startswith("+"):
+        return phone
+
+    # Tanzania number without +
+    if phone.startswith("255"):
+        return f"+{phone}"
+
+    # Tanzania local format
+    if phone.startswith("0") and len(phone) >= 9:
+        return f"+255{phone[1:]}"
+
+    # Fallback
+    return phone
 
 
 def send_whatsapp_message(whatsapp_phone, phone_number, message):
@@ -243,21 +324,128 @@ def get_or_create_conversation_state(conversation):
         print('CONVERSATION STATE FOUND:', state)
     return state
 
-def create_business_request(customer, text, category, conversation=None):
+def create_business_request(
+    customer,
+    text,
+    category,
+    conversation=None
+):
     """
     Create or reuse a BusinessRequest for a WhatsApp conversation.
 
-    A conversation should have one active BusinessRequest.
+    Behavior:
+
+    1. No category:
+       Do not create a request.
+
+    2. Existing request with SAME category:
+       Continue using the existing request.
+
+    3. Existing request with DIFFERENT category:
+       Create a NEW BusinessRequest.
+
+    4. No existing request:
+       Create a NEW BusinessRequest.
     """
+
+    # ---------------------------------------------------------
+    # NO CATEGORY
+    # ---------------------------------------------------------
+
     if not category:
-        print('NO REQUEST CATEGORY IDENTIFIED')
+
+        print(
+            "NO REQUEST CATEGORY IDENTIFIED"
+        )
+
         return None
+
+
+    # ---------------------------------------------------------
+    # CHECK EXISTING REQUEST
+    # ---------------------------------------------------------
+
     if conversation and conversation.business_request:
-        business_request = conversation.business_request
-        print('EXISTING CONVERSATION REQUEST FOUND:', business_request)
-        return business_request
-    business_request = BusinessRequest.objects.create(customer=customer, request_text=text, subject=category.name, category=category, department=category.department, status='new', priority='normal', source='whatsapp')
-    print('BUSINESS REQUEST CREATED:', business_request)
+
+        existing_request = (
+            conversation.business_request
+        )
+
+        print(
+            "EXISTING CONVERSATION REQUEST FOUND:",
+            existing_request
+        )
+
+        # -----------------------------------------------------
+        # SAME CATEGORY
+        # -----------------------------------------------------
+
+        if (
+            existing_request.category_id
+            == category.id
+        ):
+
+            print(
+                "SAME CATEGORY - CONTINUING EXISTING REQUEST:",
+                category.name
+            )
+
+            return existing_request
+
+
+        # -----------------------------------------------------
+        # DIFFERENT CATEGORY
+        # -----------------------------------------------------
+
+        print(
+            "NEW CATEGORY DETECTED:",
+            category.name
+        )
+
+        print(
+            "PREVIOUS CATEGORY:",
+            existing_request.category
+        )
+
+        print(
+            "CREATING NEW BUSINESS REQUEST..."
+        )
+
+
+    # ---------------------------------------------------------
+    # CREATE NEW BUSINESS REQUEST
+    # ---------------------------------------------------------
+
+    business_request = (
+        BusinessRequest.objects.create(
+            customer=customer,
+            request_text=text,
+            subject=category.name,
+            category=category,
+            department=category.department,
+            status="new",
+            priority="normal",
+            source="whatsapp",
+        )
+    )
+
+
+    print(
+        "BUSINESS REQUEST CREATED:",
+        business_request
+    )
+
+    print(
+        "REQUEST CATEGORY:",
+        category.name
+    )
+
+    print(
+        "REQUEST DEPARTMENT:",
+        category.department
+    )
+
+
     return business_request
 
 def get_whatsapp_phone_number(phone_number_id):
@@ -313,7 +501,8 @@ def get_whatsapp_phone_number(phone_number_id):
 def is_new_request_message(
     text,
     current_category=None,
-    current_field=None
+    current_field=None,
+    organization=None
 ):
     """
     Determine whether an incoming message appears to start
@@ -336,7 +525,10 @@ def is_new_request_message(
 
     normalized = text.lower().strip()
 
-    detected_category = find_request_category(text)
+    detected_category = find_request_category(
+        text,
+        organization=organization
+    )
 
     # -----------------------------------------------------
     # No detected category
@@ -1164,12 +1356,6 @@ def webhook(request):
         # =================================================
         # IDENTIFY THE WHATSAPP PHONE NUMBER
         # =================================================
-        #
-        # Meta tells us which business phone number
-        # received the message.
-        #
-        # This is the key to multi-business routing.
-        # =================================================
 
         metadata = value.get("metadata", {})
 
@@ -1194,7 +1380,7 @@ def webhook(request):
             })
 
         # =================================================
-        # FIND THE WHATSAPP PHONE NUMBER IN OUR DATABASE
+        # FIND WHATSAPP PHONE NUMBER
         # =================================================
 
         try:
@@ -1272,9 +1458,6 @@ def webhook(request):
                 "NO WHATSAPP MESSAGE FOUND"
             )
 
-            # This can happen for status updates.
-            # We will build status processing later.
-
             return JsonResponse({
                 "status": "ok",
             })
@@ -1320,7 +1503,9 @@ def webhook(request):
         # MESSAGE INFORMATION
         # =================================================
 
-        sender = message.get("from")
+        sender = normalize_phone_number(
+            message.get("from")
+        )
 
         message_type = message.get("type")
 
@@ -1388,14 +1573,6 @@ def webhook(request):
 
         # =================================================
         # FIND OR CREATE CUSTOMER
-        # =================================================
-        #
-        # IMPORTANT:
-        # Customer is now scoped to the organization.
-        #
-        # The same phone number can therefore exist as a
-        # customer for different businesses without mixing
-        # their records.
         # =================================================
 
         customer = (
@@ -1517,7 +1694,10 @@ def webhook(request):
             incoming_message,
         )
 
-        # Update conversation activity timestamp
+        # =================================================
+        # UPDATE CONVERSATION ACTIVITY
+        # =================================================
+
         conversation.save(
             update_fields=[
                 "last_message_at",
@@ -1547,6 +1727,7 @@ def webhook(request):
                 current_category = (
                     RequestCategory.objects.get(
                         name=stored_category_name,
+                        organization=organization,
                         is_active=True,
                     )
                 )
@@ -1569,7 +1750,7 @@ def webhook(request):
         # =================================================
 
         detected_category = find_request_category(
-            text
+            text, organization=organization
         )
 
         print(
@@ -1654,6 +1835,7 @@ def webhook(request):
                         text,
                         current_category=current_category,
                         current_field=current_field,
+                        organization=organization,
                     )
                 )
 
@@ -1877,7 +2059,7 @@ def webhook(request):
                 # RESET CONVERSATION STATE
                 # -----------------------------------------
 
-                state.data = {
+                state_data = {
                     "request_text": text,
                     "category": category.name,
                     "business_request_id": (
@@ -1887,6 +2069,7 @@ def webhook(request):
 
                 state.current_step = None
                 state.waiting_for = None
+                state.data = state_data
 
                 state.save()
 
@@ -1896,27 +2079,75 @@ def webhook(request):
                 )
 
                 # -----------------------------------------
-                # START FIELD COLLECTION
+                # AUTOMATIC REPLY
                 # -----------------------------------------
 
-                reply = process_request_fields(
-                    category,
-                    state,
-                    text,
-                )
+                if category:
 
-                # -----------------------------------------
-                # UPDATE BUSINESS REQUEST
-                # -----------------------------------------
+                    # -------------------------------------------------
+                    # IMPORTANT:
+                    # If this is a brand-new BusinessRequest, the
+                    # incoming message is the REQUEST itself.
+                    #
+                    # Do NOT use that message as the answer to the
+                    # first field (for example, location).
+                    # -------------------------------------------------
 
-                update_business_request_details(
-                    business_request,
-                    state,
-                ) 
-                if state.current_step == "details_collected":
-                    create_request_workflow(
-                        business_request
+                    is_new_business_request = (
+                        business_request is not None
+                        and state_data.get(
+                            "business_request_id"
+                        ) == business_request.id
+                        and state_data.get(
+                            "request_text"
+                        ) == text
+                        and not state_data.get(
+                            "location"
+                        )
+                        and state.waiting_for is None
                     )
+
+                    if is_new_business_request:
+
+                        print(
+                            "NEW BUSINESS REQUEST DETECTED - "
+                            "DO NOT USE ORIGINAL MESSAGE AS "
+                            "FIELD ANSWER"
+                        )
+
+                        reply = process_request_fields(
+                            category,
+                            state,
+                            None
+                        )
+
+                    else:
+
+                        reply = process_request_fields(
+                            category,
+                            state,
+                            text
+                        )
+
+                    # -----------------------------------------
+                    # UPDATE BUSINESS REQUEST
+                    # -----------------------------------------
+
+                    if business_request:
+
+                        update_business_request_details(
+                            business_request,
+                            state
+                        )
+
+                        if (
+                            state.current_step
+                            == "details_collected"
+                        ):
+
+                            create_request_workflow(
+                                business_request
+                            )
 
         # =================================================
         # CONTINUE CURRENT REQUEST
@@ -1986,11 +2217,15 @@ def webhook(request):
                     business_request,
                     state,
                 )
-                if state.current_step == "details_collected":
+
+                if (
+                    state.current_step
+                    == "details_collected"
+                ):
+
                     create_request_workflow(
                         business_request
-            )
-
+                    )
 
         # =================================================
         # FIRST MESSAGE / CATEGORY DETECTED
@@ -2028,10 +2263,11 @@ def webhook(request):
                 ),
             }
 
-            update_conversation_state(
-                state,
-                data=state_data,
-            )
+            state.current_step = None
+            state.waiting_for = None
+            state.data = state_data
+
+            state.save()
 
             # ---------------------------------------------
             # LINK BUSINESS REQUEST
@@ -2055,29 +2291,66 @@ def webhook(request):
                 )
 
             # ---------------------------------------------
-            # START FIELD COLLECTION
+            # AUTOMATIC REPLY
             # ---------------------------------------------
 
-            reply = process_request_fields(
-                category,
-                state,
-                text,
-            )
+            if category:
 
-            # ---------------------------------------------
-            # UPDATE BUSINESS REQUEST
-            # ---------------------------------------------
-
-            if business_request:
-
-                update_business_request_details(
-                    business_request,
-                    state,
+                is_new_business_request = (
+                    business_request is not None
+                    and state_data.get(
+                        "business_request_id"
+                    ) == business_request.id
+                    and state_data.get(
+                        "request_text"
+                    ) == text
+                    and not state_data.get(
+                        "location"
+                    )
+                    and state.waiting_for is None
                 )
-                if state.current_step == "details_collected":
-                    create_request_workflow(
-                        business_request
-                )
+
+                if is_new_business_request:
+
+                    print(
+                        "NEW BUSINESS REQUEST DETECTED - "
+                        "DO NOT USE ORIGINAL MESSAGE AS "
+                        "FIELD ANSWER"
+                    )
+
+                    reply = process_request_fields(
+                        category,
+                        state,
+                        None
+                    )
+
+                else:
+
+                    reply = process_request_fields(
+                        category,
+                        state,
+                        text
+                    )
+
+                # ---------------------------------------------
+                # UPDATE BUSINESS REQUEST
+                # ---------------------------------------------
+
+                if business_request:
+
+                    update_business_request_details(
+                        business_request,
+                        state,
+                    )
+
+                    if (
+                        state.current_step
+                        == "details_collected"
+                    ):
+
+                        create_request_workflow(
+                            business_request
+                        )
 
         # =================================================
         # NO CATEGORY IDENTIFIED
@@ -2108,12 +2381,13 @@ def webhook(request):
         )
 
         # -------------------------------------------------
-        # Send through the business-specific WhatsApp connection.
+        # Send through the business-specific WhatsApp
+        # connection.
         # -------------------------------------------------
 
-        response = send_whatsapp_message( 
-            whatsapp_phone, 
-            sender, 
+        response = send_whatsapp_message(
+            whatsapp_phone,
+            sender,
             reply,
         )
 
@@ -2174,6 +2448,7 @@ def webhook(request):
             )
 
             # Update conversation activity timestamp
+
             conversation.save(
                 update_fields=[
                     "last_message_at",

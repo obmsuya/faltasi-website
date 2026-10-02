@@ -17,6 +17,7 @@ urlpatterns = [
     path("customers/", include("customers.urls"),),
     path("whatsapp/", include("whatsapp.urls"),),
     
+    
 ]
 
 

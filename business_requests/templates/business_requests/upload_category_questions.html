@@ -1,0 +1,453 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+
+<style>
+    .upload-container {
+        max-width: 850px;
+        margin: 30px auto;
+    }
+
+    .upload-card {
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        padding: 30px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    .upload-card h1 {
+        margin-top: 0;
+        margin-bottom: 10px;
+    }
+
+    .description {
+        color: #666;
+        margin-bottom: 28px;
+        line-height: 1.6;
+    }
+
+    .form-section {
+        margin-bottom: 24px;
+    }
+
+    .form-section label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 8px;
+    }
+
+    .form-section select,
+    .form-section input[type="file"] {
+        width: 100%;
+        max-width: 100%;
+        padding: 10px;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        box-sizing: border-box;
+        background: #fff;
+    }
+
+    .help-text {
+        color: #777;
+        font-size: 13px;
+        margin-top: 7px;
+    }
+
+    .field-error {
+        margin-top: 8px;
+        padding: 10px 12px;
+        background: #ffebee;
+        border: 1px solid #e57373;
+        border-radius: 5px;
+        color: #c62828;
+        font-size: 13px;
+    }
+
+    .upload-button {
+        background: #417690;
+        color: #fff;
+        border: none;
+        padding: 12px 25px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .upload-button:hover {
+        background: #315a70;
+    }
+
+    .upload-button:disabled {
+        background: #999;
+        cursor: not-allowed;
+    }
+
+    .message {
+        padding: 15px 18px;
+        border-radius: 6px;
+        margin-bottom: 25px;
+        line-height: 1.5;
+    }
+
+    .message.success {
+        background: #e8f5e9;
+        border: 1px solid #81c784;
+        color: #2e7d32;
+    }
+
+    .message.error {
+        background: #ffebee;
+        border: 1px solid #e57373;
+        color: #c62828;
+    }
+
+    .message.warning {
+        background: #fff8e1;
+        border: 1px solid #ffcc80;
+        color: #8d6e00;
+    }
+
+    .result-card {
+        margin-top: 28px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .result-header {
+        background: #f5f5f5;
+        padding: 16px 18px;
+        font-weight: 600;
+        font-size: 16px;
+    }
+
+    .result-organization {
+        padding: 12px 18px;
+        background: #fafafa;
+        border-bottom: 1px solid #eee;
+        color: #555;
+    }
+
+    .result-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .result-table th,
+    .result-table td {
+        padding: 12px 18px;
+        border-bottom: 1px solid #eee;
+        text-align: left;
+    }
+
+    .result-table th {
+        font-weight: 600;
+    }
+
+    .result-table th:last-child,
+    .result-table td:last-child {
+        text-align: right;
+        font-weight: 600;
+    }
+
+    .result-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .result-section {
+        background: #fafafa;
+        font-weight: 600;
+        color: #444;
+    }
+
+    .info-box {
+        margin-top: 25px;
+        padding: 15px;
+        background: #f8f9fa;
+        border-left: 4px solid #417690;
+        color: #555;
+        line-height: 1.5;
+    }
+
+    .form-errors {
+        margin-bottom: 25px;
+        padding: 15px 18px;
+        background: #ffebee;
+        border: 1px solid #e57373;
+        border-radius: 6px;
+        color: #c62828;
+    }
+</style>
+
+<div class="upload-container">
+
+    <div class="upload-card">
+
+        <h1>Upload Category Questions</h1>
+
+        <p class="description">
+            Import service categories and customer questions from an Excel
+            file. Select the organization that should receive the imported
+            categories and questions.
+        </p>
+
+        {% if messages %}
+            {% for message in messages %}
+
+                {% if "success" in message.tags %}
+                    <div class="message success">
+                        <strong>✓ Import completed successfully</strong>
+                        <br>
+                        {{ message }}
+                    </div>
+
+                {% elif "error" in message.tags %}
+                    <div class="message error">
+                        <strong>✕ Import failed</strong>
+                        <br>
+                        {{ message }}
+                    </div>
+
+                {% elif "warning" in message.tags %}
+                    <div class="message warning">
+                        {{ message }}
+                    </div>
+
+                {% else %}
+                    <div class="message">
+                        {{ message }}
+                    </div>
+                {% endif %}
+
+            {% endfor %}
+        {% endif %}
+
+        {% if form.non_field_errors %}
+            <div class="form-errors">
+                {{ form.non_field_errors }}
+            </div>
+        {% endif %}
+
+        <form
+            method="post"
+            enctype="multipart/form-data"
+            id="upload-form"
+        >
+
+            {% csrf_token %}
+
+            <!-- Organization -->
+
+            <div class="form-section">
+
+                {{ form.organization.label_tag }}
+
+                {{ form.organization }}
+
+                {% if form.organization.help_text %}
+                    <div class="help-text">
+                        {{ form.organization.help_text }}
+                    </div>
+                {% endif %}
+
+                {% if form.organization.errors %}
+                    <div class="field-error">
+                        {{ form.organization.errors }}
+                    </div>
+                {% endif %}
+
+            </div>
+
+
+            <!-- Excel File -->
+
+            <div class="form-section">
+
+                {{ form.excel_file.label_tag }}
+
+                {{ form.excel_file }}
+
+                {% if form.excel_file.help_text %}
+                    <div class="help-text">
+                        {{ form.excel_file.help_text }}
+                    </div>
+                {% endif %}
+
+                {% if form.excel_file.errors %}
+                    <div class="field-error">
+                        {{ form.excel_file.errors }}
+                    </div>
+                {% endif %}
+
+            </div>
+
+
+            <!-- Submit -->
+
+            <button
+                type="submit"
+                class="upload-button"
+                id="upload-button"
+            >
+                Upload and Import
+            </button>
+
+        </form>
+
+
+        <!-- Import Result -->
+
+        {% if result %}
+
+            <div class="result-card">
+
+                <div class="result-header">
+                    Import Summary
+                </div>
+
+                {% if organization %}
+                    <div class="result-organization">
+                        <strong>Organization:</strong>
+                        {{ organization.name }}
+                    </div>
+                {% endif %}
+
+                <table class="result-table">
+
+                    <thead>
+                        <tr>
+                            <th>Import Item</th>
+                            <th>Result</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+
+                        <!-- Categories -->
+
+                        <tr class="result-section">
+                            <td colspan="2">
+                                Categories
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>Created</td>
+                            <td>
+                                {{ result.categories_created }}
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>Updated</td>
+                            <td>
+                                {{ result.categories_updated }}
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>Unchanged</td>
+                            <td>
+                                {{ result.categories_unchanged }}
+                            </td>
+                        </tr>
+
+
+                        <!-- Questions -->
+
+                        <tr class="result-section">
+                            <td colspan="2">
+                                Customer Questions
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>Created</td>
+                            <td>
+                                {{ result.fields_created }}
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>Updated</td>
+                            <td>
+                                {{ result.fields_updated }}
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>Unchanged</td>
+                            <td>
+                                {{ result.fields_unchanged }}
+                            </td>
+                        </tr>
+
+
+                        <!-- Rows -->
+
+                        <tr class="result-section">
+                            <td colspan="2">
+                                Excel Processing
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>Rows processed</td>
+                            <td>
+                                {{ result.rows_processed }}
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>Rows skipped</td>
+                            <td>
+                                {{ result.rows_skipped }}
+                            </td>
+                        </tr>
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        {% endif %}
+
+
+        <div class="info-box">
+
+            <strong>Before uploading:</strong>
+
+            Make sure your Excel file follows the approved
+            Category Questions template.
+
+            The selected organization determines where the
+            categories and questions will be imported.
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<script>
+    document.getElementById("upload-form").addEventListener(
+        "submit",
+        function () {
+
+            const button =
+                document.getElementById("upload-button");
+
+            button.disabled = true;
+
+            button.innerHTML =
+                "Uploading and importing...";
+
+        }
+    );
+</script>
+
+{% endblock %}

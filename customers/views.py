@@ -454,3 +454,4 @@ def customer_delete(request, customer_id):
             "customer": customer,
         },
     )
+

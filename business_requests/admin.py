@@ -11,6 +11,23 @@ from .models import (
     RequestNotification,
 )
 
+from django.contrib import admin
+
+from organizations.models import Organization
+
+from .models import (
+    Department,
+    RequestCategory,
+    RequestField,
+    BusinessRequest,
+    RequestAssignment,
+    RequestApproval,
+    WorkflowStep,
+    RequestNotification,
+)
+
+from .excel_importer import import_categories_from_excel
+
 
 @admin.register(Department)
 class DepartmentAdmin(admin.ModelAdmin):

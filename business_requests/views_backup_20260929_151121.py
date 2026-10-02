@@ -30,34 +30,7 @@ from .forms import CategoryQuestionsUploadForm
 from .excel_importer import import_categories_from_excel
 from organizations.models import Organization
 
-def is_platform_administrator(user):
-    """
-    Return True when the logged-in user is authorized
-    as a Platform Administrator.
 
-    A Platform Administrator belongs to the platform_owner
-    organization and has an owner or admin role.
-    """
-
-    if not user.is_authenticated:
-        return False
-
-    if user.is_superuser:
-        return True
-
-    membership = (
-        OrganizationMember.objects
-        .select_related("organization")
-        .filter(
-            user=user,
-            is_active=True,
-            organization__organization_type="platform_owner",
-            role__in=["owner", "admin"],
-        )
-        .first()
-    )
-
-    return membership is not None
 
 def get_user_organization(user):
     """
@@ -2705,22 +2678,8 @@ def department_toggle(request, department_id):
 
 
 
-@login_required
+@staff_member_required
 def upload_category_questions(request):
-    """
-    Platform Administrator:
-    Upload an Excel file containing request categories
-    and customer questions for a selected organization.
-    """
-
-    if not is_platform_administrator(request.user):
-
-        messages.error(
-            request,
-            "You are not authorized to access this page.",
-        )
-
-        return redirect("business_requests:dashboard")
 
     if request.method == "POST":
 
@@ -2763,16 +2722,10 @@ def upload_category_questions(request):
 
                 messages.error(
                     request,
-                    f"Import failed: {exc}",
+                    str(exc),
                 )
 
             except Exception:
-
-                logger.exception(
-                    "Category question import failed "
-                    "for organization %s",
-                    organization.id,
-                )
 
                 messages.error(
                     request,
@@ -2781,13 +2734,6 @@ def upload_category_questions(request):
                         "Please check the Excel file and try again."
                     ),
                 )
-
-        else:
-
-            messages.error(
-                request,
-                "Please correct the errors below and try again.",
-            )
 
     else:
 

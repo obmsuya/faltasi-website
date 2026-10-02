@@ -98,9 +98,14 @@ class DepartmentMember(models.Model):
 
 class RequestCategory(models.Model):
 
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="request_categories",
+    )
+
     name = models.CharField(
-        max_length=150,
-        unique=True
+        max_length=150,  
     )
 
     description = models.TextField(
