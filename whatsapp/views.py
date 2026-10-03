@@ -2461,6 +2461,11 @@ def webhook(request):
                 "OUTGOING MESSAGE WAS NOT SAVED "
                 "BECAUSE WHATSAPP SEND FAILED"
             )
+            if response is not None:
+                print("META HTTP STATUS:", response.status_code)
+                print("META RESPONSE:", response.text)
+            else:
+                print("META RESPONSE: NO RESPONSE RECEIVED")
 
         # =================================================
         # RESPOND TO META
