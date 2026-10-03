@@ -138,6 +138,11 @@ urlpatterns = [
         name="upload_category_questions",
     ),
 
+    path(
+        "switch-organization/",
+        views.switch_organization,
+        name="switch_organization",
+    ),
     
 
     

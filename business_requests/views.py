@@ -59,19 +59,53 @@ def is_platform_administrator(user):
 
     return membership is not None
 
-def get_user_organization(user):
+def get_user_organization(user, request=None):
     """
     Return the organization that should be used for the current user.
 
+    Platform administrators:
+        Use the organization selected in the session.
+        If none is selected, use the first active platform-owner
+        organization.
+
     Normal users:
         Use their active organization membership.
-
-    Superusers:
-        Use the active platform-owner organization.
     """
 
-    # Platform administrators
+    # ---------------------------------------------------------
+    # PLATFORM ADMINISTRATORS
+    # ---------------------------------------------------------
+
     if user.is_superuser:
+
+        # Check whether the administrator selected an organization
+        if request:
+
+            active_organization_id = request.session.get(
+                "active_organization_id"
+            )
+
+            if active_organization_id:
+
+                organization = (
+                    Organization.objects
+                    .filter(
+                        id=active_organization_id,
+                        status="active",
+                    )
+                    .first()
+                )
+
+                if organization:
+                    return organization
+
+                # Selected organization no longer exists/is inactive
+                request.session.pop(
+                    "active_organization_id",
+                    None,
+                )
+
+        # Default organization
         return (
             Organization.objects
             .filter(
@@ -82,7 +116,10 @@ def get_user_organization(user):
             .first()
         )
 
-    # Normal organization users
+    # ---------------------------------------------------------
+    # NORMAL ORGANIZATION USERS
+    # ---------------------------------------------------------
+
     membership = (
         user.organization_memberships
         .filter(
@@ -99,54 +136,103 @@ def get_user_organization(user):
     return None
 
 @login_required
+def switch_organization(request):
+    """
+    Allow Platform Administrators to select which organization
+    they are currently administering.
+    """
+
+    if not is_platform_administrator(request.user):
+
+        messages.error(
+            request,
+            "You are not authorized to switch organizations.",
+        )
+
+        return redirect(
+            "business_requests:dashboard"
+        )
+
+    organizations = (
+        Organization.objects
+        .filter(status="active")
+        .order_by("name")
+    )
+
+    if request.method == "POST":
+
+        organization_id = request.POST.get(
+            "organization_id"
+        )
+
+        organization = get_object_or_404(
+            Organization,
+            id=organization_id,
+            status="active",
+        )
+
+        request.session[
+            "active_organization_id"
+        ] = organization.id
+
+        messages.success(
+            request,
+            f"Active organization changed to {organization.name}.",
+        )
+
+        return redirect(
+            "business_requests:dashboard"
+        )
+
+    current_organization = get_user_organization(
+        request.user,
+        request=request,
+    )
+
+    return render(
+        request,
+        "business_requests/switch_organization.html",
+        {
+            "organizations": organizations,
+            "current_organization": current_organization,
+        },
+    )
+
+@login_required
 def business_dashboard(request):
     """
     Main dashboard for an organization.
 
-    Superusers currently use the Faltasi platform-owner
-    organization.
+    Platform administrators:
+        Use the organization selected in the session.
 
-    Normal users see only their own organization's data.
+    Normal organization users:
+        Use their active organization membership.
     """
 
-    if request.user.is_superuser:
+    # =========================================================
+    # GET CURRENT ORGANIZATION
+    # =========================================================
 
-        organization = (
-            Organization.objects
-            .filter(
-                organization_type="platform_owner",
-                status="active",
-            )
-            .order_by("id")
-            .first()
+    organization = get_user_organization(
+        request.user,
+        request=request,
+    )
+
+    if not organization:
+
+        messages.error(
+            request,
+            "You are not assigned to an organization.",
         )
 
-        if not organization:
-            messages.error(
-                request,
-                "No active platform owner organization was found.",
-            )
-
-            return redirect(
-                "business_requests:dashboard"
-            )
-
-    else:
-
-        organization = get_user_organization(
-            request.user
+        return redirect(
+            "accounts:login"
         )
 
-        if not organization:
-
-            messages.error(
-                request,
-                "You are not assigned to an organization.",
-            )
-
-            return redirect(
-                "accounts:login"
-            )
+    # =========================================================
+    # RECENT BUSINESS REQUESTS
+    # =========================================================
 
     recent_requests = (
         BusinessRequest.objects
@@ -160,6 +246,10 @@ def business_dashboard(request):
         .order_by("-created_at")[:10]
     )
 
+    # =========================================================
+    # CUSTOMER COUNT
+    # =========================================================
+
     customer_count = (
         Customer.objects
         .filter(
@@ -168,6 +258,10 @@ def business_dashboard(request):
         .count()
     )
 
+    # =========================================================
+    # REQUEST COUNT
+    # =========================================================
+
     request_count = (
         BusinessRequest.objects
         .filter(
@@ -175,6 +269,10 @@ def business_dashboard(request):
         )
         .count()
     )
+
+    # =========================================================
+    # STAFF COUNT
+    # =========================================================
 
     staff_count = (
         OrganizationMember.objects
@@ -187,6 +285,10 @@ def business_dashboard(request):
         .count()
     )
 
+    # =========================================================
+    # DEPARTMENT COUNT
+    # =========================================================
+
     department_count = (
         Department.objects
         .filter(
@@ -196,6 +298,10 @@ def business_dashboard(request):
         .count()
     )
 
+    # =========================================================
+    # DASHBOARD CONTEXT
+    # =========================================================
+
     context = {
         "organization": organization,
         "recent_requests": recent_requests,
@@ -204,6 +310,10 @@ def business_dashboard(request):
         "staff_count": staff_count,
         "department_count": department_count,
     }
+
+    # =========================================================
+    # RENDER DASHBOARD
+    # =========================================================
 
     return render(
         request,
@@ -219,7 +329,7 @@ def request_dashboard(request):
     are displayed.
     """
 
-    organization = get_user_organization(request.user)
+    organization = get_user_organization(request.user, request=request,)
 
     if not organization:
         messages.error(
@@ -298,7 +408,7 @@ def my_requests(request):
     - through a current assignment
     """
 
-    organization = get_user_organization(request.user)
+    organization = get_user_organization(request.user,request=request,)
 
     if not organization:
         messages.error(
@@ -447,7 +557,7 @@ def request_detail(request, request_id):
     else:
 
         # Normal users must belong to an organization.
-        organization = get_user_organization(request.user)
+        organization = get_user_organization(request.user, request=request,)
 
         if not organization:
             messages.error(
@@ -581,7 +691,7 @@ def update_request(request, request_id):
 
     else:
 
-        organization = get_user_organization(request.user)
+        organization = get_user_organization(request.user, request=request)
 
         if not organization:
             messages.error(
@@ -724,7 +834,7 @@ def send_request_whatsapp_message(request, request_id):
 
     else:
 
-        organization = get_user_organization(request.user)
+        organization = get_user_organization(request.user, request=request,)
 
         print(
             "USER ORGANIZATION:",
@@ -1406,7 +1516,7 @@ def assign_request(request, request_id):
     else:
 
         # Normal user must belong to an organization.
-        organization = get_user_organization(request.user)
+        organization = get_user_organization(request.user, request=request,)
 
         if not organization:
             messages.error(
@@ -1615,7 +1725,7 @@ def staff_management(request):
             .first()
         )
     else:
-        organization = get_user_organization(request.user)
+        organization = get_user_organization(request.user, request=request,)
 
     if not organization:
         messages.error(
@@ -1699,7 +1809,7 @@ def add_department_member(request):
             .first()
         )
     else:
-        organization = get_user_organization(request.user)
+        organization = get_user_organization(request.user, request=request,)
 
     if not organization:
         messages.error(
@@ -2202,7 +2312,7 @@ def business_profile(request):
     Display and update the logged-in user's organization profile.
     """
 
-    organization = get_user_organization(request.user)
+    organization = get_user_organization(request.user, request=request,)
 
     if not organization:
         messages.error(
@@ -2287,7 +2397,7 @@ def business_profile(request):
 
 @login_required
 def department_management(request):
-    organization = get_user_organization(request.user)
+    organization = get_user_organization(request.user, request=request,)
 
     if not organization:
         messages.error(
@@ -2314,7 +2424,7 @@ def department_management(request):
 def department_add(request):
     """Create a department for the current organization."""
 
-    organization = get_user_organization(request.user)
+    organization = get_user_organization(request.user, request=request,)
 
     if not organization:
         messages.error(
@@ -2437,7 +2547,7 @@ def department_edit(request, department_id):
     # STEP 1: Get the user's organization
     # ---------------------------------------------------------
 
-    organization = get_user_organization(request.user)
+    organization = get_user_organization(request.user, request=request,)
 
     print(
         "RESOLVED ORGANIZATION:",
@@ -2656,7 +2766,7 @@ def department_edit(request, department_id):
 def department_toggle(request, department_id):
     """Activate or deactivate a department."""
 
-    organization = get_user_organization(request.user)
+    organization = get_user_organization(request.user, request=request,)
 
     if not organization:
         messages.error(
