@@ -3,6 +3,7 @@
 
 {% block title %}
 ICT Products & Supplies in Tanzania | Computers, Networking & POS | Faltasi Innovations
+
 {% endblock %}
 
 {% block meta_description %}
@@ -11,6 +12,7 @@ Faltasi Innovations Limited supplies ICT products and technology equipment in Ta
 
 {% block content %}
 
+<!-- PAGE HERO -->
 
 <section class="page-hero">
 
@@ -35,350 +37,170 @@ Faltasi Innovations Limited supplies ICT products and technology equipment in Ta
 </section>
 
 
+<!-- PRODUCTS -->
 
 <section class="section">
 
     <div class="container">
 
-        <div class="product-grid">
+        <!-- CATEGORY NAVIGATION -->
 
+        <div class="product-category-nav">
 
-            <!-- COMPUTERS & LAPTOPS -->
+            <a
+                href="{% url 'products' %}"
+                class="product-category-link"
+            >
+                All Products
+            </a>
 
-            <div class="product-card">
+            {% for category in categories %}
 
-                <img
-                    src="{% static 'main/images/computers.jpg' %}"
-                    alt="Computers and laptops for businesses in Tanzania"
-                    class="product-image"
+                <a
+                    href="{% url 'products' %}?category={{ category.id }}"
+                    class="product-category-link"
                 >
+                    {{ category.name }}
+                </a>
 
-                <div class="product-content">
-
-                    <h2>
-                        Computers & Laptops
-                    </h2>
-
-                    <p>
-                        Desktop computers, laptops, monitors and
-                        computing devices for offices, businesses,
-                        organizations and personal use.
-                    </p>
-
-                    <a href="{% url 'contact' %}?product=Computers%20%26%20Laptops"
-                       class="btn btn-primary product-button">
-                        Request a Quote
-                    </a>
-
-                </div>
-
-            </div>
-
-
-
-            <!-- PRINTERS & SCANNERS -->
-
-            <div class="product-card">
-
-                <img
-                    src="{% static 'main/images/printers.jpg' %}"
-                    alt="Printers, scanners and printing supplies in Tanzania"
-                    class="product-image"
-                >
-
-                <div class="product-content">
-
-                    <h2>
-                        Printers & Scanners
-                    </h2>
-
-                    <p>
-                        Printers, scanners, multifunction devices,
-                        toners and printing supplies for offices,
-                        businesses and organizations.
-                    </p>
-
-                    <a href="{% url 'contact' %}?product=Printers%20%26%20Scanners"
-                       class="btn btn-primary product-button">
-                        Request a Quote
-                    </a>
-
-                </div>
-
-            </div>
-
-
-
-            <!-- NETWORKING EQUIPMENT -->
-
-            <div class="product-card">
-
-                <img
-                    src="{% static 'main/images/nertworking.jpg' %}"
-                    alt="Networking equipment including routers, switches and Wi-Fi devices"
-                    class="product-image"
-                >
-
-                <div class="product-content">
-
-                    <h2>
-                        Networking Equipment
-                    </h2>
-
-                    <p>
-                        Routers, network switches, Wi-Fi access points,
-                        cables and networking accessories for reliable
-                        business connectivity.
-                    </p>
-
-                    <a href="{% url 'contact' %}?product=Networking%20Equipment"
-                       class="btn btn-primary product-button">
-                        Request a Quote
-                    </a>
-
-                </div>
-
-            </div>
-
-
-
-            <!-- SERVERS & STORAGE -->
-
-            <div class="product-card">
-
-                <img
-                    src="{% static 'main/images/servers.jpg' %}"
-                    alt="Servers, hard drives and network storage equipment"
-                    class="product-image"
-                >
-
-                <div class="product-content">
-
-                    <h2>
-                        Servers & Storage
-                    </h2>
-
-                    <p>
-                        Servers, hard drives, SSDs, network storage
-                        and server accessories for business and
-                        organizational IT infrastructure.
-                    </p>
-
-                    <a href="{% url 'contact' %}?product=Servers%20%26%20Storage"
-                       class="btn btn-primary product-button">
-                        Request a Quote
-                    </a>
-
-                </div>
-
-            </div>
-
-
-
-            <!-- CCTV & SECURITY -->
-
-            <div class="product-card">
-
-                <img
-                    src="{% static 'main/images/cctv.jpg' %}"
-                    alt="CCTV cameras and security equipment in Tanzania"
-                    class="product-image"
-                >
-
-                <div class="product-content">
-
-                    <h2>
-                        CCTV & Security
-                    </h2>
-
-                    <p>
-                        CCTV cameras, DVR and NVR systems, monitors
-                        and security accessories for homes, offices
-                        and business premises.
-                    </p>
-
-                    <a href="{% url 'contact' %}?product=CCTV%20%26%20Security"
-                       class="btn btn-primary product-button">
-                        Request a Quote
-                    </a>
-
-                </div>
-
-            </div>
-
-
-
-            <!-- POS SYSTEMS -->
-
-            <div class="product-card">
-
-                <img
-                    src="{% static 'main/images/pos.jpg' %}"
-                    alt="POS systems, receipt printers and barcode scanners"
-                    class="product-image"
-                >
-
-                <div class="product-content">
-
-                    <h2>
-                        POS Systems
-                    </h2>
-
-                    <p>
-                        POS terminals, receipt printers, barcode
-                        scanners, cash drawers and accessories for
-                        retail and other businesses.
-                    </p>
-
-                    <a href="{% url 'contact' %}?product=POS%20Systems"
-                       class="btn btn-primary product-button">
-                        Request a Quote
-                    </a>
-
-                </div>
-
-            </div>
-
-
-
-            <!-- POWER BACKUP -->
-
-            <div class="product-card">
-
-                <img
-                    src="{% static 'main/images/ups.jpg' %}"
-                    alt="UPS systems and power backup equipment"
-                    class="product-image"
-                >
-
-                <div class="product-content">
-
-                    <h2>
-                        Power Backup & Accessories
-                    </h2>
-
-                    <p>
-                        UPS systems, power backup equipment, cables,
-                        adapters and computer accessories to help
-                        protect and support your technology.
-                    </p>
-
-                    <a href="{% url 'contact' %}?product=Power%20Backup%20%26%20Accessories"
-                       class="btn btn-primary product-button">
-                        Request a Quote
-                    </a>
-
-                </div>
-
-            </div>
-
-
-
-            <!-- SOFTWARE & LICENSES -->
-
-            <div class="product-card">
-
-                <img
-                    src="{% static 'main/images/software.jpg' %}"
-                    alt="Business software, operating systems and software licenses"
-                    class="product-image"
-                >
-
-                <div class="product-content">
-
-                    <h2>
-                        Software & Licenses
-                    </h2>
-
-                    <p>
-                        Operating systems, business software, security
-                        software and software licenses for business
-                        and organizational technology needs.
-                    </p>
-
-                    <a href="{% url 'contact' %}?product=Software%20%26%20Licenses"
-                       class="btn btn-primary product-button">
-                        Request a Quote
-                    </a>
-
-                </div>
-
-            </div>
-
+            {% endfor %}
 
         </div>
 
-    </div>
 
-</section>
+        <!-- CATEGORY SECTIONS -->
+
+        {% for category in categories %}
+
+            {% if not selected_category or selected_category == category.id %}
+
+                <div class="product-category">
+
+                    <h2>
+                        {{ category.name }}
+                    </h2>
+
+                    {% if category.description %}
+
+                        <p>
+                            {{ category.description }}
+                        </p>
+
+                    {% endif %}
 
 
+                    <!-- PRODUCTS IN THIS CATEGORY -->
 
-<!-- TECHNOLOGY BRANDS -->
+                    <div class="product-grid">
 
-<section class="section brands-section">
+                        {% for product in products %}
 
-    <div class="container">
+                            {% if product.category_id == category.id %}
 
-        <div class="section-heading">
+                                <div class="product-card">
 
-            <span class="section-label">
-                TECHNOLOGY BRANDS
-            </span>
+                                    {% if product.image %}
 
-            <h2>
-                Products from leading technology brands.
-            </h2>
+                                        <img
+                                            src="{{ product.image.url }}"
+                                            alt="{{ product.name }}"
+                                            class="product-image"
+                                        >
+
+                                    {% endif %}
+
+
+                                    <div class="product-content">
+
+                                        <h2>
+                                            {{ product.name }}
+                                        </h2>
+
+
+                                        {% if product.description %}
+
+                                            <p>
+                                                {{ product.description }}
+                                            </p>
+
+                                        {% endif %}
+
+
+                                        {% if product.brand %}
+
+                                            <p>
+                                                <strong>Brand:</strong>
+                                                {{ product.brand }}
+                                            </p>
+
+                                        {% endif %}
+
+
+                                        {% if product.model %}
+
+                                            <p>
+                                                <strong>Model:</strong>
+                                                {{ product.model }}
+                                            </p>
+
+                                        {% endif %}
+
+
+                                        {% if product.price %}
+
+                                            <p>
+                                                <strong>Price:</strong>
+                                                {{ product.currency }}
+                                                {{ product.price }}
+                                            </p>
+
+                                        {% endif %}
+
+
+                                        <p>
+                                            <strong>Availability:</strong>
+                                            {{ product.get_availability_display }}
+                                        </p>
+
+
+                                        <a
+                                            href="{% url 'request_quote' %}?product_id={{ product.id }}"
+                                            class="btn btn-primary product-button"
+                                        >
+                                            Request a Quote
+                                        </a>
+
+                                    </div>
+
+                                </div>
+
+                            {% endif %}
+
+                        {% empty %}
+
+                            <p>
+                                No products are currently available.
+                            </p>
+
+                        {% endfor %}
+
+                    </div>
+
+                </div>
+
+            {% endif %}
+
+        {% empty %}
 
             <p>
-                We source ICT products and equipment from established
-                technology manufacturers and suppliers to meet different
-                business, organizational and personal technology needs.
+                No product categories are currently available.
             </p>
 
-        </div>
-
-
-        <div class="brands-grid">
-
-            <div class="brand-item">
-                HP
-            </div>
-
-            <div class="brand-item">
-                Dell
-            </div>
-
-            <div class="brand-item">
-                Lenovo
-            </div>
-
-            <div class="brand-item">
-                Canon
-            </div>
-
-            <div class="brand-item">
-                Epson
-            </div>
-
-            <div class="brand-item">
-                TP-Link
-            </div>
-
-            <div class="brand-item">
-                Hikvision
-            </div>
-
-            <div class="brand-item">
-                Ubiquiti
-            </div>
-
-        </div>
+        {% endfor %}
 
     </div>
 
 </section>
-
 
 
 <!-- CTA -->
@@ -401,13 +223,15 @@ Faltasi Innovations Limited supplies ICT products and technology equipment in Ta
             and other technology supplies in Tanzania.
         </p>
 
-        <a href="{% url 'contact' %}" class="btn btn-light">
+        <a
+            href="{% url 'contact' %}"
+            class="btn btn-light"
+        >
             Request a Quote
         </a>
 
     </div>
 
 </section>
-
 
 {% endblock %}

@@ -1,0 +1,346 @@
+{% extends "main/base.html" %}
+
+{% block title %}Edit User | Faltasi{% endblock %}
+
+{% block content %}
+
+<div class="container">
+
+    <div class="page-header">
+        <div>
+            <h1>Edit User</h1>
+            <p>
+                Update this user's information, organization role,
+                department and responsibilities.
+            </p>
+        </div>
+
+        <div>
+            <a
+                href="{% url 'business_requests:staff_management' %}"
+                class="btn btn-secondary"
+            >
+                ← Back to Users
+            </a>
+        </div>
+    </div>
+
+
+    <!-- USER INFORMATION -->
+
+    <div class="card">
+
+        <h2>User Information</h2>
+
+        <p>
+            Update the basic information for
+            <strong>{{ target_user.username }}</strong>.
+        </p>
+
+        <form method="post">
+
+            {% csrf_token %}
+
+            <div class="form-row">
+
+                <div class="form-group">
+                    <label for="first_name">
+                        First Name
+                    </label>
+
+                    <input
+                        type="text"
+                        id="first_name"
+                        name="first_name"
+                        value="{{ target_user.first_name }}"
+                        placeholder="Enter first name"
+                    >
+                </div>
+
+
+                <div class="form-group">
+                    <label for="last_name">
+                        Last Name
+                    </label>
+
+                    <input
+                        type="text"
+                        id="last_name"
+                        name="last_name"
+                        value="{{ target_user.last_name }}"
+                        placeholder="Enter last name"
+                    >
+                </div>
+
+            </div>
+
+
+            <div class="form-group">
+
+                <label for="username">
+                    Username
+                </label>
+
+                <input
+                    type="text"
+                    id="username"
+                    value="{{ target_user.username }}"
+                    readonly
+                >
+
+                <small>
+                    Username cannot be changed from this page.
+                </small>
+
+            </div>
+
+
+            <div class="form-group">
+
+                <label for="email">
+                    Email Address
+                </label>
+
+                <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    value="{{ target_user.email }}"
+                    placeholder="Enter email address"
+                    required
+                >
+
+            </div>
+
+    </div>
+
+
+    <!-- ORGANIZATION ACCESS -->
+
+    <div class="card">
+
+        <h2>Organization Access</h2>
+
+        <p>
+            Select the level of access this user has within
+            <strong>{{ organization.name }}</strong>.
+        </p>
+
+
+        {% if target_membership.role == "owner" %}
+
+            <div class="form-group">
+
+                <label>
+                    Organization Role
+                </label>
+
+                <input
+                    type="text"
+                    value="Owner"
+                    readonly
+                >
+
+                <small>
+                    The Owner role cannot be changed from this page.
+                    Ownership transfer will be handled separately.
+                </small>
+
+            </div>
+
+            <input
+                type="hidden"
+                name="organization_role"
+                value="owner"
+            >
+
+        {% else %}
+
+            <div class="form-group">
+
+                <label for="organization_role">
+                    Organization Role
+                </label>
+
+                <select
+                    id="organization_role"
+                    name="organization_role"
+                    required
+                >
+
+                    <option value="">
+                        Select organization role
+                    </option>
+
+                    {% for role_value, role_name, role_description in organization_roles %}
+
+                        <option
+                            value="{{ role_value }}"
+                            {% if target_membership.role == role_value %}
+                                selected
+                            {% endif %}
+                        >
+                            {{ role_name }}
+                        </option>
+
+                    {% endfor %}
+
+                </select>
+
+            </div>
+
+        {% endif %}
+
+    </div>
+
+
+    <!-- DEPARTMENT ASSIGNMENT -->
+
+    <div class="card">
+
+        <h2>Department & Responsibilities</h2>
+
+        <p>
+            Assign this user to a department and define their
+            responsibility within that department.
+        </p>
+
+
+        <div class="form-group">
+
+            <label for="department_id">
+                Department
+            </label>
+
+            <select
+                id="department_id"
+                name="department_id"
+            >
+
+                <option value="">
+                    No Department
+                </option>
+
+                {% for department in departments %}
+
+                    <option
+                        value="{{ department.id }}"
+                        {% if department_membership and department_membership.department.id == department.id %}
+                            selected
+                        {% endif %}
+                    >
+                        {{ department.name }}
+                    </option>
+
+                {% endfor %}
+
+            </select>
+
+        </div>
+
+
+        <div class="form-group">
+
+            <label for="department_role">
+                Department Role
+            </label>
+
+            <select
+                id="department_role"
+                name="department_role"
+            >
+
+                <option value="">
+                    Select department role
+                </option>
+
+                {% for role_value, role_name in department_roles %}
+
+                    <option
+                        value="{{ role_value }}"
+                        {% if department_membership and department_membership.role == role_value %}
+                            selected
+                        {% endif %}
+                    >
+                        {{ role_name }}
+                    </option>
+
+                {% endfor %}
+
+            </select>
+
+        </div>
+
+    </div>
+
+
+    <!-- ACCOUNT INFORMATION -->
+
+    <div class="card">
+
+        <h2>Account Information</h2>
+
+        <div class="form-row">
+
+            <div class="form-group">
+
+                <label>
+                    Username
+                </label>
+
+                <div>
+                    <strong>{{ target_user.username }}</strong>
+                </div>
+
+            </div>
+
+
+            <div class="form-group">
+
+                <label>
+                    Current Organization Role
+                </label>
+
+                <div>
+                    <strong>
+                        {{ target_membership.get_role_display }}
+                    </strong>
+                </div>
+
+            </div>
+
+        </div>
+
+        <p>
+            Password changes will be handled separately through
+            the password reset function.
+        </p>
+
+    </div>
+
+
+    <!-- ACTIONS -->
+
+    <div class="form-actions">
+
+        <a
+            href="{% url 'business_requests:staff_management' %}"
+            class="btn btn-secondary"
+        >
+            Cancel
+        </a>
+
+        <button
+            type="submit"
+            class="btn btn-primary"
+        >
+            Save Changes
+        </button>
+
+    </div>
+
+        </form>
+
+</div>
+
+{% endblock %}

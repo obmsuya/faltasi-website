@@ -1,15 +1,17 @@
+
 {% extends 'main/base.html' %}
-{% load static %}
 
 {% block title %}
 Contact Faltasi Innovations Limited | ICT Solutions & Technology Tanzania
 {% endblock %}
 
 {% block meta_description %}
-Contact Faltasi Innovations Limited in Tanzania for ICT solutions, software development, POS systems, networking, ICT products, business applications and digital technology services.
+Contact Faltasi Innovations Limited in Tanzania for general inquiries, ICT solutions, software development, POS systems, partnerships and digital technology services.
 {% endblock %}
 
 {% block content %}
+
+<!-- PAGE HERO -->
 
 <section class="page-hero">
 
@@ -20,13 +22,13 @@ Contact Faltasi Innovations Limited in Tanzania for ICT solutions, software deve
         </span>
 
         <h1>
-            Let's talk about your technology needs.
+            Let's talk about your needs.
         </h1>
 
         <p>
-            Tell us about your project, business or
-            technology requirements and our team will
-            be happy to help.
+            Have a question about our company, services,
+            partnerships or technology solutions?
+            We'd love to hear from you.
         </p>
 
     </div>
@@ -34,10 +36,11 @@ Contact Faltasi Innovations Limited in Tanzania for ICT solutions, software deve
 </section>
 
 
+<!-- CONTACT SECTION -->
+
 <section class="section">
 
     <div class="container contact-grid">
-
 
         <!-- CONTACT INFORMATION -->
 
@@ -48,14 +51,14 @@ Contact Faltasi Innovations Limited in Tanzania for ICT solutions, software deve
             </span>
 
             <h2>
-                We'd love to hear from you.
+                How can we help you?
             </h2>
 
             <p>
-                Contact Faltasi Innovations Limited to discuss
-                ICT solutions, software development, POS systems,
-                networking, technology products or other business
-                technology needs.
+                Contact Faltasi Innovations Limited for general
+                inquiries about our ICT solutions, software
+                development, POS systems, Wapangaji Kiganjani,
+                partnerships or other business services.
             </p>
 
 
@@ -100,187 +103,143 @@ Contact Faltasi Innovations Limited in Tanzania for ICT solutions, software deve
         </div>
 
 
-        <!-- CONTACT FORM -->
+        <!-- GENERAL INQUIRY FORM -->
 
         <div class="contact-form-container">
 
-            <form method="POST">
+            {% if success %}
 
-                {% csrf_token %}
+                <div class="contact-success">
+
+                    <h2>
+                        Message received!
+                    </h2>
+
+                    <p>
+                        Thank you for contacting Faltasi Innovations
+                        Limited. Our team will review your inquiry
+                        and contact you shortly.
+                    </p>
+
+                </div>
+
+            {% else %}
+
+                {% if error %}
+
+                    <p class="contact-error">
+                        {{ error }}
+                    </p>
+
+                {% endif %}
+
+                {% if organization_error %}
+
+                    <p class="contact-error">
+                        We are unable to process your inquiry
+                        right now. Please try again later.
+                    </p>
+
+                {% endif %}
+
+                <h2>
+                    Send Us a Message
+                </h2>
+
+                <form method="POST" action="{% url 'contact' %}">
+
+                    {% csrf_token %}
 
 
-                <!-- NAME -->
+                    <!-- NAME -->
 
-                <div class="form-group">
+                    <div class="form-group">
 
-                    <label for="name">
-                        Your Name
-                    </label>
+                        <label for="name">
+                            Your Name
+                        </label>
 
-                    <input
-                        type="text"
-                        id="name"
-                        name="name"
-                        placeholder="Enter your name"
-                        required
+                        <input
+                            type="text"
+                            id="name"
+                            name="name"
+                            placeholder="Enter your name"
+                            autocomplete="name"
+                            required
+                        >
+
+                    </div>
+
+
+                    <!-- EMAIL -->
+
+                    <div class="form-group">
+
+                        <label for="email">
+                            Email Address
+                        </label>
+
+                        <input
+                            type="email"
+                            id="email"
+                            name="email"
+                            placeholder="Enter your email"
+                            autocomplete="email"
+                        >
+
+                    </div>
+
+
+                    <!-- PHONE -->
+
+                    <div class="form-group">
+
+                        <label for="phone">
+                            Phone Number
+                        </label>
+
+                        <input
+                            type="tel"
+                            id="phone"
+                            name="phone"
+                            placeholder="Enter your phone number"
+                            autocomplete="tel"
+                        >
+
+                    </div>
+
+
+                    <!-- MESSAGE -->
+
+                    <div class="form-group">
+
+                        <label for="message">
+                            Your Inquiry
+                        </label>
+
+                        <textarea
+                            name="message"
+                            id="message"
+                            rows="6"
+                            placeholder="Tell us how we can help you."
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- SUBMIT -->
+
+                    <button
+                        type="submit"
+                        class="btn btn-primary form-button"
                     >
+                        Send Message
+                    </button>
 
-                </div>
+                </form>
 
-
-                <!-- EMAIL -->
-
-                <div class="form-group">
-
-                    <label for="email">
-                        Email Address
-                    </label>
-
-                    <input
-                        type="email"
-                        id="email"
-                        name="email"
-                        placeholder="Enter your email"
-                        required
-                    >
-
-                </div>
-
-
-                <!-- PHONE -->
-
-                <div class="form-group">
-
-                    <label for="phone">
-                        Phone Number
-                    </label>
-
-                    <input
-                        type="text"
-                        id="phone"
-                        name="phone"
-                        placeholder="Enter your phone number"
-                    >
-
-                </div>
-
-
-                <!-- PRODUCT / SERVICE -->
-
-                <div class="form-group">
-
-                    <label for="product">
-                        Product / Service Interested In
-                    </label>
-
-                    <select
-                        name="product"
-                        id="product"
-                    >
-
-                        <option value="">
-                            Select a product or service
-                        </option>
-
-
-                        <option value="Computers & Laptops"
-                            {% if request.GET.product == "Computers & Laptops" %}selected{% endif %}>
-                            Computers & Laptops
-                        </option>
-
-
-                        <option value="Printers & Scanners"
-                            {% if request.GET.product == "Printers & Scanners" %}selected{% endif %}>
-                            Printers & Scanners
-                        </option>
-
-
-                        <option value="Networking Equipment"
-                            {% if request.GET.product == "Networking Equipment" %}selected{% endif %}>
-                            Networking Equipment
-                        </option>
-
-
-                        <option value="Servers & Storage"
-                            {% if request.GET.product == "Servers & Storage" %}selected{% endif %}>
-                            Servers & Storage
-                        </option>
-
-
-                        <option value="CCTV & Security"
-                            {% if request.GET.product == "CCTV & Security" %}selected{% endif %}>
-                            CCTV & Security
-                        </option>
-
-
-                        <option value="POS Systems"
-                            {% if request.GET.product == "POS Systems" %}selected{% endif %}>
-                            POS Systems
-                        </option>
-
-
-                        <option value="Power Backup & Accessories"
-                            {% if request.GET.product == "Power Backup & Accessories" %}selected{% endif %}>
-                            Power Backup & Accessories
-                        </option>
-
-
-                        <option value="Software & Licenses"
-                            {% if request.GET.product == "Software & Licenses" %}selected{% endif %}>
-                            Software & Licenses
-                        </option>
-
-
-                        <option value="ICT Solutions"
-                            {% if request.GET.product == "ICT Solutions" %}selected{% endif %}>
-                            ICT Solutions
-                        </option>
-
-
-                        <option value="Software & System Development"
-                            {% if request.GET.product == "Software & System Development" %}selected{% endif %}>
-                            Software & System Development
-                        </option>
-
-
-                        <option value="Other">
-                            Other
-                        </option>
-
-                    </select>
-
-                </div>
-
-
-                <!-- MESSAGE -->
-
-                <div class="form-group">
-
-                    <label for="message">
-                        Message
-                    </label>
-
-                    <textarea
-                        name="message"
-                        id="message"
-                        rows="6"
-                        placeholder="How can we help you?"
-                        required
-                    ></textarea>
-
-                </div>
-
-
-                <!-- SUBMIT -->
-
-                <button
-                    type="submit"
-                    class="btn btn-primary form-button"
-                >
-                    Send Message
-                </button>
-
-            </form>
+            {% endif %}
 
         </div>
 

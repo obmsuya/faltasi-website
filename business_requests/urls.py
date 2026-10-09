@@ -86,6 +86,18 @@ urlpatterns = [
         name="add_department_member",
     ),
 
+    path(
+        "staff/<int:user_id>/edit/",
+        views.edit_user,
+        name="edit_user",
+    ),
+
+    path(
+        "staff/<int:user_id>/status/",
+        views.toggle_user_status,
+        name="toggle_user_status",
+    ),
+
 
     # =========================================================
     # BUSINESS REQUESTS
@@ -143,7 +155,12 @@ urlpatterns = [
         views.switch_organization,
         name="switch_organization",
     ),
-    
+
+    path(
+        "requests/<int:request_id>/set-department/",
+        views.set_request_department,
+        name="set_request_department",
+    ),
 
     
 ]

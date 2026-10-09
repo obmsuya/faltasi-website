@@ -1298,3 +1298,579 @@ a {
 .product-category-link:hover {
     transform: translateY(-2px);
 }
+
+/* =========================================
+   LOGIN PAGE
+========================================= */
+
+.login-section {
+    min-height: 75vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 60px 20px;
+    background: #f5f7fa;
+}
+
+.login-container {
+    width: 100%;
+    max-width: 480px;
+}
+
+.login-card {
+    background: #ffffff;
+    padding: 40px;
+    border-radius: 14px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.login-icon {
+    font-size: 42px;
+    margin-bottom: 10px;
+}
+
+.login-header h1 {
+    margin: 0 0 8px;
+    font-size: 30px;
+}
+
+.login-header p {
+    margin: 0;
+    color: #6c757d;
+}
+
+
+/* MESSAGES */
+
+.messages {
+    margin-bottom: 20px;
+}
+
+.message {
+    padding: 12px 15px;
+    border-radius: 7px;
+    margin-bottom: 10px;
+    font-size: 14px;
+}
+
+.message-success {
+    background: #d1e7dd;
+    color: #0f5132;
+}
+
+.message-error {
+    background: #f8d7da;
+    color: #842029;
+}
+
+.message-warning {
+    background: #fff3cd;
+    color: #664d03;
+}
+
+.message-info {
+    background: #cff4fc;
+    color: #055160;
+}
+
+
+/* LOGIN ERROR */
+
+.login-error {
+    background: #f8d7da;
+    color: #842029;
+    border: 1px solid #f1aeb5;
+    padding: 14px 16px;
+    border-radius: 7px;
+    margin-bottom: 20px;
+}
+
+.login-error strong {
+    display: block;
+    margin-bottom: 5px;
+}
+
+.login-error p {
+    margin: 0;
+    font-size: 14px;
+}
+
+
+/* FORM */
+
+.login-form {
+    width: 100%;
+}
+
+.login-form .form-group {
+    margin-bottom: 20px;
+}
+
+.login-form .form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.login-form .form-group input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 13px 14px;
+    border: 1px solid #ced4da;
+    border-radius: 7px;
+    font-size: 15px;
+    background: #ffffff;
+}
+
+.login-form .form-group input:focus {
+    outline: none;
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.12);
+}
+
+
+/* LOGIN BUTTON */
+
+.login-button {
+    width: 100%;
+    border: none;
+    border-radius: 7px;
+    padding: 13px;
+    background: #0d6efd;
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.login-button:hover {
+    opacity: 0.9;
+}
+
+
+/* FORGOT PASSWORD */
+
+.forgot-password {
+    text-align: center;
+    margin-top: 20px;
+}
+
+.forgot-password a {
+    color: #0d6efd;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.forgot-password a:hover {
+    text-decoration: underline;
+}
+
+
+/* CREATE ACCOUNT */
+
+.create-account {
+    text-align: center;
+    border-top: 1px solid #eeeeee;
+    margin-top: 25px;
+    padding-top: 25px;
+}
+
+.create-account p {
+    margin: 0 0 12px;
+    color: #666666;
+}
+
+.register-button {
+    display: inline-block;
+    padding: 10px 20px;
+    border: 1px solid #0d6efd;
+    border-radius: 7px;
+    color: #0d6efd;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.register-button:hover {
+    background: #0d6efd;
+    color: #ffffff;
+}
+
+
+/* OFFICE SUPPORT */
+
+.office-support {
+    margin-top: 30px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 10px;
+    text-align: center;
+}
+
+.office-support h3 {
+    margin: 0 0 8px;
+}
+
+.office-support p {
+    color: #666666;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.office-phone {
+    font-size: 17px !important;
+    font-weight: 600;
+}
+
+.office-phone a {
+    color: #212529;
+    text-decoration: none;
+}
+
+.office-phone a:hover {
+    text-decoration: underline;
+}
+
+
+/* WHATSAPP */
+
+.login-whatsapp-button {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 10px 16px;
+    background: #198754;
+    color: #ffffff;
+    border-radius: 7px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.login-whatsapp-button:hover {
+    opacity: 0.9;
+}
+
+
+/* BACK TO WEBSITE */
+
+.back-to-website {
+    text-align: center;
+    margin-top: 25px;
+}
+
+.back-to-website a {
+    color: #555555;
+    text-decoration: none;
+    font-size: 14px;
+}
+
+.back-to-website a:hover {
+    color: #0d6efd;
+}
+
+
+/* MOBILE */
+
+@media (max-width: 600px) {
+
+    .login-section {
+        padding: 35px 15px;
+    }
+
+    .login-card {
+        padding: 25px 20px;
+    }
+
+    .login-header h1 {
+        font-size: 26px;
+    }
+
+}
+
+ /* ================================
+           BUSINESS LOGIN BUTTON
+        ================================= */
+
+        .business-login-btn {
+            display: inline-block;
+            padding: 9px 16px;
+            margin-left: 8px;
+            border-radius: 6px;
+            background: #0d6efd;
+            color: #ffffff !important;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        .business-login-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        /* ================================
+           FOOTER LOGIN LINK
+        ================================= */
+
+        .footer-login-link {
+            font-weight: 600;
+        }
+
+        /* ================================
+           MOBILE
+        ================================= */
+
+        @media (max-width: 768px) {
+
+            .business-login-btn {
+                display: block;
+                width: fit-content;
+                margin: 10px 0;
+            }
+
+        }
+        /* =====================================================
+   AUTHENTICATION NAVIGATION
+===================================================== */
+
+.logout-form {
+    display: inline;
+    margin: 0;
+    padding: 0;
+}
+
+.logout-nav-link {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    font: inherit;
+}
+
+.footer-logout-form {
+    margin: 0;
+    padding: 0;
+}
+
+.footer-logout-link {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    font: inherit;
+}
+
+/* =========================================
+   AUTHENTICATION PAGES
+========================================= */
+
+.auth-page {
+    min-height: calc(100vh - 180px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 60px 20px;
+    box-sizing: border-box;
+}
+
+.auth-container {
+    width: 100%;
+    max-width: 480px;
+    margin: 0 auto;
+}
+
+.auth-card {
+    width: 100%;
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 40px;
+    box-sizing: border-box;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.10);
+}
+
+.auth-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.auth-header h1 {
+    margin: 0 0 10px;
+    font-size: 32px;
+}
+
+.auth-header p {
+    margin: 0;
+    color: #666;
+}
+
+
+.auth-messages {
+    margin-bottom: 20px;
+}
+
+.auth-message {
+    padding: 12px 15px;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    font-size: 14px;
+}
+
+.auth-message.success {
+    background: #d1e7dd;
+    color: #0f5132;
+}
+
+.auth-message.error {
+    background: #f8d7da;
+    color: #842029;
+}
+
+.auth-message.warning {
+    background: #fff3cd;
+    color: #664d03;
+}
+
+.auth-message.info {
+    background: #cff4fc;
+    color: #055160;
+}
+
+
+.auth-error {
+    background: #f8d7da;
+    color: #842029;
+    padding: 12px 15px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+}
+
+
+.auth-form .form-group {
+    margin-bottom: 20px;
+}
+
+.auth-form label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.auth-form input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 13px 14px;
+    border: 1px solid #ccc;
+    border-radius: 7px;
+    font-size: 16px;
+    background: #fff;
+}
+
+.auth-form input:focus {
+    outline: none;
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.10);
+}
+
+
+.field-error {
+    margin-top: 6px;
+    color: #842029;
+    font-size: 14px;
+}
+
+
+.auth-submit {
+    width: 100%;
+    padding: 13px 20px;
+    border: none;
+    border-radius: 7px;
+    background: #0d6efd;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 5px;
+}
+
+.auth-submit:hover {
+    opacity: 0.9;
+}
+
+
+.auth-link {
+    text-align: center;
+    margin-top: 20px;
+}
+
+.auth-link a {
+    text-decoration: none;
+    font-weight: 600;
+}
+
+
+.auth-register {
+    text-align: center;
+    margin-top: 25px;
+    padding-top: 25px;
+    border-top: 1px solid #eee;
+}
+
+.auth-register p {
+    margin: 0 0 8px;
+    color: #666;
+}
+
+.auth-register a {
+    font-weight: 600;
+    text-decoration: none;
+}
+
+
+.auth-help {
+    text-align: center;
+    margin-top: 25px;
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+}
+
+.auth-help h3 {
+    margin: 0 0 10px;
+    font-size: 17px;
+}
+
+.auth-help p {
+    margin: 6px 0;
+    color: #666;
+    font-size: 14px;
+}
+
+.auth-help a {
+    font-weight: 600;
+    text-decoration: none;
+}
+
+
+/* MOBILE */
+
+@media (max-width: 600px) {
+
+    .auth-page {
+        min-height: auto;
+        padding: 40px 15px;
+    }
+
+    .auth-card {
+        padding: 30px 20px;
+    }
+
+    .auth-header h1 {
+        font-size: 28px;
+    }
+
+}

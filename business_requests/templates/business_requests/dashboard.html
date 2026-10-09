@@ -14,25 +14,29 @@ Manage and monitor customer business requests through the Faltasi platform.
 
     <div class="container">
 
+        <!-- ========================================================= -->
         <!-- PAGE HEADER -->
+        <!-- ========================================================= -->
 
         <div class="page-header">
 
             <div>
-
-                <h1>Business Requests</h1>
+                <h1>
+                    Business Requests
+                </h1>
 
                 <p>
                     Manage customer requests, departments,
                     assignments and workflows.
                 </p>
-
             </div>
 
         </div>
 
 
+        <!-- ========================================================= -->
         <!-- MESSAGES -->
+        <!-- ========================================================= -->
 
         {% if messages %}
 
@@ -47,11 +51,139 @@ Manage and monitor customer business requests through the Faltasi platform.
         {% endif %}
 
 
-        <!-- FILTERS -->
+        <!-- ========================================================= -->
+        <!-- LOGGED-IN USER -->
+        <!-- ========================================================= -->
 
         <div class="dashboard-card">
 
-            <h2>Filter Requests</h2>
+            <h2>
+                Logged-in User
+            </h2>
+
+            <p>
+                <strong>
+                    {% if request.user.get_full_name %}
+                        {{ request.user.get_full_name }}
+                    {% else %}
+                        {{ request.user.username }}
+                    {% endif %}
+                </strong>
+            </p>
+
+            <p>
+                <strong>Username:</strong>
+                {{ request.user.username }}
+            </p>
+
+            <p>
+                <strong>Organization:</strong>
+                {{ organization.name }}
+            </p>
+
+            <p>
+                <strong>Organization Role:</strong>
+
+                {% if current_membership %}
+                    {{ current_membership.get_role_display }}
+                {% else %}
+                    —
+                {% endif %}
+            </p>
+
+            <p>
+                <strong>Department:</strong>
+
+                {% if department_membership %}
+                    {{ department_membership.department.name }}
+                {% else %}
+                    —
+                {% endif %}
+            </p>
+
+            <p>
+                <strong>Department Role:</strong>
+
+                {% if department_membership %}
+                    {{ department_membership.get_role_display }}
+                {% else %}
+                    —
+                {% endif %}
+            </p>
+
+        </div>
+
+
+        <!-- ========================================================= -->
+        <!-- BUSINESS MANAGEMENT -->
+        <!-- ========================================================= -->
+
+        <div class="dashboard-card">
+
+            <h2>
+                Business Management
+            </h2>
+
+            <p>
+                Manage your organization, departments, staff,
+                customer questions and incoming requests.
+            </p>
+
+            <div class="hero-buttons">
+
+                <!-- BUSINESS PROFILE -->
+
+                <a
+                    href="{% url 'business_requests:business_profile' %}"
+                    class="btn btn-secondary"
+                >
+                    Business Profile
+                </a>
+
+
+                <!-- DEPARTMENTS -->
+
+                <a
+                    href="{% url 'business_requests:department_management' %}"
+                    class="btn btn-secondary"
+                >
+                    Departments
+                </a>
+
+
+                <!-- USERS & ROLES -->
+
+                <a
+                    href="{% url 'business_requests:staff_management' %}"
+                    class="btn btn-secondary"
+                >
+                    Users & Roles
+                </a>
+
+
+                <!-- CATEGORIES & QUESTIONS -->
+
+                <a
+                    href="{% url 'business_requests:upload_category_questions' %}"
+                    class="btn btn-secondary"
+                >
+                    Categories & Questions
+                </a>
+
+            </div>
+
+        </div>
+
+
+        <!-- ========================================================= -->
+        <!-- FILTER REQUESTS -->
+        <!-- ========================================================= -->
+
+        <div class="dashboard-card">
+
+            <h2>
+                Filter Requests
+            </h2>
 
             <form method="get">
 
@@ -70,7 +202,9 @@ Manage and monitor customer business requests through the Faltasi platform.
                             name="status"
                         >
 
-                            <option value="">
+                            <option value=""
+                                {% if not selected_status %}selected{% endif %}
+                            >
                                 All Statuses
                             </option>
 
@@ -78,13 +212,9 @@ Manage and monitor customer business requests through the Faltasi platform.
 
                                 <option
                                     value="{{ value }}"
-                                    {% if selected_status == value %}
-                                        selected
-                                    {% endif %}
+                                    {% if selected_status == value %}selected{% endif %}
                                 >
-
                                     {{ label }}
-
                                 </option>
 
                             {% endfor %}
@@ -107,7 +237,9 @@ Manage and monitor customer business requests through the Faltasi platform.
                             name="department"
                         >
 
-                            <option value="">
+                            <option value=""
+                                {% if not selected_department %}selected{% endif %}
+                            >
                                 All Departments
                             </option>
 
@@ -115,13 +247,9 @@ Manage and monitor customer business requests through the Faltasi platform.
 
                                 <option
                                     value="{{ department.id }}"
-                                    {% if selected_department|stringformat:"s" == department.id|stringformat:"s" %}
-                                        selected
-                                    {% endif %}
+                                    {% if selected_department|stringformat:"s" == department.id|stringformat:"s" %}selected{% endif %}
                                 >
-
                                     {{ department.name }}
-
                                 </option>
 
                             {% endfor %}
@@ -131,7 +259,46 @@ Manage and monitor customer business requests through the Faltasi platform.
                     </div>
 
 
-                    <!-- BUTTON -->
+                    <!-- REQUEST TYPE -->
+
+                    <div class="form-group">
+
+                        <label for="type">
+                            Request Type
+                        </label>
+
+                        <select
+                            id="type"
+                            name="type"
+                        >
+
+                            <option
+                                value=""
+                                {% if not selected_type %}selected{% endif %}
+                            >
+                                All Request Types
+                            </option>
+
+                            <option
+                                value="general_inquiry"
+                                {% if selected_type == "general_inquiry" %}selected{% endif %}
+                            >
+                                General Inquiries
+                            </option>
+
+                            <option
+                                value="product_quote"
+                                {% if selected_type == "product_quote" %}selected{% endif %}
+                            >
+                                Product Quote Requests
+                            </option>
+
+                        </select>
+
+                    </div>
+
+
+                    <!-- FILTER BUTTON -->
 
                     <div class="form-group filter-button">
 
@@ -155,14 +322,15 @@ Manage and monitor customer business requests through the Faltasi platform.
         </div>
 
 
-        <!-- REQUESTS -->
+        <!-- ========================================================= -->
+        <!-- CUSTOMER REQUESTS -->
+        <!-- ========================================================= -->
 
         <div class="dashboard-card">
 
             <div class="card-header">
 
                 <div>
-
                     <h2>
                         Customer Requests
                     </h2>
@@ -170,14 +338,13 @@ Manage and monitor customer business requests through the Faltasi platform.
                     <p>
                         Requests received from customers.
                     </p>
-
                 </div>
 
                 <a
                     href="{% url 'business_requests:staff_management' %}"
                     class="btn btn-secondary"
                 >
-                    Staff Management
+                    User & Role Management
                 </a>
 
             </div>
@@ -218,10 +385,14 @@ Manage and monitor customer business requests through the Faltasi platform.
 
                             <tr>
 
+                                <!-- ID -->
+
                                 <td>
                                     #{{ business_request.id }}
                                 </td>
 
+
+                                <!-- CUSTOMER -->
 
                                 <td>
 
@@ -242,12 +413,14 @@ Manage and monitor customer business requests through the Faltasi platform.
                                 </td>
 
 
+                                <!-- SUBJECT -->
+
                                 <td>
-
                                     {{ business_request.subject|default:"No subject" }}
-
                                 </td>
 
+
+                                <!-- DEPARTMENT -->
 
                                 <td>
 
@@ -264,26 +437,28 @@ Manage and monitor customer business requests through the Faltasi platform.
                                 </td>
 
 
-                                <td>
+                                <!-- STATUS -->
 
+                                <td>
                                     {{ business_request.get_status_display }}
-
                                 </td>
 
 
-                                <td>
+                                <!-- PRIORITY -->
 
+                                <td>
                                     {{ business_request.get_priority_display }}
-
                                 </td>
 
+
+                                <!-- CREATED -->
 
                                 <td>
-
                                     {{ business_request.created_at|date:"Y-m-d H:i" }}
-
                                 </td>
 
+
+                                <!-- ACTION -->
 
                                 <td>
 
@@ -303,9 +478,7 @@ Manage and monitor customer business requests through the Faltasi platform.
                             <tr>
 
                                 <td colspan="8">
-
                                     No business requests found.
-
                                 </td>
 
                             </tr>
@@ -315,6 +488,54 @@ Manage and monitor customer business requests through the Faltasi platform.
                     </tbody>
 
                 </table>
+
+            </div>
+
+        </div>
+
+
+        <!-- ========================================================= -->
+        <!-- NAVIGATION -->
+        <!-- ========================================================= -->
+
+        <div class="dashboard-card">
+
+            <div class="hero-buttons">
+
+                {% if request.user.is_superuser %}
+
+                    <a
+                        href="{% url 'business_requests:switch_organization' %}"
+                        class="btn btn-secondary"
+                    >
+                        Switch Organization
+                    </a>
+
+                {% endif %}
+
+
+                <a
+                    href="{% url 'business_requests:business_dashboard' %}"
+                    class="btn btn-primary"
+                >
+                    Business Dashboard
+                </a>
+
+
+                <a
+                    href="{% url 'business_requests:department_management' %}"
+                    class="btn btn-secondary"
+                >
+                    Manage Departments
+                </a>
+
+
+                <a
+                    href="{% url 'business_requests:staff_management' %}"
+                    class="btn btn-secondary"
+                >
+                    User & Role Management
+                </a>
 
             </div>
 

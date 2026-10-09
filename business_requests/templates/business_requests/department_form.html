@@ -21,6 +21,8 @@
 
                 <div class="card-body p-4">
 
+                    <!-- PAGE HEADER -->
+
                     <h1 class="mb-2">
 
                         {% if department %}
@@ -36,10 +38,14 @@
                     </p>
 
 
+                    <!-- FORM -->
+
                     <form method="post">
 
                         {% csrf_token %}
 
+
+                        <!-- DEPARTMENT NAME -->
 
                         <div class="mb-3">
 
@@ -63,6 +69,8 @@
                         </div>
 
 
+                        <!-- DESCRIPTION -->
+
                         <div class="mb-4">
 
                             <label
@@ -83,7 +91,11 @@
                         </div>
 
 
-                        <div class="d-flex gap-2">
+                        <!-- ACTION BUTTONS -->
+
+                        <div class="d-flex flex-wrap gap-2">
+
+                            <!-- SAVE / CREATE -->
 
                             <button
                                 type="submit"
@@ -98,11 +110,24 @@
 
                             </button>
 
+
+                            <!-- BACK TO DEPARTMENTS -->
+
                             <a
                                 href="{% url 'business_requests:department_management' %}"
                                 class="btn btn-secondary"
                             >
-                                Cancel
+                                ← Back to Departments
+                            </a>
+
+
+                            <!-- DASHBOARD -->
+
+                            <a
+                                href="{% url 'business_requests:business_dashboard' %}"
+                                class="btn btn-outline-secondary"
+                            >
+                                Dashboard
                             </a>
 
                         </div>

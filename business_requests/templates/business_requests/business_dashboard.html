@@ -1,795 +1,219 @@
 {% extends "main/base.html" %}
 
-{% block title %}Business Dashboard | Faltasi{% endblock %}
+{% block title %}
+Business Dashboard | Faltasi Innovations Limited
+{% endblock %}
+
+{% block meta_description %}
+Business dashboard for managing your organization, users, departments and customer requests through the Faltasi platform.
+{% endblock %}
 
 {% block content %}
 
-<div class="container py-5">
+    {% if messages %}
+        {% for message in messages %}
+            <div class="container">
+                <div class="alert alert-{{ message.tags }}">
+                    {{ message }}
+                </div>
+            </div>
+        {% endfor %}
+    {% endif %}
 
-    <!-- ========================================================= -->
-    <!-- HEADER -->
-    <!-- ========================================================= -->
+<section class="page-section">
 
-    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4">
+    <div class="container">
 
-        <div>
-            <h1 class="mb-2">Business Dashboard</h1>
-
-            <p class="text-muted mb-0">
-                Manage your business, customers, staff, departments
-                and WhatsApp communications.
-            </p>
+        <!-- Page Header -->
+        <div class="page-header">
+            <div>
+                <h1>Business Dashboard</h1>
+                <p>Welcome to {{ organization.name }}.</p>
+            </div>
         </div>
 
-        <div class="mt-3 mt-md-0">
 
-            <a
-                href="{% url 'business_requests:business_profile' %}"
-                class="btn btn-primary"
-            >
-                Business Profile
-            </a>
+        <!-- Logged-in User -->
+        <div class="dashboard-card">
 
-        </div>
+            <h2>Logged-in User</h2>
 
-    </div>
-
-
-    <!-- ========================================================= -->
-    <!-- BUSINESS INFORMATION -->
-    <!-- ========================================================= -->
-
-    <div class="card shadow-sm mb-4">
-
-        <div class="card-body">
-
-            <div class="row align-items-center">
-
-                <!-- LOGO -->
-
-                <div class="col-md-2 text-center mb-3 mb-md-0">
-
-                    {% if organization.logo %}
-
-                        <img
-                            src="{{ organization.logo.url }}"
-                            alt="{{ organization.name }}"
-                            class="img-fluid rounded"
-                            style="
-                                max-width: 100px;
-                                max-height: 100px;
-                                object-fit: contain;
-                            "
-                        >
-
+            <p>
+                <strong>
+                    {% if request.user.get_full_name %}
+                        {{ request.user.get_full_name }}
                     {% else %}
-
-                        <div
-                            class="rounded-circle bg-light d-flex
-                                   align-items-center justify-content-center
-                                   mx-auto"
-                            style="
-                                width: 90px;
-                                height: 90px;
-                            "
-                        >
-
-                            <strong style="font-size: 28px;">
-                                {{ organization.name|first|upper }}
-                            </strong>
-
-                        </div>
-
+                        {{ request.user.username }}
                     {% endif %}
-
-                </div>
-
-
-                <!-- BUSINESS DETAILS -->
-
-                <div class="col-md-10">
-
-                    <h2 class="mb-2">
-                        {{ organization.name }}
-                    </h2>
-
-
-                    {% if organization.legal_name %}
-
-                        <p class="mb-1">
-                            <strong>Legal Name:</strong>
-                            {{ organization.legal_name }}
-                        </p>
-
-                    {% endif %}
-
-
-                    {% if organization.industry %}
-
-                        <p class="mb-1">
-                            <strong>Industry:</strong>
-                            {{ organization.industry }}
-                        </p>
-
-                    {% endif %}
-
-
-                    {% if organization.country %}
-
-                        <p class="mb-1">
-                            <strong>Country:</strong>
-                            {{ organization.country.name }}
-                        </p>
-
-                    {% endif %}
-
-
-                    {% if organization.city %}
-
-                        <p class="mb-1">
-                            <strong>City:</strong>
-                            {{ organization.city }}
-                        </p>
-
-                    {% endif %}
-
-
-                    {% if organization.status %}
-
-                        <p class="mb-0">
-
-                            <strong>Status:</strong>
-
-                            {% if organization.status == "active" %}
-
-                                <span class="badge bg-success">
-                                    Active
-                                </span>
-
-                            {% elif organization.status == "pending" %}
-
-                                <span class="badge bg-warning text-dark">
-                                    Pending
-                                </span>
-
-                            {% elif organization.status == "suspended" %}
-
-                                <span class="badge bg-danger">
-                                    Suspended
-                                </span>
-
-                            {% else %}
-
-                                <span class="badge bg-secondary">
-                                    {{ organization.status|title }}
-                                </span>
-
-                            {% endif %}
-
-                        </p>
-
-                    {% endif %}
-
-                </div>
-
-            </div>
-
-        </div>
-
-    </div>
-
-
-    <!-- ========================================================= -->
-    <!-- STATISTICS -->
-    <!-- ========================================================= -->
-
-    <div class="row g-4 mb-5">
-
-        <!-- CUSTOMERS -->
-
-        <div class="col-md-6 col-lg-3">
-
-            <div class="card shadow-sm h-100">
-
-                <div class="card-body">
-
-                    <h6 class="text-muted">
-                        Customers
-                    </h6>
-
-                    <h2 class="mb-0">
-                        {{ customer_count }}
-                    </h2>
-
-                    <small class="text-muted">
-                        Total customers
-                    </small>
-
-                </div>
-
-            </div>
-
-        </div>
-
-
-        <!-- REQUESTS -->
-
-        <div class="col-md-6 col-lg-3">
-
-            <div class="card shadow-sm h-100">
-
-                <div class="card-body">
-
-                    <h6 class="text-muted">
-                        Requests
-                    </h6>
-
-                    <h2 class="mb-0">
-                        {{ request_count }}
-                    </h2>
-
-                    <small class="text-muted">
-                        Business requests
-                    </small>
-
-                </div>
-
-            </div>
-
-        </div>
-
-
-        <!-- STAFF -->
-
-        <div class="col-md-6 col-lg-3">
-
-            <div class="card shadow-sm h-100">
-
-                <div class="card-body">
-
-                    <h6 class="text-muted">
-                        Staff
-                    </h6>
-
-                    <h2 class="mb-0">
-                        {{ staff_count }}
-                    </h2>
-
-                    <small class="text-muted">
-                        Organization members
-                    </small>
-
-                </div>
-
-            </div>
-
-        </div>
-
-
-        <!-- DEPARTMENTS -->
-
-        <div class="col-md-6 col-lg-3">
-
-            <div class="card shadow-sm h-100">
-
-                <div class="card-body">
-
-                    <h6 class="text-muted">
-                        Departments
-                    </h6>
-
-                    <h2 class="mb-0">
-                        {{ department_count }}
-                    </h2>
-
-                    <small class="text-muted">
-                        Business departments
-                    </small>
-
-                </div>
-
-            </div>
-
-        </div>
-
-    </div>
-
-
-    <!-- ========================================================= -->
-    <!-- QUICK ACTIONS -->
-    <!-- ========================================================= -->
-
-    <div class="mb-5">
-
-        <div class="mb-3">
-
-            <h2>
-                Quick Actions
-            </h2>
-
-            <p class="text-muted">
-                Quickly access the main areas of your business account.
+                </strong>
+            </p>
+
+            <p>
+                <strong>Username:</strong>
+                {{ request.user.username }}
+            </p>
+
+            <p>
+                <strong>Organization:</strong>
+                {{ organization.name }}
+            </p>
+
+            <p>
+                <strong>Organization Role:</strong>
+                {% if current_membership %}
+                    {{ current_membership.get_role_display }}
+                {% else %}
+                    —
+                {% endif %}
+            </p>
+
+            <p>
+                <strong>Department:</strong>
+                {% if department_membership %}
+                    {{ department_membership.department.name }}
+                {% else %}
+                    —
+                {% endif %}
+            </p>
+
+            <p>
+                <strong>Department Role:</strong>
+                {% if department_membership %}
+                    {{ department_membership.get_role_display }}
+                {% else %}
+                    —
+                {% endif %}
             </p>
 
         </div>
 
 
-        <div class="row g-4">
+        <!-- Business Overview -->
+        <div class="dashboard-card">
+
+            <h2>Business Overview</h2>
+
+            <p>
+                Overview of your organization's current activities.
+            </p>
+
+            <div class="hero-buttons">
+
+                <div class="dashboard-card">
+                    <h3>Customers</h3>
+                    <p>{{ customer_count }}</p>
+                </div>
+
+                <div class="dashboard-card">
+                    <h3>Business Requests</h3>
+                    <p>{{ request_count }}</p>
+                </div>
+
+                <div class="dashboard-card">
+                    <h3>Users</h3>
+                    <p>{{ staff_count }}</p>
+                </div>
+
+                <div class="dashboard-card">
+                    <h3>Departments</h3>
+                    <p>{{ department_count }}</p>
+                </div>
+
+            </div>
+
+        </div>
 
 
-            <!-- ================================================= -->
-            <!-- BUSINESS PROFILE -->
-            <!-- ================================================= -->
+        <!-- Business Management -->
+        <div class="dashboard-card">
 
-            <div class="col-md-6 col-lg-4">
+            <h2>Business Management</h2>
+
+            <p>
+                Manage your organization, users, departments and customer questions.
+            </p>
+
+            <div class="hero-buttons">
 
                 <a
                     href="{% url 'business_requests:business_profile' %}"
-                    class="text-decoration-none"
+                    class="btn btn-secondary"
                 >
-
-                    <div class="card shadow-sm h-100">
-
-                        <div class="card-body">
-
-                            <h5 class="card-title">
-                                Business Profile
-                            </h5>
-
-                            <p class="card-text text-muted">
-                                Update your business name, contact
-                                information, address, logo and settings.
-                            </p>
-
-                            <span class="btn btn-outline-primary btn-sm">
-                                Manage Profile
-                            </span>
-
-                        </div>
-
-                    </div>
-
+                    Business Profile
                 </a>
-
-            </div>
-
-
-            <!-- ================================================= -->
-            <!-- BUSINESS REQUESTS -->
-            <!-- ================================================= -->
-
-            <div class="col-md-6 col-lg-4">
-
-                <a
-                    href="{% url 'business_requests:dashboard' %}"
-                    class="text-decoration-none"
-                >
-
-                    <div class="card shadow-sm h-100">
-
-                        <div class="card-body">
-
-                            <h5 class="card-title">
-                                Business Requests
-                            </h5>
-
-                            <p class="card-text text-muted">
-                                View, assign and manage requests
-                                submitted by your customers.
-                            </p>
-
-                            <span class="btn btn-outline-primary btn-sm">
-                                View Requests
-                            </span>
-
-                        </div>
-
-                    </div>
-
-                </a>
-
-            </div>
-
-
-            <!-- ================================================= -->
-            <!-- STAFF -->
-            <!-- ================================================= -->
-
-            <div class="col-md-6 col-lg-4">
 
                 <a
                     href="{% url 'business_requests:staff_management' %}"
-                    class="text-decoration-none"
+                    class="btn btn-secondary"
                 >
-
-                    <div class="card shadow-sm h-100">
-
-                        <div class="card-body">
-
-                            <h5 class="card-title">
-                                Manage Staff
-                            </h5>
-
-                            <p class="card-text text-muted">
-                                Manage employees, roles and
-                                department assignments.
-                            </p>
-
-                            <span class="btn btn-outline-primary btn-sm">
-                                Manage Staff
-                            </span>
-
-                        </div>
-
-                    </div>
-
+                    Users & Roles
                 </a>
-
-            </div>
-
-
-            <!-- ================================================= -->
-            <!-- DEPARTMENTS -->
-            <!-- ================================================= -->
-
-            <div class="col-md-6 col-lg-4">
 
                 <a
                     href="{% url 'business_requests:department_management' %}"
-                    class="text-decoration-none"
+                    class="btn btn-secondary"
                 >
-
-                    <div class="card shadow-sm h-100">
-
-                        <div class="card-body">
-
-                            <h5 class="card-title">
-                                Departments
-                            </h5>
-
-                            <p class="card-text text-muted">
-                                Create and manage departments
-                                for your organization.
-                            </p>
-
-                            <span class="btn btn-outline-primary btn-sm">
-                                Manage Departments
-                            </span>
-
-                        </div>
-
-                    </div>
-
+                    Departments
                 </a>
-
-            </div>
-
-
-            <!-- ================================================= -->
-            <!-- WHATSAPP -->
-            <!-- ================================================= -->
-
-            <div class="col-md-6 col-lg-4">
 
                 <a
-                    href="#"
-                    class="text-decoration-none"
+                    href="{% url 'business_requests:upload_category_questions' %}"
+                    class="btn btn-secondary"
                 >
-
-                    <div class="card shadow-sm h-100">
-
-                        <div class="card-body">
-
-                            <h5 class="card-title">
-                                WhatsApp
-                            </h5>
-
-                            <p class="card-text text-muted">
-                                Connect WhatsApp, manage phone numbers,
-                                conversations and customer messages.
-                            </p>
-
-                            <span class="btn btn-outline-success btn-sm">
-                                WhatsApp
-                            </span>
-
-                        </div>
-
-                    </div>
-
+                    Categories & Questions
                 </a>
 
             </div>
-
-
-            <!-- ================================================= -->
-            <!-- ADMINISTRATION -->
-            <!-- ================================================= -->
-
-            <div class="col-md-6 col-lg-4">
-
-                <a
-                    href="/admin/"
-                    class="text-decoration-none"
-                >
-
-                    <div class="card shadow-sm h-100">
-
-                        <div class="card-body">
-
-                            <h5 class="card-title">
-                                Administration
-                            </h5>
-
-                            <p class="card-text text-muted">
-                                Access the Django administration
-                                area for system management.
-                            </p>
-
-                            <span class="btn btn-outline-secondary btn-sm">
-                                Administration
-                            </span>
-
-                        </div>
-
-                    </div>
-
-                </a>
-
-            </div>
-
 
         </div>
 
-    </div>
+
+        <!-- Business Operations -->
+        <div class="dashboard-card">
+
+            <h2>Business Operations</h2>
+
+            <p>
+                Access the areas used to handle your day-to-day business operations.
+            </p>
+
+            
+
+        </div>
 
 
-    <!-- ========================================================= -->
-    <!-- RECENT REQUESTS -->
-    <!-- ========================================================= -->
+        <!-- Dashboard Navigation -->
+        <div class="dashboard-card">
 
-    <div class="card shadow-sm mb-5">
-
-        <div class="card-body">
-
-            <div class="d-flex justify-content-between
-                        align-items-center mb-3">
-
-                <div>
-
-                    <h2 class="mb-1">
-                        Recent Requests
-                    </h2>
-
-                    <p class="text-muted mb-0">
-                        Latest customer business requests.
-                    </p>
-
-                </div>
-
+            <div class="hero-buttons">
 
                 <a
                     href="{% url 'business_requests:dashboard' %}"
-                    class="btn btn-sm btn-outline-primary"
+                    class="btn btn-primary"
                 >
-                    View All
+                    Business Requests
+                </a>
+
+                <a
+                    href="{% url 'business_requests:department_management' %}"
+                    class="btn btn-secondary"
+                >
+                    Manage Departments
+                </a>
+
+                <a
+                    href="{% url 'business_requests:staff_management' %}"
+                    class="btn btn-secondary"
+                >
+                    Users & Roles
                 </a>
 
             </div>
-
-
-            {% if recent_requests %}
-
-                <div class="table-responsive">
-
-                    <table class="table table-hover align-middle">
-
-                        <thead>
-
-                            <tr>
-
-                                <th>
-                                    ID
-                                </th>
-
-                                <th>
-                                    Customer
-                                </th>
-
-                                <th>
-                                    Subject
-                                </th>
-
-                                <th>
-                                    Status
-                                </th>
-
-                                <th>
-                                    Priority
-                                </th>
-
-                                <th>
-                                    Date
-                                </th>
-
-                            </tr>
-
-                        </thead>
-
-
-                        <tbody>
-
-                            {% for business_request in recent_requests %}
-
-                                <tr>
-
-                                    <td>
-                                        #{{ business_request.id }}
-                                    </td>
-
-
-                                    <td>
-
-                                        {% if business_request.customer %}
-
-                                            {{ business_request.customer.name }}
-
-                                        {% else %}
-
-                                            <span class="text-muted">
-                                                Unknown
-                                            </span>
-
-                                        {% endif %}
-
-                                    </td>
-
-
-                                    <td>
-
-                                        <a
-                                            href="{% url 'business_requests:request_detail' business_request.id %}"
-                                            class="text-decoration-none"
-                                        >
-
-                                            {{ business_request.subject|default:"No subject" }}
-
-                                        </a>
-
-                                    </td>
-
-
-                                    <td>
-
-                                        {% if business_request.status == "new" %}
-
-                                            <span class="badge bg-primary">
-                                                New
-                                            </span>
-
-                                        {% elif business_request.status == "in_progress" %}
-
-                                            <span class="badge bg-warning text-dark">
-                                                In Progress
-                                            </span>
-
-                                        {% elif business_request.status == "completed" %}
-
-                                            <span class="badge bg-success">
-                                                Completed
-                                            </span>
-
-                                        {% elif business_request.status == "cancelled" %}
-
-                                            <span class="badge bg-danger">
-                                                Cancelled
-                                            </span>
-
-                                        {% else %}
-
-                                            <span class="badge bg-secondary">
-                                                {{ business_request.status|title }}
-                                            </span>
-
-                                        {% endif %}
-
-                                    </td>
-
-
-                                    <td>
-
-                                        {% if business_request.priority %}
-
-                                            {{ business_request.priority|title }}
-
-                                        {% else %}
-
-                                            Normal
-
-                                        {% endif %}
-
-                                    </td>
-
-
-                                    <td>
-                                        {{ business_request.created_at|date:"d M Y" }}
-                                    </td>
-
-                                </tr>
-
-                            {% endfor %}
-
-                        </tbody>
-
-                    </table>
-
-                </div>
-
-
-            {% else %}
-
-                <div class="text-center py-5">
-
-                    <h5>
-                        No requests yet
-                    </h5>
-
-                    <p class="text-muted">
-                        Customer business requests will appear here.
-                    </p>
-
-                    <a
-                        href="{% url 'business_requests:dashboard' %}"
-                        class="btn btn-outline-primary"
-                    >
-                        View Business Requests
-                    </a>
-
-                </div>
-
-            {% endif %}
 
         </div>
 
     </div>
 
-
-    <!-- ========================================================= -->
-    <!-- FOOTER NAVIGATION -->
-    <!-- ========================================================= -->
-
-    <div class="d-flex flex-wrap gap-2">
-
-        <a
-            href="{% url 'business_requests:business_profile' %}"
-            class="btn btn-outline-secondary"
-        >
-            Business Profile
-        </a>
-
-        <a
-            href="{% url 'business_requests:department_management' %}"
-            class="btn btn-outline-secondary"
-        >
-            Departments
-        </a>
-
-        <a
-            href="{% url 'business_requests:staff_management' %}"
-            class="btn btn-outline-secondary"
-        >
-            Staff
-        </a>
-
-        <a
-            href="{% url 'business_requests:dashboard' %}"
-            class="btn btn-outline-secondary"
-        >
-            Requests
-        </a>
-
-    </div>
-
-</div>
+</section>
 
 {% endblock %}

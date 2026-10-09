@@ -1,5 +1,5 @@
+
 from django.urls import path
-from main.views import sitemap
 from django.contrib.sitemaps.views import sitemap
 from main.sitemaps import StaticViewSitemap
 from . import views
@@ -14,10 +14,16 @@ urlpatterns = [
     path("about/", views.about, name="about"),
     path("services/", views.services, name="services"),
     path("contact/", views.contact, name="contact"),
-    path("contact2/", views.contact2, name="contact2"),
     path("products/", views.products, name="products"),
-    path("products2/", views.products2, name="products2"),
-    path('team/', views.team, name='team'),
+
+    # Product-specific quote requests
+    path(
+        "request-quote/",
+        views.request_quote,
+        name="request_quote",
+    ),
+
+    path("team/", views.team, name="team"),
     path(
         "sitemap.xml",
         sitemap,
@@ -26,5 +32,4 @@ urlpatterns = [
     ),
     path("partners/", views.partners, name="partners"),
     path("privacy-policy/", views.privacy_policy, name="privacy_policy"),
-    
 ]

@@ -1,0 +1,322 @@
+
+{% extends 'main/base.html' %}
+
+{% load static %}
+
+{% block title %}
+Request a Quote | Faltasi Innovations Limited
+{% endblock %}
+
+{% block meta_description %}
+Request a quotation for products supplied by Faltasi Innovations Limited.
+Select your requirements and our team will contact you.
+{% endblock %}
+
+{% block content %}
+
+<!-- PAGE HERO -->
+
+<section class="page-hero">
+
+    <div class="container">
+
+        <span class="section-label">
+            REQUEST A QUOTE
+        </span>
+
+        <h1>
+            Tell us what you need.
+        </h1>
+
+        <p>
+            Share your requirements and our team will
+            contact you about your selected product.
+        </p>
+
+    </div>
+
+</section>
+
+
+<!-- QUOTE SECTION -->
+
+<section class="section">
+
+    <div class="container contact-grid">
+
+        <!-- SELECTED PRODUCT -->
+
+        <div class="contact-info">
+
+            <span class="section-label">
+                YOUR SELECTED PRODUCT
+            </span>
+
+            {% if product %}
+
+                <h2>
+                    {{ product.name }}
+                </h2>
+
+                {% if product.image %}
+
+                    <img
+                        src="{{ product.image.url }}"
+                        alt="{{ product.name }}"
+                        loading="lazy"
+                    >
+
+                {% endif %}
+
+                {% if product.short_description %}
+
+                    <p>
+                        {{ product.short_description }}
+                    </p>
+
+                {% elif product.description %}
+
+                    <p>
+                        {{ product.description|truncatewords:35 }}
+                    </p>
+
+                {% endif %}
+
+                {% if product.price != None %}
+
+                    <p>
+                        <strong>Price:</strong>
+                        {{ product.currency }}
+                        {{ product.price|floatformat:2 }}
+                        {% if product.unit %}
+                            / {{ product.get_unit_display }}
+                        {% endif %}
+                    </p>
+
+                {% else %}
+
+                    <p>
+                        <strong>Price:</strong>
+                        Available on request
+                    </p>
+
+                {% endif %}
+
+                <p>
+                    Your selected product is fixed for this request.
+                    To request a quote for another product, return
+                    to the Products page.
+                </p>
+
+                <p>
+                    <a href="{% url 'products' %}">
+                        Browse other products
+                    </a>
+                </p>
+
+            {% else %}
+
+                <h2>
+                    Product unavailable
+                </h2>
+
+                <p>
+                    Please return to our Products page and select
+                    an available product.
+                </p>
+
+                <p>
+                    <a href="{% url 'products' %}">
+                        Browse products
+                    </a>
+                </p>
+
+            {% endif %}
+
+        </div>
+
+
+        <!-- QUOTE FORM -->
+
+        <div class="contact-form-container">
+
+            {% if success %}
+
+                <div class="contact-success">
+
+                    <h2>
+                        Request received!
+                    </h2>
+
+                    <p>
+                        Thank you for your interest in
+                        {{ product.name }}.
+                    </p>
+
+                    <p>
+                        Our team will review your request
+                        and contact you shortly.
+                    </p>
+
+                    <a
+                        href="{% url 'products' %}"
+                        class="btn btn-primary"
+                    >
+                        Browse More Products
+                    </a>
+
+                </div>
+
+            {% elif product_error %}
+
+                <div class="contact-error">
+
+                    <h2>
+                        Unable to proceed
+                    </h2>
+
+                    <p>
+                        {{ product_error }}
+                    </p>
+
+                    <a
+                        href="{% url 'products' %}"
+                        class="btn btn-primary"
+                    >
+                        Return to Products
+                    </a>
+
+                </div>
+
+            {% else %}
+
+                {% if error %}
+
+                    <p class="contact-error">
+                        {{ error }}
+                    </p>
+
+                {% endif %}
+
+                <h2>
+                    Your Details
+                </h2>
+
+                <p>
+                    Please provide your contact details and
+                    tell us what you require.
+                </p>
+
+                <form
+                    method="POST"
+                    action="{% url 'request_quote' %}?product_id={{ product.id }}"
+                >
+
+                    {% csrf_token %}
+
+                    <!-- FIXED PRODUCT ID -->
+
+                    <input
+                        type="hidden"
+                        name="product_id"
+                        value="{{ product.id }}"
+                    >
+
+
+                    <!-- CUSTOMER NAME -->
+
+                    <div class="form-group">
+
+                        <label for="name">
+                            Your Name
+                        </label>
+
+                        <input
+                            type="text"
+                            id="name"
+                            name="name"
+                            placeholder="Enter your name"
+                            autocomplete="name"
+                            required
+                        >
+
+                    </div>
+
+
+                    <!-- EMAIL -->
+
+                    <div class="form-group">
+
+                        <label for="email">
+                            Email Address
+                        </label>
+
+                        <input
+                            type="email"
+                            id="email"
+                            name="email"
+                            placeholder="Enter your email"
+                            autocomplete="email"
+                        >
+
+                    </div>
+
+
+                    <!-- PHONE -->
+
+                    <div class="form-group">
+
+                        <label for="phone">
+                            Phone Number
+                        </label>
+
+                        <input
+                            type="tel"
+                            id="phone"
+                            name="phone"
+                            placeholder="Enter your phone number"
+                            autocomplete="tel"
+                        >
+
+                    </div>
+
+
+                    <!-- CUSTOMER MESSAGE -->
+
+                    <div class="form-group">
+
+                        <label for="message">
+                            What do you need?
+                        </label>
+
+                        <textarea
+                            id="message"
+                            name="message"
+                            rows="6"
+                            placeholder="Tell us the quantity, specifications, budget or delivery requirements."
+                            required
+                        ></textarea>
+
+                    </div>
+
+
+                    <!-- SUBMIT -->
+
+                    <button
+                        type="submit"
+                        class="btn btn-primary form-button"
+                    >
+                        Submit Quote Request
+                    </button>
+
+                </form>
+
+            {% endif %}
+
+        </div>
+
+    </div>
+
+</section>
+
+{% endblock %}

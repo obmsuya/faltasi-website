@@ -6,6 +6,7 @@
 
 <div class="container py-5">
 
+    <!-- PAGE HEADER -->
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4">
 
         <div>
@@ -30,6 +31,7 @@
     </div>
 
 
+    <!-- DEPARTMENTS -->
     {% if departments %}
 
         <div class="card shadow-sm">
@@ -65,13 +67,19 @@
                                     </td>
 
                                     <td>
+
                                         {% if department.description %}
+
                                             {{ department.description }}
+
                                         {% else %}
+
                                             <span class="text-muted">
                                                 No description
                                             </span>
+
                                         {% endif %}
+
                                     </td>
 
                                     <td>
@@ -98,6 +106,7 @@
 
                                     <td class="text-end">
 
+                                        <!-- EDIT -->
                                         <a
                                             href="{% url 'business_requests:department_edit' department.id %}"
                                             class="btn btn-sm btn-outline-primary"
@@ -105,10 +114,12 @@
                                             Edit
                                         </a>
 
+
+                                        <!-- ACTIVATE / DEACTIVATE -->
                                         <form
                                             method="post"
                                             action="{% url 'business_requests:department_toggle' department.id %}"
-                                            style="display: inline;"
+                                            style="display:inline;"
                                         >
 
                                             {% csrf_token %}
@@ -153,6 +164,7 @@
 
     {% else %}
 
+        <!-- NO DEPARTMENTS -->
         <div class="card shadow-sm">
 
             <div class="card-body text-center py-5">
@@ -168,7 +180,7 @@
                     href="{% url 'business_requests:department_add' %}"
                     class="btn btn-primary"
                 >
-                    Create First Department
+                    + Create First Department
                 </a>
 
             </div>
@@ -178,13 +190,30 @@
     {% endif %}
 
 
-    <div class="mt-4">
+    <!-- NAVIGATION -->
+    <div class="mt-4 d-flex flex-wrap gap-2">
 
         <a
             href="{% url 'business_requests:business_dashboard' %}"
             class="btn btn-secondary"
         >
             ← Back to Dashboard
+        </a>
+
+
+        <a
+            href="{% url 'business_requests:department_add' %}"
+            class="btn btn-primary"
+        >
+            + Add Department
+        </a>
+
+
+        <a
+            href="{% url 'business_requests:staff_management' %}"
+            class="btn btn-outline-primary"
+        >
+            Staff Management →
         </a>
 
     </div>

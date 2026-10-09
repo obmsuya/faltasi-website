@@ -298,6 +298,14 @@ class BusinessRequest(models.Model):
         related_name="business_requests"
     )
 
+    product = models.ForeignKey(
+        "products.Product",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="business_requests",
+    )
+
     # ---------------------------------------------------------
     # MANAGEMENT
     # ---------------------------------------------------------

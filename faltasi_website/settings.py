@@ -177,5 +177,5 @@ EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 LOGIN_URL = "/accounts/login/"
-LOGIN_REDIRECT_URL = "/business-requests/"
+LOGIN_REDIRECT_URL = "/business-requests/dashboard/"
 LOGOUT_REDIRECT_URL = "/"
