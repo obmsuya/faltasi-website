@@ -2030,122 +2030,41 @@ def webhook(request):
 
 
 
+        # Reuse an active conversation when one already exists.
+        # Only look for a website request and create a conversation
+        # when the customer does not yet have an active conversation.
         if not conversation:
-
-
-
-        # =================================================
-
-        # FIND AN OPEN EXISTING BUSINESS REQUEST
-
-        # =================================================
-
-
-
-                open_request = (
-
-                    BusinessRequest.objects
-
-                    .filter(
-
-                        customer=customer,
-
-                        category__organization=organization,
+            open_request = (
+                BusinessRequest.objects
+                .filter(
+                    customer=customer,
+                    category__organization=organization,
                     source="website",
-
-                        status__in=[
-
-                            "new",
-
-                            "in_progress",
-
-                            "waiting_customer",
-
-                            "waiting_approval",
-
-                        ],
-
-                    )
-
-                    .order_by("-created_at")
-
-                    .first()
-
+                    status__in=[
+                        "new",
+                        "in_progress",
+                        "waiting_customer",
+                        "waiting_approval",
+                    ],
                 )
+                .order_by("-created_at")
+                .first()
+            )
 
+            print("OPEN BUSINESS REQUEST FOUND:", open_request)
 
+            conversation = Conversation.objects.create(
+                organization=organization,
+                whatsapp_phone_number=whatsapp_phone,
+                customer=customer,
+                phone_number=sender,
+                whatsapp_user_id=sender,
+                business_request=open_request,
+                status="active",
+            )
 
-                print(
-
-                    "OPEN BUSINESS REQUEST FOUND:",
-
-                    open_request,
-
-                )
-
-
-
-        # =================================================
-
-        # CREATE NEW CONVERSATION
-
-        # =================================================
-
-
-
-        conversation = Conversation.objects.create(
-
-            organization=organization,
-
-            whatsapp_phone_number=whatsapp_phone,
-
-            customer=customer,
-
-            phone_number=sender,
-
-            whatsapp_user_id=sender,
-
-            business_request=open_request,
-
-            status="active",
-
-        )
-
-
-
-        print(
-
-            "NEW CONVERSATION CREATED:",
-
-            conversation,
-
-        )
-
-
-
-        print(
-
-            "LINKED BUSINESS REQUEST:",
-
-            conversation.business_request,
-
-        )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+            print("NEW CONVERSATION CREATED:", conversation)
+            print("LINKED BUSINESS REQUEST:", conversation.business_request)
 
         # =================================================
 

@@ -3,8 +3,6 @@
 {% block title %}Add User | Faltasi{% endblock %}
 
 {% block content %}
-
-
 {% if messages %}
     {% for message in messages %}
         <div class="container">
@@ -15,65 +13,35 @@
     {% endfor %}
 {% endif %}
 
-
-
 <div class="container">
-
-    <!-- PAGE HEADER -->
     <div class="page-header">
-
         <div>
             <h1>Add User</h1>
-
             <p>
                 Create a user account and assign organization and
                 department responsibilities.
             </p>
         </div>
-
     </div>
 
-
-    <!-- ORGANIZATION -->
     <div class="card organization-card">
-
         <h2>{{ organization.name }}</h2>
-
-        <p>
-            You are adding a user to this organization.
-        </p>
-
+        <p>You are adding a user to this organization.</p>
     </div>
 
-
-    <!-- FORM -->
     <div class="card">
-
         <h2>User Information</h2>
-
         <p class="form-introduction">
             Enter the user's information below. The user will use
             the username and password to log in to the system.
         </p>
 
-
-        <form
-            method="post"
-            action="{% url 'business_requests:add_department_member' %}"
-        >
-
+        <form method="post" action="{% url 'business_requests:add_department_member' %}">
             {% csrf_token %}
 
-
-            <!-- FIRST AND LAST NAME -->
             <div class="form-row">
-
                 <div class="form-group">
-
-                    <label for="first_name">
-                        First Name
-                    </label>
-
+                    <label for="first_name">First Name</label>
                     <input
                         type="text"
                         name="first_name"
@@ -81,16 +49,10 @@
                         value="{{ form_data.first_name|default:'' }}"
                         placeholder="First name"
                     >
-
                 </div>
 
-
                 <div class="form-group">
-
-                    <label for="last_name">
-                        Last Name
-                    </label>
-
+                    <label for="last_name">Last Name</label>
                     <input
                         type="text"
                         name="last_name"
@@ -98,19 +60,11 @@
                         value="{{ form_data.last_name|default:'' }}"
                         placeholder="Last name"
                     >
-
                 </div>
-
             </div>
 
-
-            <!-- USERNAME -->
             <div class="form-group">
-
-                <label for="username">
-                    Username *
-                </label>
-
+                <label for="username">Username *</label>
                 <input
                     type="text"
                     name="username"
@@ -120,22 +74,11 @@
                     autocomplete="username"
                     placeholder="e.g. john"
                 >
-
-                <small>
-                    This username will be used when logging into
-                    the system.
-                </small>
-
+                <small>This username will be used when logging into the system.</small>
             </div>
 
-
-            <!-- EMAIL -->
             <div class="form-group">
-
-                <label for="email">
-                    Email Address *
-                </label>
-
+                <label for="email">Email Address *</label>
                 <input
                     type="email"
                     name="email"
@@ -145,19 +88,27 @@
                     autocomplete="email"
                     placeholder="user@example.com"
                 >
-
             </div>
 
+            <div class="form-group">
+                <label for="whatsapp_number">WhatsApp Number</label>
+                <input
+                    type="tel"
+                    name="whatsapp_number"
+                    id="whatsapp_number"
+                    value="{{ form_data.whatsapp_number|default:'' }}"
+                    autocomplete="tel"
+                    placeholder="+255764819996"
+                >
+                <small>
+                    Enter the staff member's WhatsApp number, preferably in international format
+                    (for example, +255764819996). This number will receive assignment notifications.
+                </small>
+            </div>
 
-            <!-- PASSWORDS -->
             <div class="form-row">
-
                 <div class="form-group">
-
-                    <label for="password">
-                        Password *
-                    </label>
-
+                    <label for="password">Password *</label>
                     <input
                         type="password"
                         name="password"
@@ -167,20 +118,11 @@
                         autocomplete="new-password"
                         placeholder="Minimum 8 characters"
                     >
-
-                    <small>
-                        Password must contain at least 8 characters.
-                    </small>
-
+                    <small>Password must contain at least 8 characters.</small>
                 </div>
 
-
                 <div class="form-group">
-
-                    <label for="password_confirm">
-                        Confirm Password *
-                    </label>
-
+                    <label for="password_confirm">Confirm Password *</label>
                     <input
                         type="password"
                         name="password_confirm"
@@ -190,182 +132,70 @@
                         autocomplete="new-password"
                         placeholder="Repeat password"
                     >
-
                 </div>
-
             </div>
 
-
-            <!-- ORGANIZATION ROLE -->
             <div class="form-group">
-
-                <label for="organization_role">
-                    Organization Role *
-                </label>
-
-                <select
-                    name="organization_role"
-                    id="organization_role"
-                    required
-                >
-
-                    <option value="">
-                        Select Organization Role
-                    </option>
-
+                <label for="organization_role">Organization Role *</label>
+                <select name="organization_role" id="organization_role" required>
+                    <option value="">Select Organization Role</option>
                     {% for value, label, description in organization_roles %}
-
                         <option
                             value="{{ value }}"
-                            {% if form_data.organization_role == value %}
-                                selected
-                            {% endif %}
-                        >
-                            {{ label }}
-                        </option>
-
+                            {% if form_data.organization_role == value %}selected{% endif %}
+                        >{{ label }}</option>
                     {% endfor %}
-
                 </select>
-
-                <small>
-                    This determines the user's level of access
-                    within the organization.
-                </small>
-
+                <small>This determines the user's level of access within the organization.</small>
             </div>
 
-
-            <!-- DEPARTMENT -->
             <div class="form-group">
-
-                <label for="department_id">
-                    Department
-                </label>
-
-                <select
-                    name="department_id"
-                    id="department_id"
-                >
-
-                    <option value="">
-                        No Department
-                    </option>
-
+                <label for="department_id">Department</label>
+                <select name="department_id" id="department_id">
+                    <option value="">No Department</option>
                     {% for department in departments %}
-
                         <option
                             value="{{ department.id }}"
-                            {% if form_data.department_id == department.id|stringformat:"s" %}
-                                selected
-                            {% endif %}
-                        >
-                            {{ department.name }}
-                        </option>
-
+                            {% if form_data.department_id == department.id|stringformat:"s" %}selected{% endif %}
+                        >{{ department.name }}</option>
                     {% endfor %}
-
                 </select>
-
-                <small>
-                    Only departments belonging to
-                    {{ organization.name }} are shown.
-                </small>
-
+                <small>Only departments belonging to {{ organization.name }} are shown.</small>
             </div>
 
-
-            <!-- DEPARTMENT ROLE -->
             <div class="form-group">
-
-                <label for="department_role">
-                    Department Role
-                </label>
-
-                <select
-                    name="department_role"
-                    id="department_role"
-                >
-
-                    <option value="">
-                        Select Department Role
-                    </option>
-
+                <label for="department_role">Department Role</label>
+                <select name="department_role" id="department_role">
+                    <option value="">Select Department Role</option>
                     {% for value, label in department_roles %}
-
                         <option
                             value="{{ value }}"
-                            {% if form_data.department_role == value %}
-                                selected
-                            {% endif %}
-                        >
-                            {{ label }}
-                        </option>
-
+                            {% if form_data.department_role == value %}selected{% endif %}
+                        >{{ label }}</option>
                     {% endfor %}
-
                 </select>
-
-                <small>
-                    This determines the user's responsibility
-                    within the selected department.
-                </small>
-
+                <small>This determines the user's responsibility within the selected department.</small>
             </div>
 
-
-            <!-- FORM ACTIONS -->
             <div class="form-actions">
-
-                <a
-                    href="{% url 'business_requests:staff_management' %}"
-                    class="btn btn-secondary"
-                >
+                <a href="{% url 'business_requests:staff_management' %}" class="btn btn-secondary">
                     ← Back to Users
                 </a>
-
-
-                <button
-                    type="submit"
-                    class="btn btn-primary"
-                >
-                    Create User
-                </button>
-
+                <button type="submit" class="btn btn-primary">Create User</button>
             </div>
-
-
         </form>
-
     </div>
 
-
-    <!-- NAVIGATION -->
     <div class="navigation-buttons">
-
-        <a
-            href="{% url 'business_requests:business_dashboard' %}"
-            class="btn btn-outline"
-        >
+        <a href="{% url 'business_requests:business_dashboard' %}" class="btn btn-outline">
             ← Dashboard
         </a>
-
-        <a
-            href="{% url 'business_requests:department_management' %}"
-            class="btn btn-outline"
-        >
+        <a href="{% url 'business_requests:department_management' %}" class="btn btn-outline">
             Departments
         </a>
-
-        <a
-            href="{% url 'business_requests:staff_management' %}"
-            class="btn btn-outline"
-        >
-            Users & Roles
+        <a href="{% url 'business_requests:staff_management' %}" class="btn btn-outline">
+            Users &amp; Roles
         </a>
-
     </div>
-
 </div>
-
 {% endblock %}

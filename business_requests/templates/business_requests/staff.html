@@ -1,272 +1,169 @@
 {% extends "main/base.html" %}
 
-{% block title %}User & Role Management | Faltasi{% endblock %}
+{% block title %}User &amp; Role Management | Faltasi{% endblock %}
 
 {% block content %}
-
 <div class="container">
-
     <div class="page-header">
-
         <div>
-            <h1>User & Role Management</h1>
-
-            <p>
-                Manage users, organization roles and department assignments.
-            </p>
+            <h1>User &amp; Role Management</h1>
+            <p>Manage users, organization roles and department assignments.</p>
         </div>
-
         <div>
-            <a href="{% url 'business_requests:add_department_member' %}"
-               class="btn btn-primary">
+            <a href="{% url 'business_requests:add_department_member' %}" class="btn btn-primary">
                 + Add User
             </a>
         </div>
-
     </div>
-
 
     <div class="card organization-card">
-
         <h2>{{ organization.name }}</h2>
-
-        <p>
-            Users and permissions belonging to this organization.
-        </p>
-
+        <p>Users and permissions belonging to this organization.</p>
     </div>
 
-
     <div class="card">
-
         <div class="section-header">
-
             <div>
                 <h2>Organization Users</h2>
-
-                <p class="muted">
-                    Manage user access and responsibilities.
-                </p>
+                <p class="muted">Manage user access and responsibilities.</p>
             </div>
-
             <div>
                 <strong>{{ user_rows|length }}</strong>
                 user{{ user_rows|length|pluralize }}
             </div>
-
         </div>
-
 
         {% if user_rows %}
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Name</th>
+                            <th>WhatsApp Number</th>
+                            <th>Organization Role</th>
+                            <th>Department</th>
+                            <th>Department Role</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in user_rows %}
+                            <tr>
+                                <td>
+                                    <strong>{{ row.user.username }}</strong><br>
+                                    <small>{{ row.user.email|default:"No email" }}</small>
+                                </td>
 
-        <div class="table-responsive">
+                                <td>
+                                    {% if row.user.get_full_name %}
+                                        {{ row.user.get_full_name }}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
 
-            <table class="table">
+                                <td>
+                                    {% if row.staff_contact and row.staff_contact.whatsapp_number %}
+                                        {{ row.staff_contact.whatsapp_number }}
+                                    {% else %}
+                                        <span class="muted">Not set</span>
+                                    {% endif %}
+                                </td>
 
-                <thead>
+                                <td>
+                                    <span class="role-badge">{{ row.membership.get_role_display }}</span>
+                                </td>
 
-                    <tr>
-                        <th>User</th>
-                        <th>Name</th>
-                        <th>Organization Role</th>
-                        <th>Department</th>
-                        <th>Department Role</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                    </tr>
+                                <td>
+                                    {% if row.department_membership %}
+                                        {{ row.department_membership.department.name }}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
 
-                </thead>
+                                <td>
+                                    {% if row.department_membership %}
+                                        {{ row.department_membership.get_role_display }}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
 
+                                <td>
+                                    {% if row.membership.is_active and row.user.is_active %}
+                                        <span class="status active">Active</span>
+                                    {% else %}
+                                        <span class="status inactive">Inactive</span>
+                                    {% endif %}
+                                </td>
 
-                <tbody>
-
-                    {% for row in user_rows %}
-
-                    <tr>
-
-                        <td>
-                            <strong>
-                                {{ row.user.username }}
-                            </strong>
-
-                            <br>
-
-                            <small>
-                                {{ row.user.email|default:"No email" }}
-                            </small>
-                        </td>
-
-
-                        <td>
-
-                            {% if row.user.get_full_name %}
-                                {{ row.user.get_full_name }}
-                            {% else %}
-                                —
-                            {% endif %}
-
-                        </td>
-
-
-                        <td>
-
-                            <span class="role-badge">
-                                {{ row.membership.get_role_display }}
-                            </span>
-
-                        </td>
-
-
-                        <td>
-
-                            {% if row.department_membership %}
-                                {{ row.department_membership.department.name }}
-                            {% else %}
-                                —
-                            {% endif %}
-
-                        </td>
-
-
-                        <td>
-
-                            {% if row.department_membership %}
-                                {{ row.department_membership.get_role_display }}
-                            {% else %}
-                                —
-                            {% endif %}
-
-                        </td>
-
-
-                        <td>
-
-                            {% if row.membership.is_active and row.user.is_active %}
-
-                                <span class="status active">
-                                    Active
-                                </span>
-
-                            {% else %}
-
-                                <span class="status inactive">
-                                    Inactive
-                                </span>
-
-                            {% endif %}
-
-                        </td>
-
-
-                        <td>
-
-                            <a
-                                href="{% url 'business_requests:edit_user' row.user.id %}"
-                                class="btn btn-secondary"
-                            >
-                                Edit
-                            </a>
-
-                            {% if row.membership.role != "owner" %}
-
-                                {% if row.membership.is_active %}
-
+                                <td>
                                     <a
-                                        href="{% url 'business_requests:toggle_user_status' row.user.id %}"
+                                        href="{% url 'business_requests:edit_user' row.user.id %}"
                                         class="btn btn-secondary"
-                                    >
-                                        Deactivate
-                                    </a>
+                                    >Edit</a>
 
-                                {% else %}
-
-                                    <a
-                                        href="{% url 'business_requests:toggle_user_status' row.user.id %}"
-                                        class="btn btn-primary"
-                                    >
-                                        Reactivate
-                                    </a>
-
-                                {% endif %}
-
-                            {% endif %}
-
-
-                        </td>
-
-                    </tr>
-
-                    {% endfor %}
-
-                </tbody>
-
-            </table>
-
-        </div>
-
+                                    {% if row.membership.role != "owner" %}
+                                        {% if row.membership.is_active %}
+                                            <a
+                                                href="{% url 'business_requests:toggle_user_status' row.user.id %}"
+                                                class="btn btn-secondary"
+                                            >Deactivate</a>
+                                        {% else %}
+                                            <a
+                                                href="{% url 'business_requests:toggle_user_status' row.user.id %}"
+                                                class="btn btn-primary"
+                                            >Reactivate</a>
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         {% else %}
-
-        <div class="empty-state">
-
-            <h3>No users found</h3>
-
-            <p>
-                There are currently no users registered
-                for this organization.
-            </p>
-
-            <a href="{% url 'business_requests:add_department_member' %}"
-               class="btn btn-primary">
-                + Add User
-            </a>
-
-        </div>
-
+            <div class="empty-state">
+                <h3>No users found</h3>
+                <p>There are currently no users registered for this organization.</p>
+                <a href="{% url 'business_requests:add_department_member' %}" class="btn btn-primary">
+                    + Add User
+                </a>
+            </div>
         {% endif %}
-
     </div>
 
-
     <div class="card">
-
         <h2>Organization Roles</h2>
-
         <div class="role-list">
-
             <div class="role-item">
                 <strong>Owner</strong>
                 <span>Full control of the organization.</span>
             </div>
-
             <div class="role-item">
                 <strong>Admin</strong>
                 <span>Manages users and organization operations.</span>
             </div>
-
             <div class="role-item">
                 <strong>Manager</strong>
                 <span>Manages day-to-day operations and teams.</span>
             </div>
-
             <div class="role-item">
                 <strong>Agent</strong>
                 <span>Handles customers and assigned requests.</span>
             </div>
-
             <div class="role-item">
                 <strong>Staff</strong>
                 <span>Performs assigned operational work.</span>
             </div>
-
             <div class="role-item">
                 <strong>Viewer</strong>
                 <span>Read-only access to permitted information.</span>
             </div>
-
         </div>
-
     </div>
-
 </div>
-
 {% endblock %}

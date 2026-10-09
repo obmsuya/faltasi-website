@@ -13,6 +13,7 @@ from .models import (
     BusinessRequest,
     RequestAssignment,
     WorkflowStep,
+    StaffContact,
 )
 from django.contrib.auth import login
 from django.core.mail import send_mail
@@ -1819,6 +1820,131 @@ def assign_request(request, request_id):
     )
 
     # ---------------------------------------------------------
+    # WHATSAPP NOTIFICATION TO ASSIGNED STAFF
+    # ---------------------------------------------------------
+
+    staff_contact = StaffContact.objects.filter(
+        user=staff_user
+    ).first()
+
+    if not staff_contact or not staff_contact.whatsapp_number.strip():
+        messages.warning(
+            request,
+            (
+                f"{staff_user.get_full_name() or staff_user.username} "
+                "was assigned successfully, but no WhatsApp number is saved "
+                "for this staff member. Add one in Staff Management to enable notifications."
+            ),
+        )
+    else:
+        organization = business_request.customer.organization
+        whatsapp_phone = (
+            WhatsAppPhoneNumber.objects
+            .filter(
+                organization=organization,
+                status="connected",
+                is_active=True,
+            )
+            .order_by("-is_default", "id")
+            .first()
+        )
+
+        if not whatsapp_phone:
+            messages.warning(
+                request,
+                (
+                    "The request was assigned successfully, but this "
+                    "organization has no active WhatsApp connection. "
+                    "The staff member was not notified."
+                ),
+            )
+        else:
+            staff_name_for_message = (
+                staff_user.get_full_name() or staff_user.username
+            )
+            request_subject = getattr(
+                business_request,
+                "subject",
+                "",
+            ) or f"Request #{business_request.id}"
+            customer_name = (
+                business_request.customer.name
+                if business_request.customer_id
+                else "Not provided"
+            )
+            customer_phone = (
+                business_request.customer.phone
+                if business_request.customer_id
+                else "Not provided"
+            )
+            notification_text = (
+                f"Hello {staff_name_for_message}, a business request "
+                f"has been assigned to you.\n\n"
+                f"Request: #{business_request.id}\n"
+                f"Subject: {request_subject}\n"
+                f"Department: {business_request.department.name}\n"
+                f"Customer: {customer_name}\n"
+                f"Customer phone: {customer_phone}\n\n"
+                "Please open your business dashboard to review and process it."
+            )
+
+            try:
+                whatsapp_response = send_whatsapp_message(
+                    whatsapp_phone,
+                    staff_contact.whatsapp_number.strip(),
+                    notification_text,
+                )
+
+                if (
+                    whatsapp_response is not None
+                    and getattr(whatsapp_response, "status_code", None)
+                    in (200, 201)
+                ):
+                    messages.success(
+                        request,
+                        f"WhatsApp notification sent to {staff_name_for_message}.",
+                    )
+                else:
+                    response_status = getattr(
+                        whatsapp_response,
+                        "status_code",
+                        "no response",
+                    )
+                    response_text = getattr(
+                        whatsapp_response,
+                        "text",
+                        "",
+                    )
+                    print(
+                        "STAFF WHATSAPP NOTIFICATION FAILED:",
+                        response_status,
+                        response_text,
+                    )
+                    messages.warning(
+                        request,
+                        (
+                            "The request was assigned successfully, but "
+                            "WhatsApp could not confirm delivery to the staff "
+                            "member. Check the WhatsApp connection and Meta's "
+                            "messaging-window/template requirements."
+                        ),
+                    )
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception(
+                    "WhatsApp notification failed for request %s assigned to user %s",
+                    business_request.id,
+                    staff_user.id,
+                )
+                messages.warning(
+                    request,
+                    (
+                        "The request was assigned successfully, but an error "
+                        "occurred while notifying the staff member on WhatsApp."
+                    ),
+                )
+
+    # ---------------------------------------------------------
     # SUCCESS MESSAGE
     # ---------------------------------------------------------
 
@@ -1937,6 +2063,9 @@ def staff_management(request):
             "membership": member,
             "user": member.user,
             "department_membership": department_membership,
+            "staff_contact": StaffContact.objects.filter(
+                user=member.user
+            ).first(),
         })
 
     # ---------------------------------------------------------
@@ -2111,6 +2240,11 @@ def add_department_member(request):
 
         email = request.POST.get(
             "email",
+            "",
+        ).strip()
+
+        whatsapp_number = request.POST.get(
+            "whatsapp_number",
             "",
         ).strip()
 
@@ -2341,6 +2475,13 @@ def add_department_member(request):
                         is_active=True,
                     )
 
+                StaffContact.objects.update_or_create(
+                    user=new_user,
+                    defaults={
+                        "whatsapp_number": whatsapp_number,
+                    },
+                )
+
         except Exception as e:
 
             messages.error(
@@ -2462,6 +2603,10 @@ def edit_user(request, user_id):
 
     target_user = target_membership.user
 
+    staff_contact = StaffContact.objects.filter(
+        user=target_user
+    ).first()
+
     # ---------------------------------------------------------
     # ORGANIZATION ROLES
     # ---------------------------------------------------------
@@ -2551,6 +2696,11 @@ def edit_user(request, user_id):
 
         email = request.POST.get(
             "email",
+            "",
+        ).strip()
+
+        whatsapp_number = request.POST.get(
+            "whatsapp_number",
             "",
         ).strip()
 
@@ -2725,6 +2875,13 @@ def edit_user(request, user_id):
                         ]
                     )
 
+                    StaffContact.objects.update_or_create(
+                        user=target_user,
+                        defaults={
+                            "whatsapp_number": whatsapp_number,
+                        },
+                    )
+
                     # -----------------------------------------
                     # UPDATE ORGANIZATION ROLE
                     # -----------------------------------------
@@ -2823,6 +2980,7 @@ def edit_user(request, user_id):
         "target_user": target_user,
         "target_membership": target_membership,
         "department_membership": department_membership,
+        "staff_contact": staff_contact,
         "departments": departments,
         "organization_roles": organization_roles,
         "department_roles": department_roles,
