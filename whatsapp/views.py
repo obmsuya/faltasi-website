@@ -1271,388 +1271,787 @@ Faltasi WhatsApp Platform
         return False
     
 @csrf_exempt
+
 def webhook(request):
+
     """
+
     WhatsApp Cloud API webhook.
 
+
+
     Handles:
+
     - Meta webhook verification
+
     - Multi-business WhatsApp routing
+
     - Incoming WhatsApp text messages
+
     - Duplicate message protection
+
     - Organization-specific customers
+
     - Organization-specific conversations
+
     - Conversation state
+
     - Request category detection
+
     - BusinessRequest creation/reuse
+
     - RequestField-based information collection
+
     - New request detection
+
     - Automatic WhatsApp replies
+
     - Outgoing message logging
+
     """
 
+
+
     # =====================================================
+
     # META WEBHOOK VERIFICATION
+
     # =====================================================
+
+
 
     if request.method == "GET":
 
+
+
         verify_token = request.GET.get("hub.verify_token")
+
         challenge = request.GET.get("hub.challenge")
 
+
+
         print("VERIFY TOKEN RECEIVED")
+
         print("CHALLENGE:", challenge)
+
+
 
         if verify_token and challenge:
 
+
+
             if verify_token == settings.WHATSAPP_VERIFY_TOKEN:
+
+
 
                 print("VERIFICATION SUCCESS")
 
+
+
                 return HttpResponse(challenge)
+
+
 
             print("VERIFICATION FAILED")
 
+
+
             return HttpResponse(
+
                 "Invalid verify token",
+
                 status=403,
+
             )
+
+
 
         return HttpResponse("OK", status=200)
 
-    # =====================================================
-    # ONLY POST REQUESTS ARE ACCEPTED
+
+
     # =====================================================
 
+    # ONLY POST REQUESTS ARE ACCEPTED
+
+    # =====================================================
+
+
+
     if request.method != "POST":
+
         return HttpResponse(status=405)
+
+
 
     print("========== WHATSAPP POST RECEIVED ==========")
 
+
+
     try:
 
-        # =================================================
-        # READ REQUEST BODY
+
+
         # =================================================
 
+        # READ REQUEST BODY
+
+        # =================================================
+
+
+
         body = request.body.decode(
+
             "utf-8",
+
             errors="replace",
+
         )
+
+
 
         print("WEBHOOK BODY RECEIVED")
 
+
+
         data = json.loads(body)
 
+
+
         print(
+
             "WEBHOOK JSON:",
+
             json.dumps(
+
                 data,
+
                 indent=2,
+
             ),
+
         )
 
+
+
         # =================================================
+
         # READ WEBHOOK STRUCTURE
+
         # =================================================
+
+
 
         entry = data.get("entry", [])
 
+
+
         if not entry:
+
+
 
             print("NO WEBHOOK ENTRY FOUND")
 
+
+
             return JsonResponse({
+
                 "status": "ok",
+
             })
+
+
 
         changes = entry[0].get("changes", [])
 
+
+
         if not changes:
+
+
 
             print("NO WEBHOOK CHANGES FOUND")
 
+
+
             return JsonResponse({
+
                 "status": "ok",
+
             })
+
+
 
         value = changes[0].get("value", {})
 
+
+
         # =================================================
+
         # IDENTIFY THE WHATSAPP PHONE NUMBER
+
         # =================================================
+
+
 
         metadata = value.get("metadata", {})
 
+
+
         phone_number_id = metadata.get(
+
             "phone_number_id"
+
         )
 
+
+
         print(
+
             "META PHONE NUMBER ID:",
+
             phone_number_id,
+
         )
+
+
 
         if not phone_number_id:
 
+
+
             print(
+
                 "NO PHONE NUMBER ID FOUND IN WEBHOOK"
+
             )
 
+
+
             return JsonResponse({
+
                 "status": "ok",
+
                 "message": "No phone number ID found",
+
             })
 
+
+
         # =================================================
+
         # FIND WHATSAPP PHONE NUMBER
+
         # =================================================
+
+
 
         try:
 
+
+
             whatsapp_phone = (
+
                 WhatsAppPhoneNumber.objects
+
                 .select_related(
+
                     "organization",
+
                     "whatsapp_business_account",
+
                 )
+
                 .get(
+
                     phone_number_id=phone_number_id,
+
                     is_active=True,
+
                 )
+
             )
+
+
 
         except WhatsAppPhoneNumber.DoesNotExist:
 
+
+
             print(
+
                 "UNKNOWN WHATSAPP PHONE NUMBER:",
+
                 phone_number_id,
+
             )
 
+
+
             return JsonResponse({
+
                 "status": "ok",
+
                 "message": "Unknown WhatsApp phone number",
+
             })
+
+
 
         except WhatsAppPhoneNumber.MultipleObjectsReturned:
 
+
+
             print(
+
                 "MULTIPLE WHATSAPP PHONE NUMBERS FOUND:",
+
                 phone_number_id,
+
             )
 
+
+
             return JsonResponse({
+
                 "status": "ok",
+
                 "message": "Multiple WhatsApp phone numbers found",
+
             })
 
+
+
         # =================================================
+
         # IDENTIFY ORGANIZATION
+
         # =================================================
+
+
 
         organization = whatsapp_phone.organization
 
+
+
         whatsapp_business_account = (
+
             whatsapp_phone.whatsapp_business_account
+
         )
 
+
+
         print(
+
             "WHATSAPP PHONE:",
+
             whatsapp_phone,
+
         )
 
+
+
         print(
+
             "ORGANIZATION:",
+
             organization,
+
         )
+
+
 
         print(
+
             "WHATSAPP BUSINESS ACCOUNT:",
+
             whatsapp_business_account,
+
         )
 
+
+
         # =================================================
+
         # GET MESSAGES
+
         # =================================================
+
+
 
         messages = value.get("messages", [])
 
+
+
         if not messages:
 
+
+
             print(
+
                 "NO WHATSAPP MESSAGE FOUND"
+
             )
 
+
+
             return JsonResponse({
+
                 "status": "ok",
+
             })
 
+
+
         # =================================================
+
         # PROCESS FIRST MESSAGE
+
         # =================================================
+
+
 
         message = messages[0]
 
+
+
         whatsapp_message_id = message.get("id")
 
+
+
         print(
+
             "WHATSAPP MESSAGE ID:",
+
             whatsapp_message_id,
+
         )
 
+
+
         # =================================================
+
         # DUPLICATE MESSAGE PROTECTION
+
         # =================================================
+
+
 
         if whatsapp_message_id:
 
+
+
             existing_message = (
+
                 Message.objects.filter(
+
                     whatsapp_message_id=whatsapp_message_id
+
                 ).first()
+
             )
+
+
 
             if existing_message:
 
+
+
                 print(
+
                     "DUPLICATE MESSAGE IGNORED:",
+
                     whatsapp_message_id,
+
                 )
 
+
+
                 return JsonResponse({
+
                     "status": "ok",
+
                     "duplicate": True,
+
                 })
 
-        # =================================================
-        # MESSAGE INFORMATION
+
+
         # =================================================
 
+        # MESSAGE INFORMATION
+
+        # =================================================
+
+
+
         sender = normalize_phone_number(
+
             message.get("from")
+
         )
+
+
 
         message_type = message.get("type")
 
+
+
         print(
+
             "SENDER:",
+
             sender,
+
         )
+
+
 
         print(
+
             "MESSAGE TYPE:",
+
             message_type,
+
         )
 
+
+
         # =================================================
+
         # CURRENT SYSTEM SUPPORTS TEXT MESSAGES
+
         # =================================================
+
+
 
         if message_type != "text":
 
+
+
             print(
+
                 "NON-TEXT MESSAGE RECEIVED:",
+
                 message_type,
+
             )
 
+
+
             return JsonResponse({
+
                 "status": "ok",
+
                 "message": "Non-text message received",
+
             })
 
+
+
         # =================================================
+
         # GET TEXT
+
         # =================================================
+
+
 
         text = (
+
             message
+
             .get("text", {})
+
             .get("body", "")
+
             .strip()
+
         )
 
+
+
         print(
+
             "MESSAGE TEXT:",
+
             text,
+
         )
+
+
 
         if not sender:
 
+
+
             print(
+
                 "NO SENDER FOUND"
+
             )
 
+
+
             return JsonResponse({
+
                 "status": "ok",
+
             })
+
+
 
         if not text:
 
+
+
             print(
+
                 "EMPTY TEXT MESSAGE"
+
             )
+
+
 
             return JsonResponse({
+
                 "status": "ok",
+
             })
 
-        # =================================================
-        # FIND OR CREATE CUSTOMER
+
+
         # =================================================
 
+        # FIND OR CREATE CUSTOMER
+
+        # =================================================
+
+
+
         customer = (
+
             Customer.objects
+
             .filter(
+
                 organization=organization,
+
                 phone=sender,
+
             )
+
             .first()
+
         )
+
+
 
         if customer:
 
+
+
             print(
+
                 "EXISTING CUSTOMER:",
+
                 customer,
+
             )
+
+
 
         else:
 
+
+
             customer = Customer.objects.create(
+
                 organization=organization,
+
                 phone=sender,
+
                 name="WhatsApp Customer",
+
                 customer_type="individual",
+
                 preferred_contact_method="whatsapp",
+
                 status="active",
+
             )
+
+
 
             print(
+
                 "NEW CUSTOMER CREATED:",
+
                 customer,
+
             )
 
+
+
         # =================================================
+
         # FIND ACTIVE CONVERSATION
+
         # =================================================
+
+
 
         conversation = (
+
             Conversation.objects
+
             .filter(
+
                 organization=organization,
+
                 whatsapp_phone_number=whatsapp_phone,
+
                 customer=customer,
+
                 phone_number=sender,
+
                 status="active",
+
             )
+
             .first()
+
         )
 
-        # =================================================
-        # CREATE CONVERSATION IF NEEDED
-        # =================================================
 
+
+
+
+
+
+        # Reuse an active conversation when one already exists.
+        # Only look for a website request and create a conversation
+        # when the customer does not yet have an active conversation.
         if not conversation:
+            open_request = (
+                BusinessRequest.objects
+                .filter(
+                    customer=customer,
+                    category__organization=organization,
+                    source="website",
+                    status__in=[
+                        "new",
+                        "in_progress",
+                        "waiting_customer",
+                        "waiting_approval",
+                    ],
+                )
+                .order_by("-created_at")
+                .first()
+            )
+
+            print("OPEN BUSINESS REQUEST FOUND:", open_request)
 
             conversation = Conversation.objects.create(
                 organization=organization,
@@ -1660,873 +2059,1756 @@ def webhook(request):
                 customer=customer,
                 phone_number=sender,
                 whatsapp_user_id=sender,
+                business_request=open_request,
                 status="active",
             )
 
-            print(
-                "NEW CONVERSATION CREATED:",
-                conversation,
-            )
-
-        else:
-
-            print(
-                "EXISTING CONVERSATION:",
-                conversation,
-            )
+            print("NEW CONVERSATION CREATED:", conversation)
+            print("LINKED BUSINESS REQUEST:", conversation.business_request)
 
         # =================================================
+
         # GET OR CREATE CONVERSATION STATE
+
         # =================================================
+
+
 
         state = get_or_create_conversation_state(
+
             conversation
-        )
 
-        print(
-            "CURRENT STEP:",
-            state.current_step,
-        )
-
-        print(
-            "WAITING FOR:",
-            state.waiting_for,
-        )
-
-        print(
-            "STATE DATA:",
-            state.data,
         )
 
         # =================================================
-        # SAVE INCOMING MESSAGE
+        # RESTORE LINKED WEBSITE REQUEST CATEGORY
         # =================================================
 
-        incoming_message = Message.objects.create(
-            organization=organization,
-            conversation=conversation,
-            direction="incoming",
-            sender_type="customer",
-            message_type=message_type,
-            content=text,
-            delivery_status="delivered",
-            whatsapp_message_id=whatsapp_message_id,
-            metadata=message,
-        )
+        if conversation.business_request:
 
-        print(
-            "INCOMING MESSAGE SAVED:",
-            incoming_message,
-        )
+            linked_request = conversation.business_request
+            linked_category = linked_request.category
+            state_data = state.data or {}
 
-        # =================================================
-        # UPDATE CONVERSATION ACTIVITY
-        # =================================================
+            if linked_category and not state_data.get("category"):
 
-        conversation.save(
-            update_fields=[
-                "last_message_at",
-            ]
-        )
+                state_data["category"] = linked_category.name
+                state_data["business_request_id"] = linked_request.id
 
-        # =================================================
-        # GET CURRENT STATE DATA
-        # =================================================
-
-        state_data = state.data or {}
-
-        stored_category_name = (
-            state_data.get("category")
-        )
-
-        current_category = None
-
-        # =================================================
-        # RESTORE CURRENT CATEGORY
-        # =================================================
-
-        if stored_category_name:
-
-            try:
-
-                current_category = (
-                    RequestCategory.objects.get(
-                        name=stored_category_name,
-                        is_active=True,
-                    )
-                )
-
-                print(
-                    "CURRENT CATEGORY RESTORED:",
-                    current_category,
-                )
-
-            except RequestCategory.DoesNotExist:
-
-                current_category = None
-
-                print(
-                    "STORED CATEGORY NO LONGER EXISTS"
-                )
-
-        # =================================================
-        # DETECT CATEGORY FROM NEW MESSAGE
-        # =================================================
-
-        detected_category = find_request_category(
-            text
-        )
-
-        print(
-            "DETECTED CATEGORY:",
-            detected_category,
-        )
-
-        # =================================================
-        # IDENTIFY CURRENT REQUEST FIELD
-        # =================================================
-
-        current_field = None
-
-        if current_category and state.waiting_for:
-
-            try:
-
-                current_field = (
-                    current_category
-                    .request_fields
-                    .get(
-                        name=state.waiting_for,
-                        is_active=True,
-                    )
-                )
-
-                print(
-                    "CURRENT FIELD:",
-                    current_field,
-                )
-
-            except Exception:
-
-                current_field = None
-
-                print(
-                    "CURRENT FIELD NOT FOUND:",
-                    state.waiting_for,
-                )
-
-        # =================================================
-        # DETERMINE WHETHER MESSAGE STARTS NEW REQUEST
-        # =================================================
-
-        new_request = False
-
-        # -------------------------------------------------
-        # CASE 1:
-        # No current category.
-        # -------------------------------------------------
-
-        if not current_category:
-
-            if detected_category:
-
-                new_request = True
-
-                print(
-                    "NEW REQUEST DETECTED - "
-                    "NO CURRENT CATEGORY"
-                )
-
-        # -------------------------------------------------
-        # CASE 2:
-        # Existing active request.
-        # -------------------------------------------------
-
-        else:
-
-            # ---------------------------------------------
-            # DIFFERENT CATEGORY
-            # ---------------------------------------------
-
-            if (
-                detected_category
-                and detected_category.id
-                != current_category.id
-            ):
-
-                new_request = (
-                    is_new_request_message(
-                        text,
-                        current_category=current_category,
-                        current_field=current_field,
-                    )
-                )
-
-                print(
-                    "DIFFERENT CATEGORY DETECTED"
-                )
-
-                print(
-                    "NEW REQUEST DECISION:",
-                    new_request,
-                )
-
-            # ---------------------------------------------
-            # SAME CATEGORY
-            # ---------------------------------------------
-
-            elif (
-                detected_category
-                and detected_category.id
-                == current_category.id
-                and state.waiting_for
-            ):
-
-                normalized_text = (
-                    text.lower().strip()
-                )
-
-                request_phrases = [
-                    "i need",
-                    "i want",
-                    "i would like",
-                    "i'd like",
-                    "looking for",
-                    "i am looking for",
-                    "i'm looking for",
-                    "can you provide",
-                    "can you help",
-                    "i need a quote",
-                    "i need quotation",
-                    "quotation for",
-                    "quote for",
-                ]
-
-                has_request_phrase = any(
-                    phrase in normalized_text
-                    for phrase in request_phrases
-                )
-
-                explicit_new_request_phrases = [
-                    "i also need",
-                    "i also want",
-                    "i also would like",
-                    "i'd also like",
-                    "i would also like",
-                    "actually i need",
-                    "actually i want",
-                    "actually i would like",
-                    "another request",
-                    "another service",
-                    "another product",
-                    "different request",
-                    "different service",
-                    "different product",
-                    "by the way i need",
-                    "by the way i want",
-                    "can you also provide",
-                    "can you also help",
-                ]
-
-                has_explicit_new_request_phrase = any(
-                    phrase in normalized_text
-                    for phrase in explicit_new_request_phrases
-                )
-
-                if current_field:
-
-                    # ---------------------------------
-                    # TEXT FIELD
-                    # ---------------------------------
-
-                    if current_field.field_type == "text":
-
-                        if has_explicit_new_request_phrase:
-
-                            new_request = True
-
-                            print(
-                                "EXPLICIT NEW REQUEST "
-                                "DETECTED WHILE ANSWERING "
-                                "TEXT FIELD"
-                            )
-
-                        elif (
-                            state.waiting_for
-                            == "location"
-                            and detected_category
-                            and has_request_phrase
-                        ):
-
-                            new_request = True
-
-                            print(
-                                "REQUEST STATEMENT DETECTED "
-                                "INSTEAD OF LOCATION ANSWER"
-                            )
-
-                    # ---------------------------------
-                    # NUMBER / YES-NO / OTHER FIELD
-                    # ---------------------------------
-
-                    else:
-
-                        valid, cleaned_value = (
-                            validate_request_field_value(
-                                current_field,
-                                text,
-                            )
-                        )
-
-                        print(
-                            "CURRENT FIELD VALIDATION:",
-                            valid,
-                            cleaned_value,
-                        )
-
-                        if (
-                            not valid
-                            and has_request_phrase
-                        ):
-
-                            new_request = True
-
-                            print(
-                                "INVALID FIELD ANSWER WITH "
-                                "REQUEST LANGUAGE - "
-                                "NEW REQUEST"
-                            )
-
-        print(
-            "CURRENT CATEGORY:",
-            current_category,
-        )
-
-        print(
-            "CURRENT FIELD:",
-            current_field,
-        )
-
-        print(
-            "DETECTED CATEGORY:",
-            detected_category,
-        )
-
-        print(
-            "NEW REQUEST:",
-            new_request,
-        )
-
-        # =================================================
-        # HANDLE NEW REQUEST
-        # =================================================
-
-        if new_request:
-
-            print(
-                "STARTING NEW BUSINESS REQUEST"
-            )
-
-            category = detected_category
-
-            if not category:
-
-                print(
-                    "NEW REQUEST FLAGGED BUT "
-                    "NO CATEGORY FOUND"
-                )
-
-                reply = process_customer_message(
-                    text
-                )
-
-            else:
-
-                # -----------------------------------------
-                # CREATE NEW BUSINESS REQUEST
-                # -----------------------------------------
-
-                business_request = (
-                    BusinessRequest.objects.create(
-                        customer=customer,
-                        request_text=text,
-                        subject=category.name,
-                        category=category,
-                        department=category.department,
-                        status="new",
-                        priority="normal",
-                        source="whatsapp",
-                    )
-                )
-
-                print(
-                    "NEW BUSINESS REQUEST CREATED:",
-                    business_request,
-                )
-
-                # -----------------------------------------
-                # LINK CONVERSATION TO REQUEST
-                # -----------------------------------------
-
-                conversation.business_request = (
-                    business_request
-                )
-
-                conversation.save(
-                    update_fields=[
-                        "business_request",
-                    ]
-                )
-
-                # -----------------------------------------
-                # RESET CONVERSATION STATE
-                # -----------------------------------------
-
-                state_data = {
-                    "request_text": text,
-                    "category": category.name,
-                    "business_request_id": (
-                        business_request.id
-                    ),
-                }
-
+                state.data = state_data
                 state.current_step = None
                 state.waiting_for = None
-                state.data = state_data
 
                 state.save()
 
-                print(
-                    "CONVERSATION STATE RESET "
-                    "FOR NEW REQUEST"
-                )
+                print("RESTORED LINKED REQUEST CATEGORY:", linked_category)
+                print("RESTORED BUSINESS REQUEST:", linked_request)
 
-                # -----------------------------------------
-                # AUTOMATIC REPLY
-                # -----------------------------------------
 
-                if category:
 
-                    # -------------------------------------------------
-                    # IMPORTANT:
-                    # If this is a brand-new BusinessRequest, the
-                    # incoming message is the REQUEST itself.
-                    #
-                    # Do NOT use that message as the answer to the
-                    # first field (for example, location).
-                    # -------------------------------------------------
 
-                    is_new_business_request = (
-                        business_request is not None
-                        and state_data.get(
-                            "business_request_id"
-                        ) == business_request.id
-                        and state_data.get(
-                            "request_text"
-                        ) == text
-                        and not state_data.get(
-                            "location"
-                        )
-                        and state.waiting_for is None
+        print(
+
+            "CURRENT STEP:",
+
+            state.current_step,
+
+        )
+
+
+
+        print(
+
+            "WAITING FOR:",
+
+            state.waiting_for,
+
+        )
+
+
+
+        print(
+
+            "STATE DATA:",
+
+            state.data,
+
+        )
+
+
+
+        # =================================================
+
+        # SAVE INCOMING MESSAGE
+
+        # =================================================
+
+
+
+        incoming_message = Message.objects.create(
+
+            organization=organization,
+
+            conversation=conversation,
+
+            direction="incoming",
+
+            sender_type="customer",
+
+            message_type=message_type,
+
+            content=text,
+
+            delivery_status="delivered",
+
+            whatsapp_message_id=whatsapp_message_id,
+
+            metadata=message,
+
+        )
+
+
+
+        print(
+
+            "INCOMING MESSAGE SAVED:",
+
+            incoming_message,
+
+        )
+
+
+
+        # =================================================
+
+        # UPDATE CONVERSATION ACTIVITY
+
+        # =================================================
+
+
+
+        conversation.save(
+
+            update_fields=[
+
+                "last_message_at",
+
+            ]
+
+        )
+
+
+
+        # =================================================
+
+        # GET CURRENT STATE DATA
+
+        # =================================================
+
+
+
+        state_data = state.data or {}
+
+
+
+        stored_category_name = (
+
+            state_data.get("category")
+
+        )
+
+
+
+        current_category = None
+
+
+
+        # =================================================
+
+        # RESTORE CURRENT CATEGORY
+
+        # =================================================
+
+
+
+        if stored_category_name:
+
+
+
+            try:
+
+
+
+                current_category = (
+
+                    RequestCategory.objects.get(
+
+                        name=stored_category_name,
+
+                        organization=organization,
+
+                        is_active=True,
+
                     )
 
-                    if is_new_business_request:
+                )
 
-                        print(
-                            "NEW BUSINESS REQUEST DETECTED - "
-                            "DO NOT USE ORIGINAL MESSAGE AS "
-                            "FIELD ANSWER"
-                        )
 
-                        reply = process_request_fields(
-                            category,
-                            state,
-                            None
-                        )
+
+                print(
+
+                    "CURRENT CATEGORY RESTORED:",
+
+                    current_category,
+
+                )
+
+
+
+            except RequestCategory.DoesNotExist:
+
+
+
+                current_category = None
+
+
+
+                print(
+
+                    "STORED CATEGORY NO LONGER EXISTS"
+
+                )
+
+
+
+        # =================================================
+
+        # DETECT CATEGORY FROM NEW MESSAGE
+
+        # =================================================
+
+
+
+        detected_category = find_request_category(
+
+            text, organization=organization
+
+        )
+
+
+
+        print(
+
+            "DETECTED CATEGORY:",
+
+            detected_category,
+
+        )
+
+
+
+        # =================================================
+
+        # IDENTIFY CURRENT REQUEST FIELD
+
+        # =================================================
+
+
+
+        current_field = None
+
+
+
+        if current_category and state.waiting_for:
+
+
+
+            try:
+
+
+
+                current_field = (
+
+                    current_category
+
+                    .request_fields
+
+                    .get(
+
+                        name=state.waiting_for,
+
+                        is_active=True,
+
+                    )
+
+                )
+
+
+
+                print(
+
+                    "CURRENT FIELD:",
+
+                    current_field,
+
+                )
+
+
+
+            except Exception:
+
+
+
+                current_field = None
+
+
+
+                print(
+
+                    "CURRENT FIELD NOT FOUND:",
+
+                    state.waiting_for,
+
+                )
+
+
+
+        # =================================================
+
+        # DETERMINE WHETHER MESSAGE STARTS NEW REQUEST
+
+        # =================================================
+
+
+
+        new_request = False
+
+
+
+        # -------------------------------------------------
+
+        # CASE 1:
+
+        # No current category.
+
+        # -------------------------------------------------
+
+
+
+        if not current_category:
+
+
+
+            if detected_category:
+
+
+
+                new_request = True
+
+
+
+                print(
+
+                    "NEW REQUEST DETECTED - "
+
+                    "NO CURRENT CATEGORY"
+
+                )
+
+
+
+        # -------------------------------------------------
+
+        # CASE 2:
+
+        # Existing active request.
+
+        # -------------------------------------------------
+
+
+
+        else:
+
+
+
+            # ---------------------------------------------
+
+            # DIFFERENT CATEGORY
+
+            # ---------------------------------------------
+
+
+
+            if (
+
+                detected_category
+
+                and detected_category.id
+
+                != current_category.id
+
+            ):
+
+
+
+                new_request = (
+
+                    is_new_request_message(
+
+                        text,
+
+                        current_category=current_category,
+
+                        current_field=current_field,
+
+                        organization=organization,
+
+                    )
+
+                )
+
+
+
+                print(
+
+                    "DIFFERENT CATEGORY DETECTED"
+
+                )
+
+
+
+                print(
+
+                    "NEW REQUEST DECISION:",
+
+                    new_request,
+
+                )
+
+
+
+            # ---------------------------------------------
+
+            # SAME CATEGORY
+
+            # ---------------------------------------------
+
+
+
+            elif (
+
+                detected_category
+
+                and detected_category.id
+
+                == current_category.id
+
+                and state.waiting_for
+
+            ):
+
+
+
+                normalized_text = (
+
+                    text.lower().strip()
+
+                )
+
+
+
+                request_phrases = [
+
+                    "i need",
+
+                    "i want",
+
+                    "i would like",
+
+                    "i'd like",
+
+                    "looking for",
+
+                    "i am looking for",
+
+                    "i'm looking for",
+
+                    "can you provide",
+
+                    "can you help",
+
+                    "i need a quote",
+
+                    "i need quotation",
+
+                    "quotation for",
+
+                    "quote for",
+
+                ]
+
+
+
+                has_request_phrase = any(
+
+                    phrase in normalized_text
+
+                    for phrase in request_phrases
+
+                )
+
+
+
+                explicit_new_request_phrases = [
+
+                    "i also need",
+
+                    "i also want",
+
+                    "i also would like",
+
+                    "i'd also like",
+
+                    "i would also like",
+
+                    "actually i need",
+
+                    "actually i want",
+
+                    "actually i would like",
+
+                    "another request",
+
+                    "another service",
+
+                    "another product",
+
+                    "different request",
+
+                    "different service",
+
+                    "different product",
+
+                    "by the way i need",
+
+                    "by the way i want",
+
+                    "can you also provide",
+
+                    "can you also help",
+
+                ]
+
+
+
+                has_explicit_new_request_phrase = any(
+
+                    phrase in normalized_text
+
+                    for phrase in explicit_new_request_phrases
+
+                )
+
+
+
+                if current_field:
+
+
+
+                    # ---------------------------------
+
+                    # TEXT FIELD
+
+                    # ---------------------------------
+
+
+
+                    if current_field.field_type == "text":
+
+
+
+                        if has_explicit_new_request_phrase:
+
+
+
+                            new_request = True
+
+
+
+                            print(
+
+                                "EXPLICIT NEW REQUEST "
+
+                                "DETECTED WHILE ANSWERING "
+
+                                "TEXT FIELD"
+
+                            )
+
+
+
+                        elif (
+
+                            state.waiting_for
+
+                            == "location"
+
+                            and detected_category
+
+                            and has_request_phrase
+
+                        ):
+
+
+
+                            new_request = True
+
+
+
+                            print(
+
+                                "REQUEST STATEMENT DETECTED "
+
+                                "INSTEAD OF LOCATION ANSWER"
+
+                            )
+
+
+
+                    # ---------------------------------
+
+                    # NUMBER / YES-NO / OTHER FIELD
+
+                    # ---------------------------------
+
+
 
                     else:
 
-                        reply = process_request_fields(
-                            category,
-                            state,
-                            text
-                        )
 
-                    # -----------------------------------------
-                    # UPDATE BUSINESS REQUEST
-                    # -----------------------------------------
 
-                    if business_request:
+                        valid, cleaned_value = (
 
-                        update_business_request_details(
-                            business_request,
-                            state
-                        )
+                            validate_request_field_value(
 
-                        if (
-                            state.current_step
-                            == "details_collected"
-                        ):
+                                current_field,
 
-                            create_request_workflow(
-                                business_request
+                                text,
+
                             )
 
-        # =================================================
-        # CONTINUE CURRENT REQUEST
+                        )
+
+
+
+                        print(
+
+                            "CURRENT FIELD VALIDATION:",
+
+                            valid,
+
+                            cleaned_value,
+
+                        )
+
+
+
+                        if (
+
+                            not valid
+
+                            and has_request_phrase
+
+                        ):
+
+
+
+                            new_request = True
+
+
+
+                            print(
+
+                                "INVALID FIELD ANSWER WITH "
+
+                                "REQUEST LANGUAGE - "
+
+                                "NEW REQUEST"
+
+                            )
+
+
+
+        print(
+
+            "CURRENT CATEGORY:",
+
+            current_category,
+
+        )
+
+
+
+        print(
+
+            "CURRENT FIELD:",
+
+            current_field,
+
+        )
+
+
+
+        print(
+
+            "DETECTED CATEGORY:",
+
+            detected_category,
+
+        )
+
+
+
+        print(
+
+            "NEW REQUEST:",
+
+            new_request,
+
+        )
+
+
+
         # =================================================
 
-        elif current_category:
+        # HANDLE NEW REQUEST
 
-            category = current_category
+        # =================================================
+
+
+
+        if new_request:
+
+
 
             print(
-                "CONTINUING CURRENT REQUEST:",
-                category,
+
+                "STARTING NEW BUSINESS REQUEST"
+
             )
 
-            # ---------------------------------------------
-            # GET CURRENT BUSINESS REQUEST
-            # ---------------------------------------------
 
-            business_request = (
-                conversation.business_request
-            )
-
-            # ---------------------------------------------
-            # RECOVER BUSINESS REQUEST IF MISSING
-            # ---------------------------------------------
-
-            if not business_request:
-
-                business_request = (
-                    create_business_request(
-                        customer,
-                        text,
-                        category,
-                        conversation,
-                    )
-                )
-
-                if business_request:
-
-                    conversation.business_request = (
-                        business_request
-                    )
-
-                    conversation.save(
-                        update_fields=[
-                            "business_request",
-                        ]
-                    )
-
-            # ---------------------------------------------
-            # PROCESS CURRENT FIELD
-            # ---------------------------------------------
-
-            reply = process_request_fields(
-                category,
-                state,
-                text,
-            )
-
-            # ---------------------------------------------
-            # UPDATE BUSINESS REQUEST
-            # ---------------------------------------------
-
-            if business_request:
-
-                update_business_request_details(
-                    business_request,
-                    state,
-                )
-
-                if (
-                    state.current_step
-                    == "details_collected"
-                ):
-
-                    create_request_workflow(
-                        business_request
-                    )
-
-        # =================================================
-        # FIRST MESSAGE / CATEGORY DETECTED
-        # =================================================
-
-        elif detected_category:
 
             category = detected_category
 
-            print(
-                "FIRST REQUEST CATEGORY DETECTED:",
-                category,
-            )
 
-            business_request = (
-                create_business_request(
-                    customer,
-                    text,
-                    category,
-                    conversation,
-                )
-            )
 
-            # ---------------------------------------------
-            # SAVE INITIAL STATE
-            # ---------------------------------------------
+            if not category:
 
-            state_data = {
-                "request_text": text,
-                "category": category.name,
-                "business_request_id": (
-                    business_request.id
-                    if business_request
-                    else None
-                ),
-            }
 
-            state.current_step = None
-            state.waiting_for = None
-            state.data = state_data
-
-            state.save()
-
-            # ---------------------------------------------
-            # LINK BUSINESS REQUEST
-            # ---------------------------------------------
-
-            if business_request:
-
-                conversation.business_request = (
-                    business_request
-                )
-
-                conversation.save(
-                    update_fields=[
-                        "business_request",
-                    ]
-                )
 
                 print(
-                    "CONVERSATION LINKED TO REQUEST:",
+
+                    "NEW REQUEST FLAGGED BUT "
+
+                    "NO CATEGORY FOUND"
+
+                )
+
+
+
+                reply = process_customer_message(
+
+                    text
+
+                )
+
+
+
+            else:
+
+
+
+                # -----------------------------------------
+
+                # CREATE NEW BUSINESS REQUEST
+
+                # -----------------------------------------
+
+
+
+                business_request = (
+
+                    BusinessRequest.objects.create(
+
+                        customer=customer,
+
+                        request_text=text,
+
+                        subject=category.name,
+
+                        category=category,
+
+                        department=category.department,
+
+                        status="new",
+
+                        priority="normal",
+
+                        source="whatsapp",
+
+                    )
+
+                )
+
+
+
+                print(
+
+                    "NEW BUSINESS REQUEST CREATED:",
+
                     business_request,
+
                 )
 
-            # ---------------------------------------------
-            # AUTOMATIC REPLY
-            # ---------------------------------------------
 
-            if category:
 
-                is_new_business_request = (
-                    business_request is not None
-                    and state_data.get(
-                        "business_request_id"
-                    ) == business_request.id
-                    and state_data.get(
-                        "request_text"
-                    ) == text
-                    and not state_data.get(
-                        "location"
-                    )
-                    and state.waiting_for is None
+                # -----------------------------------------
+
+                # LINK CONVERSATION TO REQUEST
+
+                # -----------------------------------------
+
+
+
+                conversation.business_request = (
+
+                    business_request
+
                 )
 
-                if is_new_business_request:
 
-                    print(
-                        "NEW BUSINESS REQUEST DETECTED - "
-                        "DO NOT USE ORIGINAL MESSAGE AS "
-                        "FIELD ANSWER"
+
+                conversation.save(
+
+                    update_fields=[
+
+                        "business_request",
+
+                    ]
+
+                )
+
+
+
+                # -----------------------------------------
+
+                # RESET CONVERSATION STATE
+
+                # -----------------------------------------
+
+
+
+                state_data = {
+
+                    "request_text": text,
+
+                    "category": category.name,
+
+                    "business_request_id": (
+
+                        business_request.id
+
+                    ),
+
+                }
+
+
+
+                state.current_step = None
+
+                state.waiting_for = None
+
+                state.data = state_data
+
+
+
+                state.save()
+
+
+
+                print(
+
+                    "CONVERSATION STATE RESET "
+
+                    "FOR NEW REQUEST"
+
+                )
+
+
+
+                # -----------------------------------------
+
+                # AUTOMATIC REPLY
+
+                # -----------------------------------------
+
+
+
+                if category:
+
+
+
+                    # -------------------------------------------------
+
+                    # IMPORTANT:
+
+                    # If this is a brand-new BusinessRequest, the
+
+                    # incoming message is the REQUEST itself.
+
+                    #
+
+                    # Do NOT use that message as the answer to the
+
+                    # first field (for example, location).
+
+                    # -------------------------------------------------
+
+
+
+                    is_new_business_request = (
+
+                        business_request is not None
+
+                        and state_data.get(
+
+                            "business_request_id"
+
+                        ) == business_request.id
+
+                        and state_data.get(
+
+                            "request_text"
+
+                        ) == text
+
+                        and not state_data.get(
+
+                            "location"
+
+                        )
+
+                        and state.waiting_for is None
+
                     )
 
-                    reply = process_request_fields(
+
+
+                    if is_new_business_request:
+
+
+
+                        print(
+
+                            "NEW BUSINESS REQUEST DETECTED - "
+
+                            "DO NOT USE ORIGINAL MESSAGE AS "
+
+                            "FIELD ANSWER"
+
+                        )
+
+
+
+                        reply = process_request_fields(
+
+                            category,
+
+                            state,
+
+                            None
+
+                        )
+
+
+
+                    else:
+
+
+
+                        reply = process_request_fields(
+
+                            category,
+
+                            state,
+
+                            text
+
+                        )
+
+
+
+                    # -----------------------------------------
+
+                    # UPDATE BUSINESS REQUEST
+
+                    # -----------------------------------------
+
+
+
+                    if business_request:
+
+
+
+                        update_business_request_details(
+
+                            business_request,
+
+                            state
+
+                        )
+
+
+
+                        if (
+
+                            state.current_step
+
+                            == "details_collected"
+
+                        ):
+
+
+
+                            create_request_workflow(
+
+                                business_request
+
+                            )
+
+
+
+        # =================================================
+
+        # CONTINUE CURRENT REQUEST
+
+        # =================================================
+
+
+
+        elif current_category:
+
+
+
+            category = current_category
+
+
+
+            print(
+
+                "CONTINUING CURRENT REQUEST:",
+
+                category,
+
+            )
+
+
+
+            # ---------------------------------------------
+
+            # GET CURRENT BUSINESS REQUEST
+
+            # ---------------------------------------------
+
+
+
+            business_request = (
+
+                conversation.business_request
+
+            )
+
+
+
+            # ---------------------------------------------
+
+            # RECOVER BUSINESS REQUEST IF MISSING
+
+            # ---------------------------------------------
+
+
+
+            if not business_request:
+
+
+
+                business_request = (
+
+                    create_business_request(
+
+                        customer,
+
+                        text,
+
                         category,
-                        state,
-                        None
+
+                        conversation,
+
                     )
 
-                else:
+                )
 
-                    reply = process_request_fields(
-                        category,
-                        state,
-                        text
-                    )
 
-                # ---------------------------------------------
-                # UPDATE BUSINESS REQUEST
-                # ---------------------------------------------
 
                 if business_request:
 
-                    update_business_request_details(
-                        business_request,
-                        state,
+
+
+                    conversation.business_request = (
+
+                        business_request
+
                     )
 
+
+
+                    conversation.save(
+
+                        update_fields=[
+
+                            "business_request",
+
+                        ]
+
+                    )
+
+
+
+            # ---------------------------------------------
+
+            # PROCESS CURRENT FIELD
+
+            # ---------------------------------------------
+
+
+
+            reply = process_request_fields(
+
+                category,
+
+                state,
+
+                text,
+
+            )
+
+
+
+            # ---------------------------------------------
+
+            # UPDATE BUSINESS REQUEST
+
+            # ---------------------------------------------
+
+
+
+            if business_request:
+
+
+
+                update_business_request_details(
+
+                    business_request,
+
+                    state,
+
+                )
+
+
+
+                if (
+
+                    state.current_step
+
+                    == "details_collected"
+
+                ):
+
+
+
+                    create_request_workflow(
+
+                        business_request
+
+                    )
+
+
+
+        # =================================================
+
+        # FIRST MESSAGE / CATEGORY DETECTED
+
+        # =================================================
+
+
+
+        elif detected_category:
+
+
+
+            category = detected_category
+
+
+
+            print(
+
+                "FIRST REQUEST CATEGORY DETECTED:",
+
+                category,
+
+            )
+
+
+
+            business_request = (
+
+                create_business_request(
+
+                    customer,
+
+                    text,
+
+                    category,
+
+                    conversation,
+
+                )
+
+            )
+
+
+
+            # ---------------------------------------------
+
+            # SAVE INITIAL STATE
+
+            # ---------------------------------------------
+
+
+
+            state_data = {
+
+                "request_text": text,
+
+                "category": category.name,
+
+                "business_request_id": (
+
+                    business_request.id
+
+                    if business_request
+
+                    else None
+
+                ),
+
+            }
+
+
+
+            state.current_step = None
+
+            state.waiting_for = None
+
+            state.data = state_data
+
+
+
+            state.save()
+
+
+
+            # ---------------------------------------------
+
+            # LINK BUSINESS REQUEST
+
+            # ---------------------------------------------
+
+
+
+            if business_request:
+
+
+
+                conversation.business_request = (
+
+                    business_request
+
+                )
+
+
+
+                conversation.save(
+
+                    update_fields=[
+
+                        "business_request",
+
+                    ]
+
+                )
+
+
+
+                print(
+
+                    "CONVERSATION LINKED TO REQUEST:",
+
+                    business_request,
+
+                )
+
+
+
+            # ---------------------------------------------
+
+            # AUTOMATIC REPLY
+
+            # ---------------------------------------------
+
+
+
+            if category:
+
+
+
+                is_new_business_request = (
+
+                    business_request is not None
+
+                    and state_data.get(
+
+                        "business_request_id"
+
+                    ) == business_request.id
+
+                    and state_data.get(
+
+                        "request_text"
+
+                    ) == text
+
+                    and not state_data.get(
+
+                        "location"
+
+                    )
+
+                    and state.waiting_for is None
+
+                )
+
+
+
+                if is_new_business_request:
+
+
+
+                    print(
+
+                        "NEW BUSINESS REQUEST DETECTED - "
+
+                        "DO NOT USE ORIGINAL MESSAGE AS "
+
+                        "FIELD ANSWER"
+
+                    )
+
+
+
+                    reply = process_request_fields(
+
+                        category,
+
+                        state,
+
+                        None
+
+                    )
+
+
+
+                else:
+
+
+
+                    reply = process_request_fields(
+
+                        category,
+
+                        state,
+
+                        text
+
+                    )
+
+
+
+                # ---------------------------------------------
+
+                # UPDATE BUSINESS REQUEST
+
+                # ---------------------------------------------
+
+
+
+                if business_request:
+
+
+
+                    update_business_request_details(
+
+                        business_request,
+
+                        state,
+
+                    )
+
+
+
                     if (
+
                         state.current_step
+
                         == "details_collected"
+
                     ):
 
+
+
                         create_request_workflow(
+
                             business_request
+
                         )
 
+
+
         # =================================================
+
         # NO CATEGORY IDENTIFIED
+
         # =================================================
+
+
 
         else:
 
+
+
             print(
+
                 "NO CATEGORY IDENTIFIED - "
+
                 "USING FALLBACK"
+
             )
+
+
 
             reply = process_customer_message(
+
                 text
+
             )
 
+
+
         # =================================================
+
         # SEND AUTOMATIC WHATSAPP REPLY
+
         # =================================================
 
+
+
         print(
+
             "SENDING AUTOMATIC REPLY..."
+
         )
+
+
 
         print(
+
             "REPLY:",
+
             reply,
+
         )
 
+
+
         # -------------------------------------------------
+
         # Send through the business-specific WhatsApp
+
         # connection.
+
         # -------------------------------------------------
+
+
 
         response = send_whatsapp_message(
+
             whatsapp_phone,
+
             sender,
+
             reply,
+
         )
 
+
+
         # =================================================
+
         # SAVE OUTGOING MESSAGE
+
         # =================================================
+
+
 
         if (
+
             response is not None
+
             and response.status_code == 200
+
         ):
 
+
+
             try:
+
+
 
                 response_data = response.json()
 
+
+
             except ValueError:
 
+
+
                 response_data = {
+
                     "raw_response": response.text,
+
                 }
+
+
 
             outgoing_whatsapp_message_id = None
 
+
+
             try:
 
+
+
                 outgoing_whatsapp_message_id = (
+
                     response_data
+
                     .get("messages", [{}])[0]
+
                     .get("id")
+
                 )
 
+
+
             except (
+
                 IndexError,
+
                 AttributeError,
+
                 TypeError,
+
             ):
+
+
 
                 outgoing_whatsapp_message_id = None
 
+
+
             outgoing_message = Message.objects.create(
+
                 organization=organization,
+
                 conversation=conversation,
+
                 direction="outgoing",
+
                 sender_type="faltasi",
+
                 message_type="text",
+
                 content=reply,
+
                 whatsapp_message_id=(
+
                     outgoing_whatsapp_message_id
+
                 ),
+
                 delivery_status="sent",
+
                 metadata=response_data,
+
             )
 
+
+
             print(
+
                 "OUTGOING MESSAGE SAVED:",
+
                 outgoing_message,
+
             )
+
+
 
             # Update conversation activity timestamp
 
+
+
             conversation.save(
+
                 update_fields=[
+
                     "last_message_at",
+
                 ]
+
             )
+
+
 
         else:
 
+
+
             print(
+
                 "OUTGOING MESSAGE WAS NOT SAVED "
+
                 "BECAUSE WHATSAPP SEND FAILED"
+
             )
 
+            if response is not None:
+
+                print("META HTTP STATUS:", response.status_code)
+
+                print("META RESPONSE:", response.text)
+
+            else:
+
+                print("META RESPONSE: NO RESPONSE RECEIVED")
+
+
+
         # =================================================
+
         # RESPOND TO META
+
         # =================================================
+
+
 
         return JsonResponse({
+
             "status": "ok",
+
         })
 
+
+
     # =====================================================
+
     # INVALID JSON
+
     # =====================================================
+
+
 
     except json.JSONDecodeError as e:
 
+
+
         print(
+
             "JSON ERROR:",
+
             str(e),
+
         )
+
+
 
         return JsonResponse(
+
             {
+
                 "error": "Invalid JSON",
+
             },
+
             status=400,
+
         )
 
+
+
     # =====================================================
+
     # GENERAL WEBHOOK ERROR
+
     # =====================================================
+
+
 
     except Exception as e:
 
+
+
         print(
+
             "WEBHOOK ERROR:",
+
             str(e),
+
         )
 
+
+
         return JsonResponse(
+
             {
+
                 "error": "Webhook processing failed",
+
             },
+
             status=500,
+
         )
 def process_customer_message(text):
     """Return a simple fallback when no request category is identified."""
