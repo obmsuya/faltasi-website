@@ -1,3 +1,4 @@
+from django.http import HttpResponseForbidden
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404, redirect, render
@@ -29,7 +30,19 @@ from django.contrib.admin.views.decorators import staff_member_required
 
 from .forms import CategoryQuestionsUploadForm
 from .excel_importer import import_categories_from_excel
-from organizations.models import Organization
+
+
+
+from django.contrib import messages
+from django.contrib.auth import get_user_model
+from django.contrib.auth.decorators import login_required
+from django.db import IntegrityError, transaction
+from django.shortcuts import get_object_or_404, redirect, render
+
+from organizations.models import Organization, OrganizationMember
+from business_requests.models import Department, DepartmentMember
+
+User = get_user_model()
 
 def is_platform_administrator(user):
     """
@@ -59,6 +72,41 @@ def is_platform_administrator(user):
     )
 
     return membership is not None
+
+
+@login_required
+def platform_dashboard(request):
+    """
+    Platform-wide dashboard for authorized Faltasi administrators.
+    This dashboard is separate from organization operations.
+    """
+
+    if not is_platform_administrator(request.user):
+        return HttpResponseForbidden(
+            "You are not authorized to access the platform dashboard."
+        )
+
+    context = {
+        "organization_count": Organization.objects.count(),
+        "active_organization_count": Organization.objects.filter(
+            status="active"
+        ).count(),
+        "organization_member_count": OrganizationMember.objects.filter(
+            is_active=True
+        ).values("user_id").distinct().count(),
+        "customer_count": Customer.objects.count(),
+        "request_count": BusinessRequest.objects.count(),
+        "department_count": Department.objects.filter(
+            is_active=True
+        ).count(),
+    }
+
+    return render(
+        request,
+        "business_requests/platform_dashboard.html",
+        context,
+    )
+
 
 def get_user_organization(user, request=None):
     """
@@ -2094,16 +2142,7 @@ def staff_management(request):
         "business_requests/staff.html",
         context,
     )
-from django.contrib import messages
-from django.contrib.auth import get_user_model
-from django.contrib.auth.decorators import login_required
-from django.db import IntegrityError, transaction
-from django.shortcuts import get_object_or_404, redirect, render
 
-from organizations.models import Organization, OrganizationMember
-from business_requests.models import Department, DepartmentMember
-
-User = get_user_model()
 
 
 @login_required
@@ -3956,3 +3995,206 @@ def upload_category_questions(request):
             "form": form,
         },
     )
+
+# =========================================================
+# PLATFORM ADMINISTRATION: ORGANIZATION MANAGEMENT
+# =========================================================
+
+@login_required
+def organization_management(request):
+    """List organizations for platform administrators only."""
+    if not is_platform_administrator(request.user):
+        return HttpResponseForbidden("You are not authorized to manage organizations.")
+
+    organizations = Organization.objects.all().prefetch_related("members").order_by("name")
+    return render(
+        request,
+        "business_requests/organization_management.html",
+        {"organizations": organizations},
+    )
+
+
+
+@login_required
+@transaction.atomic
+def organization_create(request):
+    """Create a tenant organization without creating its owner account yet."""
+    if not is_platform_administrator(request.user):
+        return HttpResponseForbidden(
+            "You are not authorized to create organizations."
+        )
+
+    countries = Country.objects.filter(
+        is_active=True
+    ).order_by("name")
+
+    if request.method == "POST":
+        name = request.POST.get("name", "").strip()
+        legal_name = request.POST.get("legal_name", "").strip()
+        phone = request.POST.get("phone", "").strip()
+        email = request.POST.get("email", "").strip()
+        country_id = request.POST.get("country", "").strip()
+        region = request.POST.get("region", "").strip()
+        city = request.POST.get("city", "").strip()
+        address = request.POST.get("address", "").strip()
+        industry = request.POST.get("industry", "").strip()
+        status = request.POST.get("status", "active").strip()
+
+        errors = []
+
+        if not name:
+            errors.append("Organization name is required.")
+        elif Organization.objects.filter(name__iexact=name).exists():
+            errors.append(
+                "An organization with this name already exists."
+            )
+
+        valid_statuses = {
+            value for value, label in Organization.STATUS_CHOICES
+        }
+
+        if status not in valid_statuses:
+            errors.append("Select a valid organization status.")
+
+        country = None
+        if country_id:
+            country = countries.filter(pk=country_id).first()
+            if country is None:
+                errors.append("Select a valid country.")
+
+        if errors:
+            for error in errors:
+                messages.error(request, error)
+        else:
+            organization = Organization.objects.create(
+                name=name,
+                legal_name=legal_name or None,
+                organization_type="business",
+                phone=phone or None,
+                email=email or None,
+                country=country,
+                region=region or None,
+                city=city or None,
+                address=address or None,
+                industry=industry or None,
+                status=status,
+                is_verified=False,
+                created_by=request.user,
+                updated_by=request.user,
+            )
+
+            messages.success(
+                request,
+                f"Organization '{organization.name}' was created. "
+                "You can now create its owner account.",
+            )
+
+            return redirect(
+                "business_requests:organization_management"
+            )
+
+    return render(
+        request,
+        "business_requests/organization_create.html",
+        {
+            "countries": countries,
+            "status_choices": Organization.STATUS_CHOICES,
+        },
+    )
+
+
+@login_required
+@transaction.atomic
+def organization_create_owner(request, organization_id):
+    """Create an owner login and membership for a selected organization."""
+    if not is_platform_administrator(request.user):
+        return HttpResponseForbidden("You are not authorized to create organization owners.")
+
+    organization = get_object_or_404(Organization, pk=organization_id)
+    if organization.organization_type == "platform_owner":
+        messages.error(request, "An owner account cannot be created for the platform-owner organization here.")
+        return redirect("business_requests:organization_management")
+
+    existing_owner = OrganizationMember.objects.filter(
+        organization=organization, role="owner", is_active=True
+    ).select_related("user").first()
+
+    if request.method == "POST":
+        username = request.POST.get("username", "").strip()
+        email = request.POST.get("email", "").strip().lower()
+        full_name = request.POST.get("full_name", "").strip()
+        phone_number = request.POST.get("phone_number", "").strip()
+        password = request.POST.get("password", "")
+        password_confirm = request.POST.get("password_confirm", "")
+
+        errors = []
+        if existing_owner:
+            errors.append("This organization already has an active owner. Use the existing account or deactivate its owner membership first.")
+        if not username:
+            errors.append("Username is required.")
+        if User.objects.filter(username__iexact=username).exists():
+            errors.append("That username is already in use.")
+        if email and User.objects.filter(email__iexact=email).exists():
+            errors.append("That email address is already in use.")
+        if not password or len(password) < 8:
+            errors.append("Password must contain at least 8 characters.")
+        if password != password_confirm:
+            errors.append("The passwords do not match.")
+
+        if errors:
+            for error in errors:
+                messages.error(request, error)
+        else:
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=password,
+                first_name=full_name.split(" ", 1)[0] if full_name else "",
+                last_name=full_name.split(" ", 1)[1] if " " in full_name else "",
+            )
+            OrganizationMember.objects.create(
+                organization=organization,
+                user=user,
+                role="owner",
+                is_active=True,
+                phone_number=phone_number,
+                must_change_password=True,
+            )
+            organization.updated_by = request.user
+            organization.save(update_fields=["updated_by", "updated_at"])
+            messages.success(
+                request,
+                f"Owner account '{username}' was created for {organization.name}. Give the owner their login details securely; they will be asked to change the password.",
+            )
+            return redirect("business_requests:organization_management")
+
+    return render(
+        request,
+        "business_requests/organization_owner_create.html",
+        {"organization": organization, "existing_owner": existing_owner},
+    )
+
+
+@login_required
+@transaction.atomic
+def organization_toggle_status(request, organization_id):
+    """Change a tenant organization's status; platform-owner status is protected."""
+    if not is_platform_administrator(request.user):
+        return HttpResponseForbidden("You are not authorized to change organization status.")
+    if request.method != "POST":
+        return redirect("business_requests:organization_management")
+
+    organization = get_object_or_404(Organization, pk=organization_id)
+    if organization.organization_type == "platform_owner":
+        messages.error(request, "The platform-owner organization cannot be changed here.")
+        return redirect("business_requests:organization_management")
+
+    new_status = request.POST.get("status", "").strip()
+    if new_status not in {"pending", "active", "inactive", "suspended"}:
+        messages.error(request, "Invalid organization status.")
+    else:
+        organization.status = new_status
+        organization.updated_by = request.user
+        organization.save(update_fields=["status", "updated_by", "updated_at"])
+        messages.success(request, f"{organization.name} status changed to {organization.get_status_display()}.")
+    return redirect("business_requests:organization_management")

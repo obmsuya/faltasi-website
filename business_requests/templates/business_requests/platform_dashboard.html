@@ -1,0 +1,148 @@
+{% extends "main/base.html" %}
+{% block title %}Platform Dashboard | Faltasi Innovations Limited{% endblock %}
+{% block meta_description %}Faltasi platform administration dashboard for monitoring organizations, members, customers, requests and departments.{% endblock %}
+
+{% block content %}
+<section class="page-section bd-page">
+  <div class="container bd-container">
+    {% if messages %}
+      <div class="bd-messages" aria-live="polite">
+        {% for message in messages %}
+          <div class="bd-alert bd-alert-{{ message.tags|default:'info' }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <header class="bd-welcome">
+      <div class="bd-welcome-copy">
+        <span class="bd-eyebrow">FALTASI PLATFORM CONTROL CENTRE</span>
+        <h1>Platform Owner Dashboard</h1>
+        <p>Welcome back{% if request.user.get_full_name %}, {{ request.user.get_full_name }}{% else %}, {{ request.user.username }}{% endif %}. Monitor the platform and manage organizations from one place.</p>
+      </div>
+      <a href="{% url 'admin:index' %}" class="bd-button bd-button-primary"><span aria-hidden="true">⚙</span> Platform Administration</a>
+    </header>
+
+    <section class="bd-panel bd-profile-panel" aria-labelledby="platform-profile-heading">
+      <div class="bd-org-mark" aria-hidden="true">F</div>
+      <div class="bd-org-details">
+        <div class="bd-org-title-row">
+          <div>
+            <span class="bd-section-kicker">PLATFORM ACCESS</span>
+            <h2 id="platform-profile-heading">Faltasi Innovations Limited</h2>
+          </div>
+          <span class="bd-status">Administrator access</span>
+        </div>
+        <div class="bd-user-details">
+          <div class="bd-detail-item"><span>Logged-in user</span><strong>{% if request.user.get_full_name %}{{ request.user.get_full_name }}{% else %}{{ request.user.username }}{% endif %}</strong></div>
+          <div class="bd-detail-item"><span>Username</span><strong>{{ request.user.username }}</strong></div>
+          <div class="bd-detail-item"><span>Access level</span><strong>Platform administrator</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="bd-section" aria-labelledby="platform-overview-heading">
+      <div class="bd-section-heading">
+        <div>
+          <span class="bd-section-kicker">PLATFORM AT A GLANCE</span>
+          <h2 id="platform-overview-heading">Platform Overview</h2>
+          <p>A platform-wide snapshot across organizations.</p>
+        </div>
+      </div>
+      <div class="bd-stats-grid">
+        <article class="bd-stat-card bd-stat-customers">
+          <div class="bd-stat-top"><span class="bd-stat-icon" aria-hidden="true">▣</span><span class="bd-stat-label">ORGANIZATIONS</span></div>
+          <strong class="bd-stat-number">{{ organization_count }}</strong>
+          <span class="bd-stat-caption">Organizations registered on the platform</span>
+        </article>
+        <article class="bd-stat-card bd-stat-requests">
+          <div class="bd-stat-top"><span class="bd-stat-icon" aria-hidden="true">✓</span><span class="bd-stat-label">ACTIVE ORGANIZATIONS</span></div>
+          <strong class="bd-stat-number">{{ active_organization_count }}</strong>
+          <span class="bd-stat-caption">Organizations with active status</span>
+        </article>
+        <article class="bd-stat-card bd-stat-users">
+          <div class="bd-stat-top"><span class="bd-stat-icon" aria-hidden="true">♧</span><span class="bd-stat-label">ORGANIZATION MEMBERS</span></div>
+          <strong class="bd-stat-number">{{ organization_member_count }}</strong>
+          <span class="bd-stat-caption">Distinct users with active membership</span>
+        </article>
+        <article class="bd-stat-card bd-stat-departments">
+          <div class="bd-stat-top"><span class="bd-stat-icon" aria-hidden="true">▦</span><span class="bd-stat-label">ACTIVE DEPARTMENTS</span></div>
+          <strong class="bd-stat-number">{{ department_count }}</strong>
+          <span class="bd-stat-caption">Active departments across the platform</span>
+        </article>
+        <article class="bd-stat-card bd-stat-customers">
+          <div class="bd-stat-top"><span class="bd-stat-icon" aria-hidden="true">♙</span><span class="bd-stat-label">CUSTOMERS</span></div>
+          <strong class="bd-stat-number">{{ customer_count }}</strong>
+          <span class="bd-stat-caption">Customers recorded across organizations</span>
+        </article>
+        <article class="bd-stat-card bd-stat-requests">
+          <div class="bd-stat-top"><span class="bd-stat-icon" aria-hidden="true">▤</span><span class="bd-stat-label">BUSINESS REQUESTS</span></div>
+          <strong class="bd-stat-number">{{ request_count }}</strong>
+          <span class="bd-stat-caption">Requests recorded across the platform</span>
+        </article>
+      </div>
+    </section>
+
+    <section class="bd-section" aria-labelledby="platform-management-heading">
+      <div class="bd-section-heading">
+        <div>
+          <span class="bd-section-kicker">ADMINISTRATION</span>
+          <h2 id="platform-management-heading">Platform Management</h2>
+          <p>Access the main tools used to administer Faltasi and its organizations.</p>
+        </div>
+      </div>
+      <div class="bd-actions-grid">
+        <a href="{% url 'admin:index' %}" class="bd-action-card">
+          <span class="bd-action-icon bd-icon-blue" aria-hidden="true">⚙</span>
+          <span class="bd-action-content"><strong>Django Administration</strong><span>Manage organizations, users, memberships and platform records.</span></span>
+          <span class="bd-action-arrow" aria-hidden="true">↗</span>
+        </a>
+        <a href="{% url 'business_requests:switch_organization' %}" class="bd-action-card">
+          <span class="bd-action-icon bd-icon-purple" aria-hidden="true">⇄</span>
+          <span class="bd-action-content"><strong>Switch Organization</strong><span>Select an organization to work in its business context.</span></span>
+          <span class="bd-action-arrow" aria-hidden="true">↗</span>
+        </a>
+        <a href="{% url 'business_requests:business_dashboard' %}" class="bd-action-card">
+          <span class="bd-action-icon bd-icon-green" aria-hidden="true">▦</span>
+          <span class="bd-action-content"><strong>Organization Dashboard</strong><span>Open the business dashboard for the currently selected organization.</span></span>
+          <span class="bd-action-arrow" aria-hidden="true">↗</span>
+        </a>
+      </div>
+    </section>
+
+    <section class="bd-section bd-operations-section" aria-labelledby="platform-operations-heading">
+      <div class="bd-section-heading">
+        <div>
+          <span class="bd-section-kicker">PLATFORM OPERATIONS</span>
+          <h2 id="platform-operations-heading">Operational Shortcuts</h2>
+          <p>Use these shortcuts for platform-wide records and administration.</p>
+        </div>
+      </div>
+      <div class="bd-operations-list">
+        <a href="{% url 'admin:organizations_organization_changelist' %}" class="bd-operation-link">
+          <span class="bd-operation-symbol" aria-hidden="true">▣</span>
+          <span class="bd-operation-copy"><strong>Organizations</strong><span>Review registered organizations and their status.</span></span>
+          <span class="bd-operation-cta">Manage <span aria-hidden="true">→</span></span>
+        </a>
+        <a href="{% url 'admin:organizations_organizationmember_changelist' %}" class="bd-operation-link">
+          <span class="bd-operation-symbol" aria-hidden="true">♧</span>
+          <span class="bd-operation-copy"><strong>Organization Memberships</strong><span>Review organization access and membership assignments.</span></span>
+          <span class="bd-operation-cta">Manage <span aria-hidden="true">→</span></span>
+        </a>
+        <a href="{% url 'admin:business_requests_department_changelist' %}" class="bd-operation-link">
+          <span class="bd-operation-symbol" aria-hidden="true">▦</span>
+          <span class="bd-operation-copy"><strong>Departments</strong><span>Review departments registered across organizations.</span></span>
+          <span class="bd-operation-cta">Manage <span aria-hidden="true">→</span></span>
+        </a>
+      </div>
+    </section>
+
+    <section class="bd-admin-strip">
+      <div>
+        <strong>Platform-wide controls</strong>
+        <p>Subscription billing and global platform settings can be connected here when those features are implemented.</p>
+      </div>
+      <a href="{% url 'admin:index' %}" class="bd-button bd-button-secondary">Open Administration</a>
+    </section>
+  </div>
+</section>
+{% endblock %}

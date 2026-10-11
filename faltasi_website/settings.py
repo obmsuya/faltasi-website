@@ -36,6 +36,12 @@ WHATSAPP_PHONE_NUMBER_ID = os.environ.get(
 WHATSAPP_ACCESS_TOKEN = os.environ.get(
     "WHATSAPP_ACCESS_TOKEN"
 )
+# Optional approved WhatsApp template for initiating owner onboarding conversations.
+# If configured, the template must contain four BODY placeholders in this order:
+# owner full name, organization name, username, temporary password.
+WHATSAPP_ONBOARDING_TEMPLATE_NAME = os.environ.get("WHATSAPP_ONBOARDING_TEMPLATE_NAME", "")
+WHATSAPP_ONBOARDING_TEMPLATE_LANGUAGE = os.environ.get("WHATSAPP_ONBOARDING_TEMPLATE_LANGUAGE", "en")
+OWNER_LOGIN_URL = os.environ.get("OWNER_LOGIN_URL", "https://www.faltasi.com/accounts/login/")
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = ['.vercel.app', '.now.sh', '127.0.0.1', 'localhost', 'faltasi.com', '.faltasi.com', '*']
@@ -69,6 +75,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'organizations.middleware.RequireOwnerPasswordChangeMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]

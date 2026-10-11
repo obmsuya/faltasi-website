@@ -4,6 +4,7 @@ from .models import (
     Country,
     Organization,
     OrganizationMember,
+    OrganizationOnboardingMessage,
 )
 
 
@@ -64,9 +65,7 @@ class OrganizationAdmin(admin.ModelAdmin):
     }
 
     readonly_fields = (
-        "created_at",
-        "updated_at",
-        "suspended_at",
+        "created_at", "updated_at", "suspended_at", "created_by", "updated_by",
     )
 
     fieldsets = (
@@ -156,6 +155,26 @@ class OrganizationAdmin(admin.ModelAdmin):
     )
 
 
+    def get_readonly_fields(self, request, obj=None):
+        fields = list(super().get_readonly_fields(request, obj))
+        if obj and obj.organization_type == "platform_owner":
+            for protected in ("status", "organization_type"):
+                if protected not in fields:
+                    fields.append(protected)
+        elif obj and "organization_type" not in fields:
+            fields.append("organization_type")
+        return tuple(fields)
+
+    def delete_queryset(self, request, queryset):
+        # Keep the platform owner protected even from the bulk-delete action.
+        queryset.exclude(organization_type="platform_owner").delete()
+
+    def has_delete_permission(self, request, obj=None):
+        if obj and obj.organization_type == "platform_owner":
+            return False
+        return super().has_delete_permission(request, obj)
+
+
 @admin.register(OrganizationMember)
 class OrganizationMemberAdmin(admin.ModelAdmin):
     list_display = (
@@ -184,3 +203,16 @@ class OrganizationMemberAdmin(admin.ModelAdmin):
         "joined_at",
         "updated_at",
     )
+
+@admin.register(OrganizationOnboardingMessage)
+class OrganizationOnboardingMessageAdmin(admin.ModelAdmin):
+    list_display = ("organization", "recipient_phone", "status", "attempt_number", "attempted_at", "provider_message_id")
+    list_filter = ("status", "created_at")
+    search_fields = ("organization__name", "recipient_phone", "provider_message_id", "error_message")
+    readonly_fields = ("organization", "membership", "recipient_phone", "status", "attempt_number", "provider_message_id", "error_message", "attempted_at", "created_at")
+    def has_add_permission(self, request):
+        return False
+    def has_change_permission(self, request, obj=None):
+        return False
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_active and request.user.is_superuser

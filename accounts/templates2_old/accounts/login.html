@@ -1,0 +1,165 @@
+{% extends "main/base.html" %}
+
+{% block title %}Business Login | Faltasi Innovations Limited{% endblock %}
+
+{% block content %}
+
+<section class="auth-page">
+
+    <div class="auth-container">
+
+        <div class="auth-card">
+
+            <!-- HEADER -->
+            <div class="auth-header">
+
+                <h1>Welcome Back</h1>
+
+                <p>
+                    Sign in to access your Faltasi account.
+                </p>
+
+            </div>
+
+
+            <!-- MESSAGES -->
+            {% if messages %}
+
+                <div class="auth-messages">
+
+                    {% for message in messages %}
+
+                        <div class="auth-message {{ message.tags }}">
+                            {{ message }}
+                        </div>
+
+                    {% endfor %}
+
+                </div>
+
+            {% endif %}
+
+
+            <!-- LOGIN FORM -->
+            <form
+                method="post"
+                class="auth-form"
+            >
+
+                {% csrf_token %}
+
+
+                <!-- USERNAME -->
+                <div class="auth-form-group">
+
+                    <label for="id_username">
+                        Username
+                    </label>
+
+                    <input
+                        type="text"
+                        name="username"
+                        id="id_username"
+                        autocomplete="username"
+                        required
+                        autofocus
+                    >
+
+                </div>
+
+
+                <!-- PASSWORD -->
+                <div class="auth-form-group">
+
+                    <label for="id_password">
+                        Password
+                    </label>
+
+                    <input
+                        type="password"
+                        name="password"
+                        id="id_password"
+                        autocomplete="current-password"
+                        required
+                    >
+
+                </div>
+
+
+                {% if form.errors %}
+
+                    <div class="auth-error">
+                        Username or password is incorrect.
+                        Please try again.
+                    </div>
+
+                {% endif %}
+
+
+                <!-- LOGIN BUTTON -->
+                <button
+                    type="submit"
+                    class="auth-submit"
+                >
+                    Login
+                </button>
+
+            </form>
+
+
+            <!-- FORGOT PASSWORD -->
+            <div class="auth-link-section">
+
+                <a
+                    href="{% url 'accounts:password_reset' %}"
+                    class="auth-link"
+                >
+                    Forgot your password?
+                </a>
+
+            </div>
+
+
+            <!-- CREATE ACCOUNT -->
+            <div class="auth-register">
+
+                <p>
+                    Don't have an account?
+                </p>
+
+                <a
+                    href="{% url 'accounts:register' %}"
+                    class="auth-register-button"
+                >
+                    Create Account
+                </a>
+
+            </div>
+
+
+            <!-- HELP -->
+            <div class="auth-help">
+
+                <h3>
+                    Need Help?
+                </h3>
+
+                <p>
+                    Contact the Faltasi office for assistance
+                    with your account.
+                </p>
+
+                <p>
+                    <strong>Office Phone:</strong>
+                    +255 653 397 942
+                </p>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</section>
+
+{% endblock %}

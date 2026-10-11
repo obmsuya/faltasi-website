@@ -1,0 +1,9 @@
+{% extends "main/base.html" %}
+{% block content %}
+<section class="page-section"><div class="container" style="max-width:1100px;margin:auto;padding:24px 16px">
+  <p><a href="{% url 'business_requests:business_dashboard' %}">← Back to Business Dashboard</a></p>
+  {% if messages %}{% for message in messages %}<p class="bd-alert bd-alert-{{ message.tags|default:'info' }}">{{ message }}</p>{% endfor %}{% endif %}
+  <h1>Create Owner Account</h1><h2>{{ organization.name }}</h2><p>The owner will be assigned to this organization only. They must change the password after signing in.</p>
+  {% if existing_owner %}<p>An active owner already exists: <strong>{{ existing_owner.user.username }}</strong>.</p>{% else %}<form method="post">{% csrf_token %}<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px"><label>Owner full name<input name="full_name" value="{{ request.POST.full_name|default:'' }}"></label><label>Username *<input name="username" required autocomplete="off" value="{{ request.POST.username|default:'' }}"></label><label>Email<input type="email" name="email" value="{{ request.POST.email|default:'' }}"></label><label>Phone number<input name="phone_number" value="{{ request.POST.phone_number|default:'' }}"></label><label>Password *<input type="password" name="password" required minlength="8" autocomplete="new-password"></label><label>Confirm password *<input type="password" name="password_confirm" required minlength="8" autocomplete="new-password"></label></div><p><button type="submit" class="bd-button bd-button-primary">Create Owner Account</button> <a href="{% url 'business_requests:organization_management' %}">Cancel</a></p></form>{% endif %}
+</div></section>
+{% endblock %}

@@ -109,3 +109,29 @@ def register(request):
         request,
         "accounts/register.html"
     )
+
+
+from django.contrib.auth import update_session_auth_hash
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import PasswordChangeForm
+from django.shortcuts import render
+from organizations.models import OrganizationMember
+
+
+@login_required
+def force_password_change(request):
+    """Complete the required first-login password change for provisioned owners."""
+    memberships = OrganizationMember.objects.filter(
+        user=request.user, is_active=True, must_change_password=True
+    )
+    if not memberships.exists():
+        return redirect("business_requests:business_dashboard")
+
+    form = PasswordChangeForm(request.user, request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        user = form.save()
+        update_session_auth_hash(request, user)
+        memberships.update(must_change_password=False)
+        messages.success(request, "Your password has been changed successfully.")
+        return redirect("business_requests:business_dashboard")
+    return render(request, "accounts/force_password_change.html", {"form": form})

@@ -17,6 +17,7 @@ from organizations.models import Organization
 
 from .models import (
     Department,
+    DepartmentMember,
     RequestCategory,
     RequestField,
     BusinessRequest,
@@ -33,6 +34,15 @@ from .excel_importer import import_categories_from_excel
 class DepartmentAdmin(admin.ModelAdmin):
     list_display = ("id", "name")
     search_fields = ("name",)
+
+
+@admin.register(DepartmentMember)
+class DepartmentMemberAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "department", "role", "is_active")
+    list_filter = ("department", "role", "is_active")
+    search_fields = ("user__username", "user__first_name", "user__last_name", "department__name")
+    ordering = ("department", "user")
+
 
 
 @admin.register(RequestCategory)

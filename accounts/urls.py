@@ -6,6 +6,8 @@ app_name = "accounts"
 
 urlpatterns = [
 
+    path("force-password-change/", views.force_password_change, name="force_password_change"),
+
     # Login
     path(
         "login/",

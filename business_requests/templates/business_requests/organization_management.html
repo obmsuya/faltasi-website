@@ -1,0 +1,133 @@
+
+{% extends "main/base.html" %}
+
+{% block title %}Manage Organizations | Faltasi Innovations Limited{% endblock %}
+
+{% block meta_description %}
+Manage organizations, organization status and owner accounts on the Faltasi platform.
+{% endblock %}
+
+{% block content %}
+<section class="page-section">
+  <div class="container" style="max-width: 1100px; margin: auto; padding: 24px 16px; color: #1f2937;">
+
+    <p>
+      <a href="{% url 'business_requests:business_dashboard' %}"
+         style="color: #1d4ed8; text-decoration: underline;">
+        &larr; Back to Business Dashboard
+      </a>
+    </p>
+
+    {% if messages %}
+      <div aria-live="polite">
+        {% for message in messages %}
+          <p class="bd-alert bd-alert-{{ message.tags|default:'info' }}">
+            {{ message }}
+          </p>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <header style="margin: 24px 0;">
+      <h1 style="color: #111827;">Manage Organizations</h1>
+      <p style="color: #4b5563;">
+        View organizations, manage their status and create owner accounts.
+      </p>
+
+      <a href="{% url 'business_requests:organization_create' %}"
+         style="display: inline-block; margin-top: 12px; padding: 12px 18px; background-color: #1d4ed8; color: #ffffff !important; text-decoration: none; font-weight: 600; border-radius: 6px;">
+        + Create Organization
+      </a>
+    </header>
+
+    <div style="overflow-x: auto; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px;">
+      <table style="width: 100%; border-collapse: collapse; color: #1f2937;">
+        <thead style="background-color: #f3f4f6;">
+          <tr>
+            <th scope="col" style="text-align: left; padding: 12px;">Organization</th>
+            <th scope="col" style="text-align: left; padding: 12px;">Type</th>
+            <th scope="col" style="text-align: left; padding: 12px;">Status</th>
+            <th scope="col" style="text-align: left; padding: 12px;">Owner</th>
+            <th scope="col" style="text-align: left; padding: 12px;">Actions</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for organization in organizations %}
+            <tr style="border-top: 1px solid #e5e7eb;">
+              <td style="padding: 12px;">
+                <strong>{{ organization.name }}</strong><br>
+                <small>{{ organization.email|default:"No email recorded" }}</small>
+              </td>
+
+              <td style="padding: 12px;">
+                {{ organization.get_organization_type_display }}
+              </td>
+
+              <td style="padding: 12px;">
+                {{ organization.get_status_display }}
+              </td>
+
+              <td style="padding: 12px;">
+                {% for member in organization.members.all %}
+                  {% if member.role == "owner" and member.is_active %}
+                    {{ member.user.username }}
+                  {% endif %}
+                {% empty %}
+                  <span style="color: #6b7280;">No owner assigned</span>
+                {% endfor %}
+              </td>
+
+              <td style="padding: 12px; min-width: 230px;">
+                {% if organization.organization_type != "platform_owner" %}
+                  <p style="margin: 0 0 10px;">
+                    <a href="{% url 'business_requests:organization_create_owner' organization.id %}"
+                       style="color: #1d4ed8; text-decoration: underline;">
+                      Create owner account
+                    </a>
+                  </p>
+
+                  <form method="post"
+                        action="{% url 'business_requests:organization_toggle_status' organization.id %}">
+                    {% csrf_token %}
+
+                    <label for="status-{{ organization.id }}"
+                           style="display: block; margin-bottom: 5px;">
+                      Organization status
+                    </label>
+
+                    <select id="status-{{ organization.id }}"
+                            name="status"
+                            style="padding: 8px; max-width: 100%; color: #1f2937; background: #ffffff; border: 1px solid #9ca3af; border-radius: 4px;">
+                      {% for value, label in organization.STATUS_CHOICES %}
+                        <option value="{{ value }}"
+                          {% if organization.status == value %}selected{% endif %}>
+                          {{ label }}
+                        </option>
+                      {% endfor %}
+                    </select>
+
+                    <button type="submit"
+                            style="display: inline-block; margin-top: 8px; padding: 9px 12px; background: #1d4ed8; color: #ffffff; border: none; border-radius: 5px; cursor: pointer;">
+                      Save status
+                    </button>
+                  </form>
+                {% else %}
+                  <span style="color: #6b7280;">Platform owner protected</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="5" style="padding: 16px;">
+                No organizations have been created yet.
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</section>
+{% endblock %}

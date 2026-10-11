@@ -231,16 +231,24 @@ class Organization(models.Model):
     )
 
     # =========================================================
+    # AUDIT INFORMATION
+    # =========================================================
+
+    created_by = models.ForeignKey(
+        "auth.User", on_delete=models.SET_NULL, blank=True, null=True,
+        related_name="created_organizations",
+    )
+    updated_by = models.ForeignKey(
+        "auth.User", on_delete=models.SET_NULL, blank=True, null=True,
+        related_name="updated_organizations",
+    )
+
+    # =========================================================
     # TIMESTAMPS
     # =========================================================
 
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-    )
-
-    updated_at = models.DateTimeField(
-        auto_now=True,
-    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["name"]
@@ -283,9 +291,9 @@ class OrganizationMember(models.Model):
         default="staff",
     )
 
-    is_active = models.BooleanField(
-        default=True,
-    )
+    is_active = models.BooleanField(default=True)
+    phone_number = models.CharField(max_length=30, blank=True, default="")
+    must_change_password = models.BooleanField(default=False)
 
     joined_at = models.DateTimeField(
         auto_now_add=True,
@@ -305,3 +313,33 @@ class OrganizationMember(models.Model):
 
     def __str__(self):
         return f"{self.organization.name} - {self.user.username}"
+
+class OrganizationOnboardingMessage(models.Model):
+    """Audit log for owner onboarding WhatsApp API attempts; never stores passwords."""
+
+    STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("accepted", "Accepted by WhatsApp API"),
+        ("failed", "Failed"),
+    ]
+
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name="onboarding_messages"
+    )
+    membership = models.ForeignKey(
+        OrganizationMember, on_delete=models.SET_NULL, blank=True, null=True,
+        related_name="onboarding_messages",
+    )
+    recipient_phone = models.CharField(max_length=30)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    attempt_number = models.PositiveIntegerField(default=1)
+    provider_message_id = models.CharField(max_length=255, blank=True, default="")
+    error_message = models.TextField(blank=True, default="")
+    attempted_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.organization.name} onboarding ({self.status})"
