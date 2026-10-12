@@ -147,86 +147,82 @@ def normalize_phone_number(phone_number):
     return phone
 
 
+
 def send_whatsapp_message(whatsapp_phone, phone_number, message):
+    """
+    Send a WhatsApp text message.
+
+    Production:
+        Uses the selected organization's connected WhatsApp account.
+
+    Local development:
+        If DEBUG=True and database connection records are missing,
+        uses the verified WhatsApp settings from .env.
+    """
+    import requests
+    from django.conf import settings
+    from whatsapp.models import WhatsAppConnection
+
     try:
         print("========== WHATSAPP SEND ==========")
 
-        # =====================================================
-        # GET WHATSAPP CONNECTION
-        # =====================================================
+        connection = None
 
-        connection = (
-            WhatsAppConnection.objects
-            .select_related(
-                "whatsapp_business_account",
-                "organization",
+        # Use a database connection when a phone record is available.
+        if whatsapp_phone:
+            connection = (
+                WhatsAppConnection.objects
+                .select_related(
+                    "whatsapp_business_account",
+                    "organization",
+                )
+                .filter(
+                    whatsapp_business_account=(
+                        whatsapp_phone.whatsapp_business_account
+                    ),
+                    organization=whatsapp_phone.organization,
+                    status="connected",
+                )
+                .first()
             )
-            .filter(
-                whatsapp_business_account=whatsapp_phone.whatsapp_business_account,
-                organization=whatsapp_phone.organization,
-                status="connected",
-            )
-            .first()
+
+        # Prefer the organization's own connection token.
+        access_token = (
+            connection.access_token
+            if connection and connection.access_token
+            else None
         )
 
-        if not connection:
-            print("========== WHATSAPP SEND ERROR ==========")
-            print("NO ACTIVE WHATSAPP CONNECTION FOUND")
-            print(
-                "ORGANIZATION:",
-                whatsapp_phone.organization.name,
-            )
-            print(
-                "PHONE NUMBER:",
-                whatsapp_phone.phone_number,
-            )
-            return None
-
-        # =====================================================
-        # ACCESS TOKEN
-        # =====================================================
-
-        # Use the access token belonging to this
-        # organization's WhatsApp connection.
-
-        access_token = connection.access_token
-
-        print(
-            "ORGANIZATION CONNECTION TOKEN EXISTS:",
-            bool(access_token),
+        phone_number_id = (
+            getattr(whatsapp_phone, "phone_number_id", None)
+            if whatsapp_phone
+            else None
         )
 
-        print(
-            "WHATSAPP ACCESS TOKEN LENGTH:",
-            len(access_token) if access_token else 0,
-        )
+        # Local-development fallback only. Never use the platform
+        # owner's environment credentials for another tenant in production.
+        if settings.DEBUG:
+            if not access_token:
+                access_token = getattr(
+                    settings, "WHATSAPP_ACCESS_TOKEN", None
+                )
+
+            if not phone_number_id:
+                phone_number_id = getattr(
+                    settings, "WHATSAPP_PHONE_NUMBER_ID", None
+                )
 
         if not access_token:
-            print("========== WHATSAPP SEND ERROR ==========")
-            print(
-                "NO ACCESS TOKEN FOUND FOR ORGANIZATION:",
-                whatsapp_phone.organization.name,
-            )
+            print("WHATSAPP SEND ERROR: No access token available.")
             return None
-
-        # =====================================================
-        # PHONE NUMBER ID
-        # =====================================================
-
-        phone_number_id = whatsapp_phone.phone_number_id
 
         if not phone_number_id:
-            print("========== WHATSAPP SEND ERROR ==========")
-            print("NO PHONE NUMBER ID FOUND")
-            print(
-                "WHATSAPP PHONE:",
-                whatsapp_phone.phone_number,
-            )
+            print("WHATSAPP SEND ERROR: No phone number ID available.")
             return None
 
-        # =====================================================
-        # META GRAPH API
-        # =====================================================
+        if not phone_number or not message:
+            print("WHATSAPP SEND ERROR: Recipient or message is empty.")
+            return None
 
         url = (
             f"https://graph.facebook.com/v26.0/"
@@ -240,45 +236,10 @@ def send_whatsapp_message(whatsapp_phone, phone_number, message):
 
         payload = {
             "messaging_product": "whatsapp",
-            "to": phone_number,
+            "to": str(phone_number).strip().lstrip("+"),
             "type": "text",
-            "text": {
-                "body": message,
-            },
+            "text": {"body": message},
         }
-
-        print(
-            "ORGANIZATION:",
-            whatsapp_phone.organization.name,
-        )
-        print(
-            "WHATSAPP PHONE:",
-            whatsapp_phone.phone_number,
-        )
-        print(
-            "PHONE NUMBER ID:",
-            phone_number_id,
-        )
-        print(
-            "RECIPIENT:",
-            phone_number,
-        )
-        print(
-            "TOKEN AVAILABLE:",
-            bool(access_token),
-        )
-        print(
-            "API URL:",
-            url,
-        )
-        print(
-            "MESSAGE:",
-            message,
-        )
-
-        # =====================================================
-        # SEND TO META
-        # =====================================================
 
         response = requests.post(
             url,
@@ -287,30 +248,21 @@ def send_whatsapp_message(whatsapp_phone, phone_number, message):
             timeout=30,
         )
 
-        print(
-            "WHATSAPP SEND STATUS:",
-            response.status_code,
-        )
-        print(
-            "WHATSAPP SEND RESPONSE:",
-            response.text,
-        )
+        print("WHATSAPP SEND STATUS:", response.status_code)
+
+        # Do not print the access token or request headers.
+        print("WHATSAPP SEND RESPONSE:", response.text)
 
         return response
 
-    except requests.RequestException as e:
-        print(
-            "========== WHATSAPP SEND REQUEST ERROR =========="
-        )
-        print("ERROR:", str(e))
+    except requests.RequestException as exc:
+        print("WHATSAPP SEND REQUEST ERROR:", str(exc))
         return None
 
-    except Exception as e:
-        print(
-            "========== WHATSAPP SEND GENERAL ERROR =========="
-        )
-        print("ERROR:", str(e))
+    except Exception as exc:
+        print("WHATSAPP SEND GENERAL ERROR:", str(exc))
         return None
+
 
 def get_or_create_customer(phone_number):
     """
@@ -1669,6 +1621,117 @@ def webhook(request):
             whatsapp_business_account,
 
         )
+
+
+
+
+
+
+
+
+    
+        # =================================================
+        # PROCESS OUTGOING MESSAGE DELIVERY STATUSES
+        # =================================================
+
+        statuses = value.get("statuses", [])
+
+        if statuses:
+            print("WHATSAPP STATUS UPDATE RECEIVED")
+
+            for status_item in statuses:
+                whatsapp_message_id = status_item.get("id")
+                new_status = status_item.get("status")
+
+                print("MESSAGE ID:", whatsapp_message_id)
+                print("NEW STATUS:", new_status)
+
+                allowed_statuses = {
+                    "sent",
+                    "delivered",
+                    "read",
+                    "failed",
+                }
+
+                if (
+                    not whatsapp_message_id
+                    or new_status not in allowed_statuses
+                ):
+                    print("INVALID OR INCOMPLETE STATUS UPDATE")
+                    continue
+
+                saved_message = Message.objects.filter(
+                    whatsapp_message_id=whatsapp_message_id,
+                    direction="outgoing",
+                ).first()
+
+                if not saved_message:
+                    print(
+                        "OUTGOING MESSAGE NOT FOUND:",
+                        whatsapp_message_id,
+                    )
+                    continue
+
+                current_status = saved_message.delivery_status
+
+                # Do not allow an older status to overwrite
+                # a more advanced status.
+                status_order = {
+                    "pending": 0,
+                    "sent": 1,
+                    "delivered": 2,
+                    "read": 3,
+                    "failed": 4,
+                }
+
+                if current_status == "failed":
+                    print("MESSAGE ALREADY MARKED FAILED")
+                    continue
+
+                if (
+                    new_status != "failed"
+                    and status_order.get(new_status, 0)
+                    < status_order.get(current_status, 0)
+                ):
+                    print("OLDER STATUS IGNORED")
+                    continue
+
+                if (
+                    new_status == "failed"
+                    and current_status in {"delivered", "read"}
+                ):
+                    print("FAILURE STATUS IGNORED: MESSAGE ALREADY DELIVERED")
+                    continue
+
+                saved_message.delivery_status = new_status
+
+                message_metadata = saved_message.metadata or {}
+                message_metadata["whatsapp_status_update"] = status_item
+                saved_message.metadata = message_metadata
+
+                saved_message.save(
+                    update_fields=[
+                        "delivery_status",
+                        "metadata",
+                    ]
+                )
+
+                print(
+                    "MESSAGE STATUS UPDATED:",
+                    current_status,
+                    "->",
+                    new_status,
+                )
+
+
+
+
+
+
+
+
+
+
 
 
 

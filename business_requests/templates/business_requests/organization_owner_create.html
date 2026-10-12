@@ -1,9 +1,198 @@
+
 {% extends "main/base.html" %}
+
 {% block content %}
-<section class="page-section"><div class="container" style="max-width:1100px;margin:auto;padding:24px 16px">
-  <p><a href="{% url 'business_requests:business_dashboard' %}">← Back to Business Dashboard</a></p>
-  {% if messages %}{% for message in messages %}<p class="bd-alert bd-alert-{{ message.tags|default:'info' }}">{{ message }}</p>{% endfor %}{% endif %}
-  <h1>Create Owner Account</h1><h2>{{ organization.name }}</h2><p>The owner will be assigned to this organization only. They must change the password after signing in.</p>
-  {% if existing_owner %}<p>An active owner already exists: <strong>{{ existing_owner.user.username }}</strong>.</p>{% else %}<form method="post">{% csrf_token %}<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px"><label>Owner full name<input name="full_name" value="{{ request.POST.full_name|default:'' }}"></label><label>Username *<input name="username" required autocomplete="off" value="{{ request.POST.username|default:'' }}"></label><label>Email<input type="email" name="email" value="{{ request.POST.email|default:'' }}"></label><label>Phone number<input name="phone_number" value="{{ request.POST.phone_number|default:'' }}"></label><label>Password *<input type="password" name="password" required minlength="8" autocomplete="new-password"></label><label>Confirm password *<input type="password" name="password_confirm" required minlength="8" autocomplete="new-password"></label></div><p><button type="submit" class="bd-button bd-button-primary">Create Owner Account</button> <a href="{% url 'business_requests:organization_management' %}">Cancel</a></p></form>{% endif %}
-</div></section>
+<section class="page-section">
+    <div class="container" style="max-width: 1000px; margin: 0 auto; padding: 32px 16px;">
+
+        <p style="margin-bottom: 24px;">
+            <a href="{% url 'business_requests:organization_management' %}">
+                &larr; Back to Organization Management
+            </a>
+        </p>
+
+        {% if messages %}
+            <div class="owner-form-messages" style="margin-bottom: 20px;">
+                {% for message in messages %}
+                    <p class="bd-alert bd-alert-{{ message.tags|default:'info' }}">
+                        {{ message }}
+                    </p>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <header style="margin-bottom: 28px;">
+            <p style="text-transform: uppercase; letter-spacing: 1.5px; font-size: 12px; font-weight: 700; color: #64748b;">
+                Organization Management
+            </p>
+
+            <h1 style="margin-bottom: 8px;">Create Owner Account</h1>
+
+            <h2 style="margin-top: 0; font-size: 22px;">
+                {{ organization.name }}
+            </h2>
+
+            <p style="color: #64748b; line-height: 1.7;">
+                Create a login account for the owner of this organization.
+                The account will be assigned to this organization.
+            </p>
+        </header>
+
+        {% if existing_owner %}
+
+            <div style="padding: 20px; border: 1px solid #f59e0b; border-radius: 10px;">
+                <h3 style="margin-top: 0;">An owner already exists</h3>
+
+                <p>
+                    This organization already has an active owner:
+                    <strong>{{ existing_owner.user.username }}</strong>
+                </p>
+
+                <p>Please review the existing owner account before proceeding.</p>
+            </div>
+
+        {% else %}
+
+            <form method="post"
+                  style="padding: 28px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+
+                {% csrf_token %}
+
+                <h3 style="margin-top: 0; margin-bottom: 8px;">
+                    Owner Information
+                </h3>
+
+                <p style="margin-bottom: 24px; color: #64748b; font-size: 14px;">
+                    Fields marked with * are required.
+                </p>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 22px;">
+
+                    <div>
+                        <label for="full_name" style="display: block; font-weight: 600; margin-bottom: 8px;">
+                            Full Name
+                        </label>
+
+                        <input
+                            id="full_name"
+                            type="text"
+                            name="full_name"
+                            value="{{ request.POST.full_name|default:'' }}"
+                            autocomplete="name"
+                            placeholder="Enter owner's full name"
+                            style="width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #cbd5e1; border-radius: 7px;"
+                        >
+                    </div>
+
+                    <div>
+                        <label for="username" style="display: block; font-weight: 600; margin-bottom: 8px;">
+                            Username *
+                        </label>
+
+                        <input
+                            id="username"
+                            type="text"
+                            name="username"
+                            value="{{ request.POST.username|default:'' }}"
+                            autocomplete="off"
+                            required
+                            placeholder="Choose a username"
+                            style="width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #cbd5e1; border-radius: 7px;"
+                        >
+
+                        <small style="display: block; margin-top: 6px; color: #64748b;">
+                            This will be the owner's login username.
+                        </small>
+                    </div>
+
+                    <div>
+                        <label for="email" style="display: block; font-weight: 600; margin-bottom: 8px;">
+                            Email Address
+                        </label>
+
+                        <input
+                            id="email"
+                            type="email"
+                            name="email"
+                            value="{{ request.POST.email|default:'' }}"
+                            autocomplete="email"
+                            placeholder="owner@example.com"
+                            style="width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #cbd5e1; border-radius: 7px;"
+                        >
+                    </div>
+
+                    <div>
+                        <label for="phone_number" style="display: block; font-weight: 600; margin-bottom: 8px;">
+                            WhatsApp Phone Number *
+                        </label>
+
+                        <input
+                            id="phone_number"
+                            type="tel"
+                            name="phone_number"
+                            value="{{ request.POST.phone_number|default:'' }}"
+                            autocomplete="tel"
+                            required
+                            placeholder="e.g. 0653397942"
+                            style="width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #cbd5e1; border-radius: 7px;"
+                        >
+
+                        <small style="display: block; margin-top: 6px; color: #64748b;">
+                            The onboarding message will be sent to this number.
+                        </small>
+                    </div>
+
+                </div>
+
+                <div style="margin-top: 28px; padding: 18px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+                    <h3 style="margin-top: 0; font-size: 16px;">
+                        Temporary Password
+                    </h3>
+
+                    <p style="margin-bottom: 8px;">
+                        The system will generate the temporary password automatically
+                        from the username.
+                    </p>
+
+                    <p style="margin-bottom: 8px;">
+                        <strong>Format:</strong> First letter capitalized, followed by
+                        the rest of the username and <code>@123</code>.
+                    </p>
+
+                    <p style="margin-bottom: 0; color: #64748b; font-size: 14px;">
+                        The temporary password and username will be included in the
+                        WhatsApp onboarding message. We recommend changing the
+                        password after the first login.
+                    </p>
+                </div>
+
+                <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px;">
+
+                    <button
+                        type="submit"
+                        class="bd-button bd-button-primary"
+                        style="padding: 12px 22px; cursor: pointer;"
+                    >
+                        Create Owner Account
+                    </button>
+
+                    <a
+                        href="{% url 'business_requests:organization_management' %}"
+                        style="display: inline-block; padding: 12px 22px; border: 1px solid #cbd5e1; border-radius: 7px; text-decoration: none;"
+                    >
+                        Cancel
+                    </a>
+
+                </div>
+
+            </form>
+
+        {% endif %}
+
+        <p style="margin-top: 24px; color: #64748b; font-size: 13px;">
+            Faltasi Innovations Limited &mdash; Organization Administration
+        </p>
+
+    </div>
+</section>
 {% endblock %}
