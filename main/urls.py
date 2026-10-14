@@ -3,6 +3,7 @@ from django.urls import path
 from django.contrib.sitemaps.views import sitemap
 from main.sitemaps import StaticViewSitemap
 from . import views
+from .legal_views import terms_of_service, data_deletion
 
 
 sitemaps = {
@@ -32,4 +33,8 @@ urlpatterns = [
     ),
     path("partners/", views.partners, name="partners"),
     path("privacy-policy/", views.privacy_policy, name="privacy_policy"),
+    path("terms/", terms_of_service, name="terms_of_service"),
+    path("data-deletion/", data_deletion, name="data_deletion"),
+    
+    
 ]
