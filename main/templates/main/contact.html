@@ -150,6 +150,21 @@ Contact Faltasi Innovations Limited in Tanzania for general inquiries, ICT solut
 
                     {% csrf_token %}
 
+                    <!-- ANTI-SPAM HONEYPOT -->
+                    <div style="position: absolute; left: -9999px;"
+                         aria-hidden="true">
+                        <label for="contact-website">
+                            Leave this field empty
+                        </label>
+                        <input
+                            type="text"
+                            id="contact-website"
+                            name="website"
+                            tabindex="-1"
+                            autocomplete="off"
+                        >
+                    </div>
+
 
                     <!-- NAME -->
 
@@ -234,7 +249,7 @@ Contact Faltasi Innovations Limited in Tanzania for general inquiries, ICT solut
                         type="submit"
                         class="btn btn-primary form-button"
                     >
-                        Send Message
+                        Send message
                     </button>
 
                 </form>

@@ -214,6 +214,21 @@ Select your requirements and our team will contact you.
 
                     {% csrf_token %}
 
+                    <!-- ANTI-SPAM HONEYPOT -->
+                    <div style="position: absolute; left: -9999px;"
+                         aria-hidden="true">
+                        <label for="quote-website">
+                            Leave this field empty
+                        </label>
+                        <input
+                            type="text"
+                            id="quote-website"
+                            name="website"
+                            tabindex="-1"
+                            autocomplete="off"
+                        >
+                    </div>
+
                     <!-- FIXED PRODUCT ID -->
 
                     <input

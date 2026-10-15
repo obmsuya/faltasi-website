@@ -229,110 +229,67 @@ def _save_website_request(
 
 
 
+
 def contact(request):
-
     """
-
     General Contact Us page.
-
     This page does not require a product selection.
-
+    Includes a honeypot check to reduce automated spam.
     """
-
-
 
     organization = Organization.objects.filter(
-
         name="Faltasi Innovations Limited",
-
         organization_type="platform_owner",
-
         status="active",
-
     ).first()
 
-
-
     if request.method == "POST":
-
-
-
         name = request.POST.get("name", "").strip()
-
         email = request.POST.get("email", "").strip()
-
         phone = request.POST.get("phone", "").strip()
-
         message = request.POST.get("message", "").strip()
 
-
+        # Silently reject bots that fill in the hidden honeypot field.
+        if request.POST.get("website", "").strip():
+            return render(
+                request,
+                "main/contact.html",
+                {"success": True},
+            )
 
         if not organization:
-
             return render(
-
                 request,
-
                 "main/contact.html",
-
                 {"organization_error": True},
-
             )
-
-
 
         if not name or not message:
-
             return render(
-
                 request,
-
                 "main/contact.html",
-
                 {
-
                     "error": "Please provide your name and message.",
-
                 },
-
             )
 
-
-
         _save_website_request(
-
             name=name,
-
             email=email,
-
             phone=phone,
-
             message=message,
-
             organization=organization,
-
         )
-
-
 
         return render(
-
             request,
-
             "main/contact.html",
-
             {"success": True},
-
         )
 
-
-
     return render(
-
         request,
-
         "main/contact.html",
-
     )
 
 
@@ -340,183 +297,106 @@ def contact(request):
 
 
 def request_quote(request):
-
     """
-
     Product-specific quote request.
-
     The product is loaded from the database and cannot be
-
     changed to a different product through the submitted form.
-
+    Includes a honeypot check to reduce automated spam.
     """
-
-
 
     product_id = (
-
         request.GET.get("product_id")
-
         or request.POST.get("product_id", "")
-
     )
 
-
-
     organization = Organization.objects.filter(
-
         name="Faltasi Innovations Limited",
-
         organization_type="platform_owner",
-
         status="active",
-
     ).first()
-
-
 
     product = None
 
-
-
     if organization and product_id:
-
         product = Product.objects.filter(
-
             id=product_id,
-
             organization=organization,
-
             is_active=True,
-
             allow_quote_request=True,
-
         ).select_related(
-
             "request_category",
-
         ).first()
 
-
-
     # Do not accept a quote without a valid product.
-
     if not organization or not product:
-
         return render(
-
             request,
-
             "main/request_quote.html",
-
             {
-
                 "product_error": (
-
                     "This product is unavailable for quote requests. "
-
                     "Please return to the Products page and select "
-
                     "an available product."
-
                 ),
-
                 "product": None,
-
             },
-
         )
-
-
 
     if request.method == "POST":
-
-
-
         name = request.POST.get("name", "").strip()
-
         email = request.POST.get("email", "").strip()
-
         phone = request.POST.get("phone", "").strip()
-
         message = request.POST.get("message", "").strip()
 
-
-
-        if not name or not message:
-
+        # Silently reject bots that fill in the hidden honeypot field.
+        if request.POST.get("website", "").strip():
             return render(
-
                 request,
-
                 "main/request_quote.html",
-
                 {
-
                     "product": product,
-
                     "product_id": product.id,
-
-                    "error": "Please provide your name and message.",
-
+                    "success": True,
                 },
-
             )
 
-
+        if not name or not message:
+            return render(
+                request,
+                "main/request_quote.html",
+                {
+                    "product": product,
+                    "product_id": product.id,
+                    "error": "Please provide your name and message.",
+                },
+            )
 
         _save_website_request(
-
             name=name,
-
             email=email,
-
             phone=phone,
-
             message=message,
-
             organization=organization,
-
             product=product,
-
         )
-
-
 
         return render(
-
             request,
-
             "main/request_quote.html",
-
             {
-
                 "product": product,
-
                 "product_id": product.id,
-
                 "success": True,
-
             },
-
         )
 
-
-
     return render(
-
         request,
-
         "main/request_quote.html",
-
         {
-
             "product": product,
-
             "product_id": product.id,
-
         },
-
     )
 
 
