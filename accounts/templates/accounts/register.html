@@ -1,0 +1,79 @@
+
+{% extends "main/base.html" %}
+
+{% block title %}Request a Business Account | Faltasi Innovations Limited{% endblock %}
+
+{% block content %}
+
+<section class="auth-page">
+
+    <div class="auth-container">
+
+        <div class="auth-card">
+
+            <div class="auth-header">
+                <h1>Request a Business Account</h1>
+
+                <p>
+                    Get started with Faltasi business services.
+                    Contact our team to request an account for
+                    your organization.
+                </p>
+            </div>
+
+            <div class="auth-messages">
+                <div class="auth-message">
+                    To help us set up your business account,
+                    please contact our office and provide your
+                    business name, contact person's name,
+                    phone number, and the services you need.
+                </div>
+            </div>
+
+            <div class="auth-link-section">
+                <a
+                    href="https://wa.me/255764819996?text=Hello%20Faltasi%2C%20I%20would%20like%20to%20request%20a%20business%20account."
+                    class="auth-submit"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                >
+                    Request Account on WhatsApp
+                </a>
+            </div>
+
+            <div class="auth-help">
+                <h3>What Happens Next?</h3>
+
+                <p>
+                    1. Send your business information to our team.
+                </p>
+
+                <p>
+                    2. Our team will review your request and
+                    contact you about the next steps.
+                </p>
+
+                <p>
+                    3. If your account is created, you will
+                    receive instructions for accessing it.
+                </p>
+            </div>
+
+            <div class="auth-register">
+                <p>Already have an account?</p>
+
+                <a
+                    href="{% url 'accounts:login' %}"
+                    class="auth-register-button"
+                >
+                    Login
+                </a>
+            </div>
+
+        </div>
+
+    </div>
+
+</section>
+
+{% endblock %}

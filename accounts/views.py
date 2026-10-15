@@ -1,7 +1,25 @@
 from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.models import User
+from django.contrib.auth.views import LoginView
 from django.shortcuts import render, redirect
+
+
+class RememberMeLoginView(LoginView):
+    template_name = "accounts/login.html"
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+
+        if self.request.POST.get("remember_me"):
+            # Keep the session for 14 days.
+            self.request.session.set_expiry(60 * 60 * 24 * 14)
+        else:
+            # Expire the session when the browser closes.
+            self.request.session.set_expiry(0)
+
+        return response
+
 
 
 def register(request):

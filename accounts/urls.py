@@ -5,7 +5,11 @@ from . import views
 app_name = "accounts"
 
 urlpatterns = [
-
+    path(
+        "login/",
+        views.RememberMeLoginView.as_view(),
+        name="login",
+    ),
     path("force-password-change/", views.force_password_change, name="force_password_change"),
 
     # Login
