@@ -27,8 +27,17 @@ if not SECRET_KEY:
     )
 
 DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
+
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
+
+# HTTPS security settings
+SECURE_SSL_REDIRECT = False
+
+# Enable HSTS only in production, after confirming HTTPS works.
+SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+SECURE_HSTS_PRELOAD = False
 
 ALLOWED_HOSTS = [
     ".vercel.app",
