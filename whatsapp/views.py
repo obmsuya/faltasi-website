@@ -9,6 +9,8 @@ from django.db import transaction
 import json
 import requests
 import re
+import hmac
+import hashlib
 
 from .models import (
     WhatsAppBusinessAccount,
@@ -33,6 +35,22 @@ from django.utils import timezone
 from django.core.mail import send_mail
 
 
+def verify_meta_webhook_signature(request):
+    """Verify that a WhatsApp webhook POST came from Meta."""
+
+    app_secret = getattr(settings, "WHATSAPP_APP_SECRET", "")
+    signature = request.headers.get("X-Hub-Signature-256", "")
+
+    if not app_secret or not signature:
+        return False
+
+    expected_signature = "sha256=" + hmac.new(
+        app_secret.encode("utf-8"),
+        request.body,
+        hashlib.sha256,
+    ).hexdigest()
+
+    return hmac.compare_digest(expected_signature, signature)
 
 def find_request_category(text, organization=None):
     """
@@ -1354,8 +1372,10 @@ def webhook(request):
 
 
     if request.method != "POST":
-
         return HttpResponse(status=405)
+    # Verify Meta's signature before processing any POST data.
+    if not verify_meta_webhook_signature(request):
+        return HttpResponse("Invalid webhook signature", status=403)
 
 
 
