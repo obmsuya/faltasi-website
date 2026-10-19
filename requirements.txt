@@ -34,3 +34,4 @@ Pillow==12.3.0
 openpyxl
 psycopg[binary]==3.2.10
 dj-database-url
+django-storages==1.14.6

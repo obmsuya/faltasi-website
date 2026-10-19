@@ -205,10 +205,27 @@ STATICFILES_STORAGE = (
 )
 
 
-# Media files
-MEDIA_URL = "/media/"
+# Media files - Cloudflare R2
+AWS_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY")
+AWS_STORAGE_BUCKET_NAME = os.environ.get("R2_BUCKET_NAME")
+AWS_S3_ENDPOINT_URL = (
+    f"https://{os.environ.get('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com"
+)
+AWS_S3_REGION_NAME = "auto"
+AWS_S3_SIGNATURE_VERSION = "s3v4"
+AWS_DEFAULT_ACL = None
+AWS_QUERYSTRING_AUTH = False
+AWS_S3_FILE_OVERWRITE = False
 
-MEDIA_ROOT = BASE_DIR / "media"
+STORAGES = {
+    "default": {
+        "BACKEND": "storages.backends.s3.S3Storage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 
 # Email

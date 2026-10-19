@@ -51,14 +51,11 @@ def _validate_website_request(name, email, phone, message):
             validate_email(email)
         except ValidationError:
             return "Please enter a valid email address."
+    if phone:
+        cleaned_phone = re.sub(r"[\s().-]", "", phone)
 
-    if len(phone) > 30:
-        return "Please enter a valid phone number."
-
-    if phone and not re.fullmatch(r"[0-9+\-().\s]{7,30}", phone):
-        return "Please enter a valid phone number."
-
-    return None
+        if not re.fullmatch(r"\+?[0-9]{7,15}", cleaned_phone):
+            return "Please enter a valid phone number."
 
 
 def home(request):
