@@ -10,4 +10,8 @@ media/
 .vscode/
 .idea/
 staticfiles/
+# Local backup files
+*.backup
+*.bak
+*.backup_before_signature
 
