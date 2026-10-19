@@ -12,14 +12,7 @@ urlpatterns = [
     ),
     path("force-password-change/", views.force_password_change, name="force_password_change"),
 
-    # Login
-    path(
-        "login/",
-        auth_views.LoginView.as_view(
-            template_name="accounts/login.html"
-        ),
-        name="login",
-    ),
+
 
     # Logout
     path(

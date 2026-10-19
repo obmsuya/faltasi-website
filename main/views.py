@@ -23,32 +23,56 @@ from organizations.models import Organization
 import os
 
 
+import re
+from django.core.validators import validate_email
+from django.core.exceptions import ValidationError
+
+
+def _validate_website_request(name, email, phone, message):
+    """Validate public contact and quotation form submissions."""
+
+    if not name:
+        return "Please provide your name."
+
+    if len(name) > 100:
+        return "Your name must be 100 characters or fewer."
+
+    if not message:
+        return "Please provide a message."
+
+    if len(message) > 5000:
+        return "Your message must be 5,000 characters or fewer."
+
+    if len(email) > 254:
+        return "Please enter a valid email address."
+
+    if email:
+        try:
+            validate_email(email)
+        except ValidationError:
+            return "Please enter a valid email address."
+
+    if len(phone) > 30:
+        return "Please enter a valid phone number."
+
+    if phone and not re.fullmatch(r"[0-9+\-().\s]{7,30}", phone):
+        return "Please enter a valid phone number."
+
+    return None
+
 
 def home(request):
 
     return render(request, "main/home.html")
-
-
-
-
 
 def about(request):
 
     return render(request, "main/about.html")
 
 
-
-
-
 def services(request):
 
     return render(request, "main/services.html")
-
-
-
-
-
-
 
 def _save_website_request(
 
@@ -227,9 +251,6 @@ def _save_website_request(
 
 
 
-
-
-
 def contact(request):
     """
     General Contact Us page.
@@ -264,13 +285,19 @@ def contact(request):
                 {"organization_error": True},
             )
 
-        if not name or not message:
+        # Validate submitted contact details.
+        validation_error = _validate_website_request(
+            name=name,
+            email=email,
+            phone=phone,
+            message=message,
+        )
+
+        if validation_error:
             return render(
                 request,
                 "main/contact.html",
-                {
-                    "error": "Please provide your name and message.",
-                },
+                {"error": validation_error},
             )
 
         _save_website_request(
@@ -291,6 +318,7 @@ def contact(request):
         request,
         "main/contact.html",
     )
+
 
 
 
@@ -360,14 +388,22 @@ def request_quote(request):
                 },
             )
 
-        if not name or not message:
+        # Validate submitted contact details.
+        validation_error = _validate_website_request(
+            name=name,
+            email=email,
+            phone=phone,
+            message=message,
+        )
+
+        if validation_error:
             return render(
                 request,
                 "main/request_quote.html",
                 {
                     "product": product,
                     "product_id": product.id,
-                    "error": "Please provide your name and message.",
+                    "error": validation_error,
                 },
             )
 

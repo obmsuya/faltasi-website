@@ -377,6 +377,21 @@ def create_business_request(
         )
 
         return None
+    if (
+        not customer.organization_id
+        or not category.organization_id
+        or customer.organization_id != category.organization_id
+    ):
+        print("REQUEST REJECTED: ORGANIZATION MISMATCH")
+        return None
+
+    if (
+        category.department_id
+        and category.department.organization_id
+        != category.organization_id
+    ):
+        print("REQUEST REJECTED: DEPARTMENT ORGANIZATION MISMATCH")
+        return None
 
 
     # ---------------------------------------------------------
@@ -1262,7 +1277,7 @@ Faltasi WhatsApp Platform
         print("==============================================")
 
         return False
-    
+
 @csrf_exempt
 
 def webhook(request):
@@ -1664,15 +1679,29 @@ def webhook(request):
             whatsapp_business_account,
 
         )
+        # Security: verify that the phone number and
+        # WhatsApp Business Account belong to one organization.
+        if (
+            whatsapp_phone.organization_id
+            != whatsapp_business_account.organization_id
+        ):
+            print(
+                "WHATSAPP ORGANIZATION MISMATCH:",
+                whatsapp_phone.id,
+            )
+            return JsonResponse(
+                {
+                    "status": "ok",
+                    "message": "WhatsApp organization mismatch",
+                },
+                status=403,
+            )
 
 
 
 
 
 
-
-
-    
         # =================================================
         # PROCESS OUTGOING MESSAGE DELIVERY STATUSES
         # =================================================
@@ -1704,6 +1733,7 @@ def webhook(request):
                     continue
 
                 saved_message = Message.objects.filter(
+                    organization=organization,
                     whatsapp_message_id=whatsapp_message_id,
                     direction="outgoing",
                 ).first()
@@ -1851,9 +1881,8 @@ def webhook(request):
             existing_message = (
 
                 Message.objects.filter(
-
+                    organization=organization,
                     whatsapp_message_id=whatsapp_message_id
-
                 ).first()
 
             )
@@ -2907,6 +2936,17 @@ def webhook(request):
 
             category = detected_category
 
+            if category and (
+                customer.organization_id != organization.id
+                or category.organization_id != organization.id
+                or (
+                    category.department_id
+                    and category.department.organization_id != organization.id
+                )
+            ):
+                print("REQUEST REJECTED: ORGANIZATION MISMATCH")
+                category = None
+
 
 
             if not category:
@@ -2933,55 +2973,28 @@ def webhook(request):
 
             else:
 
-
-
                 # -----------------------------------------
-
                 # CREATE NEW BUSINESS REQUEST
-
                 # -----------------------------------------
-
-
-
-                business_request = (
-
-                    BusinessRequest.objects.create(
-
-                        customer=customer,
-
-                        request_text=text,
-
-                        subject=category.name,
-
-                        category=category,
-
-                        department=category.department,
-
-                        status="new",
-
-                        priority="normal",
-
-                        source="whatsapp",
-
-                    )
-
+                business_request = BusinessRequest.objects.create(
+                    customer=customer,
+                    request_text=text,
+                    subject=category.name,
+                    category=category,
+                    department=category.department,
+                    status="new",
+                    priority="normal",
+                    source="whatsapp",
                 )
-
-
 
                 print(
-
                     "NEW BUSINESS REQUEST CREATED:",
-
                     business_request,
-
                 )
 
 
-
                 # -----------------------------------------
-
-                # LINK CONVERSATION TO REQUEST
+                                # LINK CONVERSATION TO REQUEST
 
                 # -----------------------------------------
 
