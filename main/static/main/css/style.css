@@ -2998,3 +2998,453 @@ a {
         width: 100%;
     }
 }
+
+
+
+
+
+
+
+
+    .ppm-page {
+        --ppm-primary: #163b65;
+        --ppm-accent: #e5a323;
+        --ppm-bg: #f4f7fb;
+        color: #243247;
+        padding: 28px 0 48px;
+    }
+
+    .ppm-page .ppm-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+        flex-wrap: wrap;
+        margin-bottom: 28px;
+    }
+
+    .ppm-page .ppm-eyebrow {
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        margin-bottom: 8px;
+    }
+
+    .ppm-page .ppm-title {
+        font-size: clamp(25px, 3vw, 34px);
+        font-weight: 800;
+        letter-spacing: -1px;
+        color: var(--ppm-primary);
+        margin: 0 0 8px;
+    }
+
+    .ppm-page .ppm-subtitle {
+        color: #64748b;
+        margin: 0;
+        font-size: 14px;
+    }
+
+    .ppm-page .ppm-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 11px 17px;
+        border-radius: 9px;
+        font-size: 13px;
+        font-weight: 700;
+        text-decoration: none;
+        transition: all .2s ease;
+        cursor: pointer;
+    }
+
+    .ppm-page .ppm-btn-outline {
+        background: #fff;
+        border: 1px solid #dce4ee;
+        color: var(--ppm-primary);
+    }
+
+    .ppm-page .ppm-btn-outline:hover {
+        background: #edf3fa;
+    }
+
+    .ppm-page .ppm-btn-primary {
+        background: var(--ppm-primary);
+        border: 1px solid var(--ppm-primary);
+        color: #fff;
+    }
+
+    .ppm-page .ppm-btn-primary:hover {
+        background: #214f80;
+        color: #fff;
+    }
+
+    .ppm-page .ppm-panel {
+        background: #fff;
+        border: 1px solid #e5eaf1;
+        border-radius: 14px;
+        box-shadow: 0 4px 18px rgba(24, 48, 78, .04);
+        margin-bottom: 24px;
+        overflow: hidden;
+    }
+
+    .ppm-page .ppm-panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        padding: 20px 22px;
+        border-bottom: 1px solid #edf1f6;
+        flex-wrap: wrap;
+    }
+
+    .ppm-page .ppm-panel-title {
+        color: var(--ppm-primary);
+        font-size: 16px;
+        font-weight: 800;
+        margin: 0;
+    }
+
+    .ppm-page .ppm-panel-description {
+        color: #8491a3;
+        font-size: 12px;
+        margin: 5px 0 0;
+    }
+
+    .ppm-page .ppm-panel-body {
+        padding: 22px;
+    }
+
+    .ppm-page .ppm-org-form {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 14px;
+        align-items: end;
+    }
+
+    .ppm-page .ppm-label {
+        display: block;
+        color: #42536a;
+        font-size: 12px;
+        font-weight: 700;
+        margin-bottom: 8px;
+    }
+
+    .ppm-page .ppm-select {
+        display: block;
+        width: 100%;
+        min-height: 44px;
+        padding: 10px 13px;
+        background: #fff;
+        border: 1px solid #dce4ee;
+        border-radius: 9px;
+        color: #243247;
+        font-size: 14px;
+    }
+
+    .ppm-page .ppm-select:focus {
+        outline: none;
+        border-color: #4978a8;
+        box-shadow: 0 0 0 3px rgba(73, 120, 168, .12);
+    }
+
+    .ppm-page .ppm-org-summary {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        background: #edf4fb;
+        border: 1px solid #dce8f5;
+        border-radius: 12px;
+        padding: 16px 18px;
+        margin-bottom: 24px;
+    }
+
+    .ppm-page .ppm-org-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 46px;
+        height: 46px;
+        flex-shrink: 0;
+        border-radius: 12px;
+        background: var(--ppm-primary);
+        color: #fff;
+        font-size: 21px;
+        font-weight: 800;
+    }
+
+    .ppm-page .ppm-org-name {
+        color: var(--ppm-primary);
+        font-size: 16px;
+        font-weight: 800;
+        margin: 0 0 4px;
+        overflow-wrap: anywhere;
+    }
+
+    .ppm-page .ppm-org-label {
+        color: #64748b;
+        font-size: 12px;
+        margin: 0;
+    }
+
+    .ppm-page .ppm-stats {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px;
+        margin-bottom: 24px;
+    }
+
+    .ppm-page .ppm-stat {
+        background: #fff;
+        border: 1px solid #e5eaf1;
+        border-radius: 13px;
+        padding: 21px;
+        box-shadow: 0 4px 18px rgba(24, 48, 78, .035);
+    }
+
+    .ppm-page .ppm-stat-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 17px;
+    }
+
+    .ppm-page .ppm-stat-label {
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    .ppm-page .ppm-stat-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        background: #edf4fb;
+        color: var(--ppm-primary);
+        font-size: 18px;
+        font-weight: 800;
+    }
+
+    .ppm-page .ppm-stat-number {
+        color: var(--ppm-primary);
+        font-size: 30px;
+        line-height: 1.2;
+        font-weight: 800;
+        margin: 0;
+    }
+
+    .ppm-page .ppm-stat-note {
+        color: #8491a3;
+        font-size: 12px;
+        margin: 7px 0 0;
+    }
+
+    .ppm-page .ppm-table-wrap {
+        width: 100%;
+        overflow-x: auto;
+    }
+
+    .ppm-page .ppm-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0;
+        font-size: 13px;
+        min-width: 680px;
+    }
+
+    .ppm-page .ppm-table thead th {
+        background: #f7f9fc;
+        color: #64748b;
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: .65px;
+        padding: 14px 18px;
+        border-bottom: 1px solid #e8edf4;
+        white-space: nowrap;
+    }
+
+    .ppm-page .ppm-table tbody td {
+        padding: 15px 18px;
+        border-bottom: 1px solid #edf1f6;
+        vertical-align: middle;
+        color: #42536a;
+    }
+
+    .ppm-page .ppm-table tbody tr:last-child td {
+        border-bottom: 0;
+    }
+
+    .ppm-page .ppm-table tbody tr:hover {
+        background: #fafcff;
+    }
+
+    .ppm-page .ppm-product {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 180px;
+    }
+
+    .ppm-page .ppm-product-image {
+        width: 46px;
+        height: 46px;
+        flex-shrink: 0;
+        object-fit: cover;
+        border-radius: 9px;
+        border: 1px solid #e5eaf1;
+        background: #f7f9fc;
+    }
+
+    .ppm-page .ppm-product-placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 46px;
+        height: 46px;
+        flex-shrink: 0;
+        border-radius: 9px;
+        background: #edf2f8;
+        color: #718096;
+        font-size: 18px;
+        font-weight: 800;
+    }
+
+    .ppm-page .ppm-product-name {
+        color: #243b53;
+        font-weight: 800;
+        margin: 0 0 4px;
+    }
+
+    .ppm-page .ppm-product-type {
+        color: #8491a3;
+        font-size: 11px;
+        margin: 0;
+    }
+
+    .ppm-page .ppm-sku {
+        display: inline-block;
+        background: #f1f5f9;
+        color: #526277;
+        padding: 5px 8px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 700;
+    }
+
+    .ppm-page .ppm-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 9px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 800;
+        white-space: nowrap;
+    }
+
+    .ppm-page .ppm-status-active {
+        background: #e7f7ee;
+        color: #167647;
+    }
+
+    .ppm-page .ppm-status-inactive {
+        background: #f0f2f5;
+        color: #64748b;
+    }
+
+    .ppm-page .ppm-status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: currentColor;
+    }
+
+    .ppm-page .ppm-empty {
+        text-align: center;
+        padding: 42px 20px !important;
+    }
+
+    .ppm-page .ppm-empty-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 54px;
+        height: 54px;
+        border-radius: 15px;
+        background: #edf4fb;
+        color: var(--ppm-primary);
+        font-size: 24px;
+        font-weight: 800;
+        margin: 0 auto 14px;
+    }
+
+    .ppm-page .ppm-empty-title {
+        color: #334e68;
+        font-size: 15px;
+        font-weight: 800;
+        margin-bottom: 6px;
+    }
+
+    .ppm-page .ppm-empty-text {
+        color: #8491a3;
+        font-size: 13px;
+        margin: 0;
+    }
+
+    .ppm-page .ppm-count {
+        background: #edf4fb;
+        color: var(--ppm-primary);
+        font-size: 11px;
+        font-weight: 800;
+        padding: 5px 9px;
+        border-radius: 20px;
+    }
+
+    .ppm-page .ppm-footer {
+        text-align: center;
+        color: #8491a3;
+        font-size: 11px;
+        padding-top: 8px;
+    }
+
+    @media (max-width: 768px) {
+        .ppm-page {
+            padding-top: 18px;
+        }
+
+        .ppm-page .ppm-panel-body {
+            padding: 17px;
+        }
+
+        .ppm-page .ppm-org-form {
+            grid-template-columns: 1fr;
+        }
+
+        .ppm-page .ppm-org-form .ppm-btn {
+            width: 100%;
+        }
+
+        .ppm-page .ppm-stats {
+            grid-template-columns: 1fr;
+            gap: 12px;
+        }
+
+        .ppm-page .ppm-stat {
+            padding: 17px;
+        }
+
+        .ppm-page .ppm-stat-top {
+            margin-bottom: 10px;
+        }
+
+        .ppm-page .ppm-stat-number {
+            font-size: 26px;
+        }
+    }

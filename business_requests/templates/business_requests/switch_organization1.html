@@ -1,0 +1,103 @@
+```html
+{% extends "main/base.html" %}
+
+{% block title %}Switch Organization | Faltasi Innovations Limited{% endblock %}
+
+{% block meta_description %}
+Select and manage the organization you administer on the Faltasi platform.
+{% endblock %}
+
+{% block content %}
+
+<section class="page-section">
+    <div class="container">
+
+        <!-- PAGE HEADER -->
+        <div class="page-header">
+            <h1>Switch Organization</h1>
+            <p>
+                Select the organization you want to administer.
+                You can switch between organizations available to you.
+            </p>
+        </div>
+
+        <!-- ORGANIZATION SWITCHER -->
+        <div class="dashboard-card">
+
+            <div class="card-header">
+                <div>
+                    <h2>Choose an Organization</h2>
+                    <p>
+                        Select an organization from the list below
+                        and confirm your selection.
+                    </p>
+                </div>
+            </div>
+
+            {% if messages %}
+                <div class="auth-messages">
+                    {% for message in messages %}
+                        <div class="auth-message {{ message.tags }}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            <form method="post">
+                {% csrf_token %}
+
+                <div class="form-group">
+                    <label for="organization_id">
+                        Organization
+                    </label>
+
+                    <select
+                        name="organization_id"
+                        id="organization_id"
+                        required
+                    >
+                        {% for organization in organizations %}
+                            <option
+                                value="{{ organization.id }}"
+                                {% if current_organization and organization.id == current_organization.id %}
+                                    selected
+                                {% endif %}
+                            >
+                                {{ organization.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="hero-buttons">
+                    <button
+                        type="submit"
+                        class="btn btn-primary"
+                    >
+                        Switch Organization
+                    </button>
+                </div>
+            </form>
+
+        </div>
+
+        <!-- CURRENT ORGANIZATION -->
+        {% if current_organization %}
+            <div class="dashboard-card">
+                <h2>Currently Active Organization</h2>
+
+                <p>
+                    You are currently administering:
+                </p>
+
+                <p>
+                    <strong>{{ current_organization.name }}</strong>
+                </p>
+            </div>
+        {% endif %}
+
+    </div>
+</section>
+
+{% endblock %}

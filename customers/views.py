@@ -1,10 +1,11 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 
-from organizations.models import Organization
+from organizations.models import Organization, OrganizationMember
 from whatsapp.models import Conversation, Message
 from business_requests.models import BusinessRequest
 
@@ -49,33 +50,43 @@ def get_user_organization(user):
     return None
 
 
+def is_platform_administrator(user):
+    """Use the project's platform-owner membership rule."""
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    return OrganizationMember.objects.filter(
+        user=user,
+        is_active=True,
+        organization__organization_type="platform_owner",
+        role__in=["owner", "admin"],
+    ).exists()
+
+
+def customers_visible_to(user):
+    """Platform admins see all customers; staff see only their tenant."""
+    if is_platform_administrator(user):
+        return Customer.objects.select_related("organization").all()
+    organization = get_user_organization(user)
+    if not organization:
+        return Customer.objects.none()
+    return Customer.objects.filter(organization=organization)
+
+
 @login_required
 def customer_list(request):
-    """
-    Display customers belonging only to the user's organization.
-    """
+    """List customers with strict tenant isolation."""
+    platform_admin = is_platform_administrator(request.user)
+    organization = None if platform_admin else get_user_organization(request.user)
 
-    organization = get_user_organization(request.user)
-
-    if not organization:
-        messages.error(
-            request,
-            "Your account is not connected to an active organization.",
-        )
-
+    if not platform_admin and not organization:
+        messages.error(request, "Your account is not connected to an active organization.")
         return redirect("accounts:login")
 
-    customers = (
-        Customer.objects
-        .filter(
-            organization=organization,
-        )
-        .order_by("-created_at")
-    )
+    customers = customers_visible_to(request.user).order_by("-created_at")
 
-    # Search
     search = request.GET.get("search", "").strip()
-
     if search:
         customers = customers.filter(
             Q(name__icontains=search)
@@ -84,62 +95,51 @@ def customer_list(request):
             | Q(email__icontains=search)
         )
 
-    # Customer type
-    customer_type = request.GET.get(
-        "customer_type",
-        "",
-    ).strip()
-
+    customer_type = request.GET.get("customer_type", "").strip()
     if customer_type:
-        customers = customers.filter(
-            customer_type=customer_type,
-        )
+        customers = customers.filter(customer_type=customer_type)
 
-    # Status
-    status = request.GET.get(
-        "status",
-        "",
-    ).strip()
-
+    status = request.GET.get("status", "").strip()
     if status:
-        customers = customers.filter(
-            status=status,
-        )
+        customers = customers.filter(status=status)
 
-    # Pagination
-    paginator = Paginator(
-        customers,
-        20,
-    )
+    selected_organization = ""
+    if platform_admin:
+        selected_organization = request.GET.get("organization", "").strip()
+        if selected_organization.isdigit():
+            customers = customers.filter(organization_id=int(selected_organization))
+        organizations = Organization.objects.filter(
+            customers__isnull=False
+        ).distinct().order_by("name")
+        today = timezone.localdate()
+        stats = {
+            "total_customers": Customer.objects.count(),
+            "customers_today": Customer.objects.filter(created_at__date=today).count(),
+            "organizations_with_customers": Customer.objects.exclude(
+                organization__isnull=True
+            ).values("organization_id").distinct().count(),
+        }
+    else:
+        organizations = Organization.objects.none()
+        stats = {}
 
-    page_number = request.GET.get(
-        "page",
-    )
-
-    page_obj = paginator.get_page(
-        page_number,
-    )
-
+    paginator = Paginator(customers, 20)
+    page_obj = paginator.get_page(request.GET.get("page"))
     context = {
         "organization": organization,
+        "platform_admin": platform_admin,
         "customers": page_obj,
         "page_obj": page_obj,
         "search": search,
         "selected_customer_type": customer_type,
         "selected_status": status,
-        "customer_type_choices": Customer._meta.get_field(
-            "customer_type"
-        ).choices,
-        "status_choices": Customer._meta.get_field(
-            "status"
-        ).choices,
+        "selected_organization": selected_organization,
+        "organizations": organizations,
+        "stats": stats,
+        "customer_type_choices": Customer._meta.get_field("customer_type").choices,
+        "status_choices": Customer._meta.get_field("status").choices,
     }
-
-    return render(
-        request,
-        "customers/customer_list.html",
-        context,
-    )
+    return render(request, "customers/customer_list.html", context)
 
 
 @login_required
@@ -215,28 +215,15 @@ def customer_detail(request, customer_id):
     Everything is restricted to the user's organization.
     """
 
-    organization = get_user_organization(
-        request.user
-    )
-
-    if not organization:
-        messages.error(
-            request,
-            "Your account is not connected to an active organization.",
-        )
-
+    platform_admin = is_platform_administrator(request.user)
+    organization = None if platform_admin else get_user_organization(request.user)
+    if not platform_admin and not organization:
+        messages.error(request, "Your account is not connected to an active organization.")
         return redirect("accounts:login")
 
-    # =====================================================
-    # CUSTOMER
-    # =====================================================
-
-    customer = get_object_or_404(
-        Customer.objects.filter(
-            organization=organization,
-        ),
-        id=customer_id,
-    )
+    customer = get_object_or_404(customers_visible_to(request.user), id=customer_id)
+    # All related WhatsApp/request data must follow the customer's own tenant.
+    organization = customer.organization
 
     # =====================================================
     # WHATSAPP CONVERSATIONS
@@ -339,24 +326,14 @@ def customer_edit(request, customer_id):
     Edit a customer belonging to the user's organization.
     """
 
-    organization = get_user_organization(
-        request.user
-    )
-
-    if not organization:
-        messages.error(
-            request,
-            "Your account is not connected to an active organization.",
-        )
-
+    platform_admin = is_platform_administrator(request.user)
+    organization = None if platform_admin else get_user_organization(request.user)
+    if not platform_admin and not organization:
+        messages.error(request, "Your account is not connected to an active organization.")
         return redirect("accounts:login")
 
-    customer = get_object_or_404(
-        Customer.objects.filter(
-            organization=organization,
-        ),
-        id=customer_id,
-    )
+    customer = get_object_or_404(customers_visible_to(request.user), id=customer_id)
+    organization = customer.organization
 
     if request.method == "POST":
 
@@ -371,8 +348,8 @@ def customer_edit(request, customer_id):
                 commit=False,
             )
 
-            # Preserve organization.
-            updated_customer.organization = organization
+            # Never let a form change the customer's tenant.
+            updated_customer.organization = customer.organization
 
             updated_customer.save()
 
@@ -414,24 +391,14 @@ def customer_delete(request, customer_id):
     Only POST is accepted.
     """
 
-    organization = get_user_organization(
-        request.user
-    )
-
-    if not organization:
-        messages.error(
-            request,
-            "Your account is not connected to an active organization.",
-        )
-
+    platform_admin = is_platform_administrator(request.user)
+    organization = None if platform_admin else get_user_organization(request.user)
+    if not platform_admin and not organization:
+        messages.error(request, "Your account is not connected to an active organization.")
         return redirect("accounts:login")
 
-    customer = get_object_or_404(
-        Customer.objects.filter(
-            organization=organization,
-        ),
-        id=customer_id,
-    )
+    customer = get_object_or_404(customers_visible_to(request.user), id=customer_id)
+    organization = customer.organization
 
     if request.method == "POST":
 

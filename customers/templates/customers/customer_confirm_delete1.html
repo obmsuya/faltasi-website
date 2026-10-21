@@ -1,0 +1,90 @@
+{% extends "main/base.html" %}
+
+{% block title %}
+Delete {{ customer.name }} | Customers
+{% endblock %}
+
+{% block content %}
+
+<section class="page-section">
+
+    <div class="container">
+
+        <div class="page-header">
+
+            <div>
+
+                <a
+                    href="{% url 'customers:detail' customer.id %}"
+                    class="back-link"
+                >
+                    ← Back to Customer
+                </a>
+
+                <h1>
+                    Delete Customer
+                </h1>
+
+            </div>
+
+        </div>
+
+
+        <div class="dashboard-card danger-card">
+
+            <h2>
+                Are you sure?
+            </h2>
+
+            <p>
+
+                You are about to permanently delete:
+
+                <strong>
+                    {{ customer.name }}
+                </strong>
+
+                {% if customer.phone %}
+
+                    ({{ customer.phone }})
+
+                {% endif %}
+
+            </p>
+
+            <p>
+                This action cannot be undone.
+            </p>
+
+
+            <form method="post">
+
+                {% csrf_token %}
+
+                <div class="form-actions">
+
+                    <button
+                        type="submit"
+                        class="btn btn-danger"
+                    >
+                        Yes, Delete Customer
+                    </button>
+
+                    <a
+                        href="{% url 'customers:detail' customer.id %}"
+                        class="btn btn-secondary"
+                    >
+                        Cancel
+                    </a>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</section>
+
+{% endblock %}

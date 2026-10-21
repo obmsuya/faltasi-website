@@ -1,0 +1,83 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Faltasi Business Portal{% endblock %}</title>
+    <meta name="description" content="{% block meta_description %}Faltasi business portal.{% endblock %}">
+    <link rel="stylesheet" href="{% static 'main/css/platform_admin.css' %}">
+    <style>
+        /* Business Portal uses a distinct, soft blue-grey workspace background. */
+        body.platform-admin-body .pa-main { background-color: #c3d1a3; }
+        body.platform-admin-body .pa-content { background-color: #c7ddf0; }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="platform-admin-body">
+<div class="pa-shell">
+    <aside class="pa-sidebar" id="paSidebar">
+        <a class="pa-brand" href="{% url 'business_requests:business_dashboard' %}">
+            <span class="pa-brand-mark">F</span>
+            <span class="pa-brand-text"><strong>FALTASI</strong><small>BUSINESS PORTAL</small></span>
+        </a>
+
+        <div class="pa-sidebar-label">BUSINESS</div>
+        <nav class="pa-nav" aria-label="Business portal">
+            <a class="pa-nav-link {% if request.resolver_match.url_name == 'business_dashboard' %}is-active{% endif %}" href="{% url 'business_requests:business_dashboard' %}"><span class="pa-nav-icon">▦</span><span>Dashboard</span></a>
+            <a class="pa-nav-link {% if request.resolver_match.url_name == 'business_profile' %}is-active{% endif %}" href="{% url 'business_requests:business_profile' %}"><span class="pa-nav-icon">▣</span><span>Business Profile</span></a>
+            <a class="pa-nav-link {% if request.resolver_match.url_name == 'staff_management' %}is-active{% endif %}" href="{% url 'business_requests:staff_management' %}"><span class="pa-nav-icon">♧</span><span>Staff Management</span></a>
+            <a class="pa-nav-link {% if request.resolver_match.url_name == 'department_management' %}is-active{% endif %}" href="{% url 'business_requests:department_management' %}"><span class="pa-nav-icon">▥</span><span>Departments</span></a>
+        </nav>
+
+        <div class="pa-sidebar-label">OPERATIONS</div>
+        <nav class="pa-nav" aria-label="Business operations">
+            <a class="pa-nav-link {% if request.resolver_match.app_name == 'customers' %}is-active{% endif %}" href="{% url 'customers:list' %}"><span class="pa-nav-icon">♧</span><span>Customers</span></a>
+            <a class="pa-nav-link {% if request.resolver_match.url_name == 'dashboard' or request.resolver_match.url_name == 'request_detail' or request.resolver_match.url_name == 'my_requests' %}is-active{% endif %}" href="{% url 'business_requests:dashboard' %}"><span class="pa-nav-icon">▧</span><span>Business Requests</span></a>
+            <a class="pa-nav-link {% if request.resolver_match.app_name == 'whatsapp' %}is-active{% endif %}" href="{% url 'whatsapp:conversation_list' %}"><span class="pa-nav-icon">✉</span><span>WhatsApp Conversations</span></a>
+        </nav>
+
+        {% if request.user.is_superuser or is_platform_admin %}
+        <div class="pa-sidebar-label">PLATFORM ADMIN</div>
+        <nav class="pa-nav" aria-label="Platform administration">
+            <a class="pa-nav-link" href="{% url 'business_requests:platform_dashboard' %}"><span class="pa-nav-icon">⚙</span><span>Platform Dashboard</span></a>
+        </nav>
+        {% endif %}
+
+        <div class="pa-sidebar-bottom">
+            <div class="pa-sidebar-user">
+                <span class="pa-avatar">{% if request.user.get_full_name %}{{ request.user.get_full_name|slice:":1"|upper }}{% else %}{{ request.user.username|slice:":1"|upper }}{% endif %}</span>
+                <span class="pa-user-copy"><strong>{% if request.user.get_full_name %}{{ request.user.get_full_name }}{% else %}{{ request.user.username }}{% endif %}</strong><small>Business portal user</small></span>
+            </div>
+            <form method="post" action="{% url 'accounts:logout' %}">{% csrf_token %}<button type="submit" class="pa-logout-button">Log out</button></form>
+        </div>
+    </aside>
+
+    <div class="pa-main">
+        <header class="pa-topbar">
+            <button type="button" class="pa-menu-toggle" id="paMenuToggle" aria-label="Toggle sidebar" aria-controls="paSidebar" aria-expanded="false">☰</button>
+            <div class="pa-breadcrumb"><span>Faltasi</span><span class="pa-breadcrumb-separator">/</span><strong>{% block page_heading %}{% if request.resolver_match.url_name == 'business_dashboard' %}Business Dashboard{% elif request.resolver_match.url_name == 'business_profile' %}Business Profile{% elif request.resolver_match.url_name == 'staff_management' or request.resolver_match.url_name == 'staff' %}Staff Management{% elif request.resolver_match.url_name == 'department_management' or request.resolver_match.url_name == 'department_add' or request.resolver_match.url_name == 'department_edit' %}Departments{% elif request.resolver_match.app_name == 'customers' %}Customers{% elif request.resolver_match.app_name == 'whatsapp' %}WhatsApp Conversations{% elif request.resolver_match.url_name == 'dashboard' or request.resolver_match.url_name == 'request_detail' or request.resolver_match.url_name == 'my_requests' %}Business Requests{% elif request.resolver_match.url_name == 'switch_organization' %}Switch Organization{% else %}Business Portal{% endif %}{% endblock %}</strong></div>
+            <div class="pa-topbar-right"><span class="pa-status-dot"></span><span>Business Portal</span></div>
+        </header>
+        <main class="pa-content">
+            {% if messages %}<div class="pa-messages" aria-live="polite">{% for message in messages %}<div class="pa-alert pa-alert-{{ message.tags|default:'info' }}">{{ message }}</div>{% endfor %}</div>{% endif %}
+            {% block content %}{% endblock %}
+        </main>
+        <footer class="pa-footer"><span>Faltasi Innovations Limited</span><span>Business Portal</span></footer>
+    </div>
+</div>
+<script>
+(function () {
+    const button = document.getElementById("paMenuToggle");
+    const sidebar = document.getElementById("paSidebar");
+    if (button && sidebar) {
+        button.addEventListener("click", function () {
+            const opened = sidebar.classList.toggle("is-open");
+            button.setAttribute("aria-expanded", String(opened));
+        });
+    }
+}());
+</script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -390,3 +390,36 @@ class Product(models.Model):
                 "updated_at",
             ]
         )
+class OrganizationCategoryAssignment(models.Model):
+    """
+    Records the product categories assigned to each organization.
+    """
+
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="category_assignments",
+    )
+
+    category = models.ForeignKey(
+        ProductCategory,
+        on_delete=models.CASCADE,
+        related_name="organization_assignments",
+    )
+
+    assigned_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        ordering = ["category__name"]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "category"],
+                name="unique_organization_category_assignment",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.organization} - {self.category}"

@@ -1,8 +1,8 @@
-{% extends "main/base.html" %}
+{% extends "main/base2.html" %}
 {% load static %}
 {% block title %}Organization Management | Faltasi{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{% static 'organizations/css/organization_management.css' %}">
+<link rel="stylesheet" href="{% static 'main/css/platform_admin.css' %}">
 <div class="org-page">
 <header class="org-header"><div><span class="org-eyebrow">PLATFORM ADMINISTRATION</span><h1>Organization Management</h1><p>Manage companies, access, subscriptions and payments.</p></div><a class="org-btn org-primary" href="{% url 'organizations:create' %}">＋ Add organization</a></header>
 <div class="org-stats">

@@ -41,6 +41,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from organizations.models import Organization, OrganizationMember
 from business_requests.models import Department, DepartmentMember
+from products.models import Product, ProductCategory, OrganizationCategoryAssignment
 
 User = get_user_model()
 
@@ -73,18 +74,105 @@ def is_platform_administrator(user):
 
     return membership is not None
 
-
 @login_required
 def platform_dashboard(request):
     """
-    Platform-wide dashboard for authorized Faltasi administrators.
-    This dashboard is separate from organization operations.
+    Platform dashboard for authorized Faltasi administrators.
+    Includes master product category creation and assignment
+    to organizations.
     """
-
     if not is_platform_administrator(request.user):
         return HttpResponseForbidden(
             "You are not authorized to access the platform dashboard."
         )
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+
+        # Assign a master category to an organization.
+        if action == "assign_category":
+            organization_id = request.POST.get("organization_id")
+            category_id = request.POST.get("category_id")
+
+            organization = Organization.objects.filter(
+                pk=organization_id,
+                status="active",
+            ).first()
+
+            category = ProductCategory.objects.filter(
+                pk=category_id,
+                organization__isnull=True,
+            ).first()
+
+            if not organization:
+                messages.error(
+                    request,
+                    "Please select a valid active organization.",
+                )
+
+            elif not category:
+                messages.error(
+                    request,
+                    "Please select a valid master category.",
+                )
+
+            else:
+                assignment, created = (
+                    OrganizationCategoryAssignment.objects.get_or_create(
+                        organization=organization,
+                        category=category,
+                    )
+                )
+
+                if created:
+                    messages.success(
+                        request,
+                        f"Category '{category.name}' assigned to "
+                        f"'{organization.name}' successfully.",
+                    )
+                else:
+                    messages.warning(
+                        request,
+                        "This category is already assigned to that "
+                        "organization.",
+                    )
+
+            return redirect("platform_dashboard")
+
+        # Create a master product category.
+        if action == "create_master_category":
+            category_name = request.POST.get("name", "").strip()
+            description = request.POST.get("description", "").strip()
+
+            if not category_name:
+                messages.error(
+                    request,
+                    "Category name is required.",
+                )
+
+            elif ProductCategory.objects.filter(
+                organization__isnull=True,
+                name__iexact=category_name,
+            ).exists():
+                messages.error(
+                    request,
+                    "This master category already exists.",
+                )
+
+            else:
+                ProductCategory.objects.create(
+                    organization=None,
+                    name=category_name,
+                    description=description,
+                )
+
+                messages.success(
+                    request,
+                    f"Master category '{category_name}' "
+                    "created successfully.",
+                )
+
+            return redirect("platform_dashboard")
 
     context = {
         "organization_count": Organization.objects.count(),
@@ -99,11 +187,78 @@ def platform_dashboard(request):
         "department_count": Department.objects.filter(
             is_active=True
         ).count(),
+
+        # Master categories available for assignment.
+        "master_categories": ProductCategory.objects.filter(
+            organization__isnull=True
+        ).order_by("name"),
+
+        # Organizations available for category assignment.
+        "organizations": Organization.objects.filter(
+            status="active"
+        ).order_by("name"),
+
+        # Existing category assignments.
+        "category_assignments": (
+            OrganizationCategoryAssignment.objects.select_related(
+                "organization",
+                "category",
+            ).order_by(
+                "organization__name",
+                "category__name",
+            )
+        ),
     }
 
     return render(
         request,
         "business_requests/platform_dashboard.html",
+        context,
+    )
+
+@login_required
+def platform_product_management(request):
+    """Manage products and categories across organizations."""
+    if not is_platform_administrator(request.user):
+        return HttpResponseForbidden(
+            "You are not authorized to manage platform products."
+        )
+
+    organizations = Organization.objects.filter(
+        status="active"
+    ).order_by("name")
+
+    selected_organization_id = request.GET.get("organization")
+    selected_organization = None
+    products = Product.objects.none()
+    categories = ProductCategory.objects.none()
+
+    if selected_organization_id:
+        selected_organization = get_object_or_404(
+            Organization,
+            id=selected_organization_id,
+            status="active",
+        )
+
+        products = Product.objects.filter(
+            organization=selected_organization,
+            deleted_at__isnull=True,
+        ).order_by("name")
+
+        categories = ProductCategory.objects.filter(
+            organization=selected_organization,
+        ).order_by("name")
+
+    context = {
+        "organizations": organizations,
+        "selected_organization": selected_organization,
+        "products": products,
+        "categories": categories,
+    }
+
+    return render(
+        request,
+        "business_requests/platform_product_management.html",
         context,
     )
 

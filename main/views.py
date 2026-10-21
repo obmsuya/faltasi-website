@@ -317,10 +317,6 @@ def contact(request):
     )
 
 
-
-
-
-
 def request_quote(request):
     """
     Product-specific quote request.
@@ -433,7 +429,6 @@ def request_quote(request):
     )
 
 
-
 def team(request):
 
     return render(request, 'main/team.html')
@@ -441,9 +436,6 @@ def team(request):
 def partners(request):
 
     return render(request, "main/partners.html")
-
-
-
 
 
 def products(request):

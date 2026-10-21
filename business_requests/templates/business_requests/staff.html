@@ -1,169 +1,421 @@
-{% extends "main/base.html" %}
+{% extends "main/base_business.html" %}
 
-{% block title %}User &amp; Role Management | Faltasi{% endblock %}
+{% block title %}Organization Members | Faltasi{% endblock %}
 
 {% block content %}
-<div class="container">
-    <div class="page-header">
+<div class="staff-page">
+
+    <div class="staff-header">
         <div>
+            <span class="bd-eyebrow">ORGANIZATION MANAGEMENT</span>
             <h1>User &amp; Role Management</h1>
             <p>Manage users, organization roles and department assignments.</p>
         </div>
-        <div>
-            <a href="{% url 'business_requests:add_department_member' %}" class="btn btn-primary">
-                + Add User
-            </a>
-        </div>
+
+        <a href="{% url 'business_requests:add_department_member' %}"
+           class="pa-button">
+            + Add User
+        </a>
     </div>
 
-    <div class="card organization-card">
+    <div class="pa-panel staff-org-panel">
+        <span class="staff-label">CURRENT ORGANIZATION</span>
         <h2>{{ organization.name }}</h2>
         <p>Users and permissions belonging to this organization.</p>
     </div>
 
-    <div class="card">
-        <div class="section-header">
+    <section class="pa-section">
+
+        <div class="pa-section-heading">
             <div>
                 <h2>Organization Users</h2>
-                <p class="muted">Manage user access and responsibilities.</p>
+                <p>Manage user access and responsibilities.</p>
             </div>
-            <div>
-                <strong>{{ user_rows|length }}</strong>
+
+            <span class="staff-count">
+                {{ user_rows|length }}
                 user{{ user_rows|length|pluralize }}
-            </div>
+            </span>
         </div>
 
-        {% if user_rows %}
-            <div class="table-responsive">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>User</th>
-                            <th>Name</th>
-                            <th>WhatsApp Number</th>
-                            <th>Organization Role</th>
-                            <th>Department</th>
-                            <th>Department Role</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in user_rows %}
+        <div class="pa-panel staff-table-panel">
+
+            {% if user_rows %}
+                <div class="table-wrap">
+                    <table>
+                        <thead>
                             <tr>
-                                <td>
-                                    <strong>{{ row.user.username }}</strong><br>
-                                    <small>{{ row.user.email|default:"No email" }}</small>
-                                </td>
-
-                                <td>
-                                    {% if row.user.get_full_name %}
-                                        {{ row.user.get_full_name }}
-                                    {% else %}
-                                        —
-                                    {% endif %}
-                                </td>
-
-                                <td>
-                                    {% if row.staff_contact and row.staff_contact.whatsapp_number %}
-                                        {{ row.staff_contact.whatsapp_number }}
-                                    {% else %}
-                                        <span class="muted">Not set</span>
-                                    {% endif %}
-                                </td>
-
-                                <td>
-                                    <span class="role-badge">{{ row.membership.get_role_display }}</span>
-                                </td>
-
-                                <td>
-                                    {% if row.department_membership %}
-                                        {{ row.department_membership.department.name }}
-                                    {% else %}
-                                        —
-                                    {% endif %}
-                                </td>
-
-                                <td>
-                                    {% if row.department_membership %}
-                                        {{ row.department_membership.get_role_display }}
-                                    {% else %}
-                                        —
-                                    {% endif %}
-                                </td>
-
-                                <td>
-                                    {% if row.membership.is_active and row.user.is_active %}
-                                        <span class="status active">Active</span>
-                                    {% else %}
-                                        <span class="status inactive">Inactive</span>
-                                    {% endif %}
-                                </td>
-
-                                <td>
-                                    <a
-                                        href="{% url 'business_requests:edit_user' row.user.id %}"
-                                        class="btn btn-secondary"
-                                    >Edit</a>
-
-                                    {% if row.membership.role != "owner" %}
-                                        {% if row.membership.is_active %}
-                                            <a
-                                                href="{% url 'business_requests:toggle_user_status' row.user.id %}"
-                                                class="btn btn-secondary"
-                                            >Deactivate</a>
-                                        {% else %}
-                                            <a
-                                                href="{% url 'business_requests:toggle_user_status' row.user.id %}"
-                                                class="btn btn-primary"
-                                            >Reactivate</a>
-                                        {% endif %}
-                                    {% endif %}
-                                </td>
+                                <th>User</th>
+                                <th>Name</th>
+                                <th>WhatsApp Number</th>
+                                <th>Organization Role</th>
+                                <th>Department</th>
+                                <th>Department Role</th>
+                                <th>Status</th>
+                                <th>Actions</th>
                             </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        {% else %}
-            <div class="empty-state">
-                <h3>No users found</h3>
-                <p>There are currently no users registered for this organization.</p>
-                <a href="{% url 'business_requests:add_department_member' %}" class="btn btn-primary">
-                    + Add User
-                </a>
-            </div>
-        {% endif %}
-    </div>
+                        </thead>
 
-    <div class="card">
-        <h2>Organization Roles</h2>
-        <div class="role-list">
-            <div class="role-item">
-                <strong>Owner</strong>
-                <span>Full control of the organization.</span>
-            </div>
-            <div class="role-item">
-                <strong>Admin</strong>
-                <span>Manages users and organization operations.</span>
-            </div>
-            <div class="role-item">
-                <strong>Manager</strong>
-                <span>Manages day-to-day operations and teams.</span>
-            </div>
-            <div class="role-item">
-                <strong>Agent</strong>
-                <span>Handles customers and assigned requests.</span>
-            </div>
-            <div class="role-item">
-                <strong>Staff</strong>
-                <span>Performs assigned operational work.</span>
-            </div>
-            <div class="role-item">
-                <strong>Viewer</strong>
-                <span>Read-only access to permitted information.</span>
+                        <tbody>
+                            {% for row in user_rows %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ row.user.username }}</strong>
+                                        <br>
+                                        <small>
+                                            {{ row.user.email|default:"No email" }}
+                                        </small>
+                                    </td>
+
+                                    <td>
+                                        {% if row.user.get_full_name %}
+                                            {{ row.user.get_full_name }}
+                                        {% else %}
+                                            —
+                                        {% endif %}
+                                    </td>
+
+                                    <td>
+                                        {% if row.staff_contact and row.staff_contact.whatsapp_number %}
+                                            {{ row.staff_contact.whatsapp_number }}
+                                        {% else %}
+                                            <span class="staff-muted">Not set</span>
+                                        {% endif %}
+                                    </td>
+
+                                    <td>
+                                        <span class="staff-role-badge">
+                                            {{ row.membership.get_role_display }}
+                                        </span>
+                                    </td>
+
+                                    <td>
+                                        {% if row.department_membership %}
+                                            {{ row.department_membership.department.name }}
+                                        {% else %}
+                                            —
+                                        {% endif %}
+                                    </td>
+
+                                    <td>
+                                        {% if row.department_membership %}
+                                            {{ row.department_membership.get_role_display }}
+                                        {% else %}
+                                            —
+                                        {% endif %}
+                                    </td>
+
+                                    <td>
+                                        {% if row.membership.is_active and row.user.is_active %}
+                                            <span class="staff-status staff-status-active">
+                                                Active
+                                            </span>
+                                        {% else %}
+                                            <span class="staff-status staff-status-inactive">
+                                                Inactive
+                                            </span>
+                                        {% endif %}
+                                    </td>
+
+                                    <td>
+                                        <div class="staff-actions">
+                                            <a href="{% url 'business_requests:edit_user' row.user.id %}"
+                                               class="pa-button pa-button-secondary">
+                                                Edit
+                                            </a>
+
+                                            {% if row.membership.role != "owner" %}
+                                                {% if row.membership.is_active %}
+                                                    <a href="{% url 'business_requests:toggle_user_status' row.user.id %}"
+                                                       class="pa-button pa-button-secondary">
+                                                        Deactivate
+                                                    </a>
+                                                {% else %}
+                                                    <a href="{% url 'business_requests:toggle_user_status' row.user.id %}"
+                                                       class="pa-button">
+                                                        Reactivate
+                                                    </a>
+                                                {% endif %}
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+            {% else %}
+                <div class="staff-empty">
+                    <div class="staff-empty-icon">♙</div>
+                    <h3>No organization members yet</h3>
+                    <p>
+                        No users have been assigned to
+                        <strong>{{ organization.name }}</strong>.
+                    </p>
+
+                    <a href="{% url 'business_requests:add_department_member' %}"
+                       class="pa-button">
+                        + Add First User
+                    </a>
+                </div>
+            {% endif %}
+
+        </div>
+    </section>
+
+    <section class="pa-section">
+
+        <div class="pa-section-heading">
+            <div>
+                <h2>Organization Roles</h2>
+                <p>Understand the permissions associated with each role.</p>
             </div>
         </div>
-    </div>
+
+        <div class="staff-roles-grid">
+
+            <div class="pa-panel staff-role-card">
+                <span class="staff-role-symbol">O</span>
+                <h3>Owner</h3>
+                <p>Full control of the organization.</p>
+            </div>
+
+            <div class="pa-panel staff-role-card">
+                <span class="staff-role-symbol">A</span>
+                <h3>Admin</h3>
+                <p>Manages users and organization operations.</p>
+            </div>
+
+            <div class="pa-panel staff-role-card">
+                <span class="staff-role-symbol">M</span>
+                <h3>Manager</h3>
+                <p>Manages day-to-day operations and teams.</p>
+            </div>
+
+            <div class="pa-panel staff-role-card">
+                <span class="staff-role-symbol">A</span>
+                <h3>Agent</h3>
+                <p>Handles customers and assigned requests.</p>
+            </div>
+
+            <div class="pa-panel staff-role-card">
+                <span class="staff-role-symbol">S</span>
+                <h3>Staff</h3>
+                <p>Performs assigned operational work.</p>
+            </div>
+
+            <div class="pa-panel staff-role-card">
+                <span class="staff-role-symbol">V</span>
+                <h3>Viewer</h3>
+                <p>Read-only access to permitted information.</p>
+            </div>
+
+        </div>
+    </section>
+
 </div>
+
+<style>
+    /* Uses platform_admin.css for the shared platform design. */
+
+    .staff-page {
+        width: 100%;
+        color: var(--pa-text);
+    }
+
+    .staff-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 18px;
+        margin-bottom: 25px;
+    }
+
+    .staff-header h1 {
+        margin: 0 0 8px;
+    }
+
+    .staff-header p,
+    .staff-org-panel p {
+        margin: 0;
+        color: var(--pa-muted);
+    }
+
+    .staff-org-panel {
+        margin-bottom: 26px;
+        background: linear-gradient(120deg, #fff, #f5f8fd);
+    }
+
+    .staff-label {
+        display: block;
+        margin-bottom: 8px;
+        color: var(--pa-muted);
+        font-size: 10px;
+        font-weight: 750;
+        letter-spacing: 1px;
+    }
+
+    .staff-org-panel h2 {
+        margin-bottom: 8px;
+    }
+
+    .staff-count {
+        padding: 7px 12px;
+        border: 1px solid var(--pa-border);
+        border-radius: 20px;
+        background: #fff;
+        color: var(--pa-text);
+        font-size: 12px;
+        font-weight: 650;
+        white-space: nowrap;
+    }
+
+    .staff-table-panel {
+        padding: 0;
+        overflow: hidden;
+    }
+
+    .staff-table-panel .table-wrap {
+        border: 0;
+        border-radius: 0;
+    }
+
+    .staff-table-panel table {
+        min-width: 1000px;
+    }
+
+    .staff-table-panel td small {
+        color: var(--pa-muted);
+        font-size: 11px;
+    }
+
+    .staff-muted {
+        color: var(--pa-muted);
+    }
+
+    .staff-role-badge {
+        display: inline-block;
+        padding: 5px 9px;
+        border: 1px solid #d7e5f7;
+        border-radius: 20px;
+        background: #edf4fd;
+        color: #235da8;
+        font-size: 11px;
+        font-weight: 650;
+        white-space: nowrap;
+    }
+
+    .staff-status {
+        display: inline-block;
+        padding: 5px 9px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 650;
+        white-space: nowrap;
+    }
+
+    .staff-status-active {
+        background: #eaf7ef;
+        color: #18794e;
+    }
+
+    .staff-status-inactive {
+        background: #fff0ef;
+        color: #b42318;
+    }
+
+    .staff-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+    }
+
+    .staff-actions .pa-button {
+        min-height: 32px;
+        padding: 6px 10px;
+        font-size: 11px;
+    }
+
+    .staff-empty {
+        padding: 50px 20px;
+        text-align: center;
+    }
+
+    .staff-empty-icon {
+        display: grid;
+        place-items: center;
+        width: 54px;
+        height: 54px;
+        margin: 0 auto 16px;
+        border-radius: 14px;
+        background: #edf4fd;
+        color: var(--pa-primary);
+        font-size: 28px;
+    }
+
+    .staff-empty h3 {
+        margin-bottom: 8px;
+    }
+
+    .staff-empty p {
+        margin-bottom: 22px;
+        color: var(--pa-muted);
+    }
+
+    .staff-roles-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+    }
+
+    .staff-role-card {
+        min-width: 0;
+    }
+
+    .staff-role-symbol {
+        display: grid;
+        place-items: center;
+        width: 38px;
+        height: 38px;
+        margin-bottom: 14px;
+        border-radius: 9px;
+        background: #edf4fd;
+        color: var(--pa-primary);
+        font-size: 15px;
+        font-weight: 750;
+    }
+
+    .staff-role-card h3 {
+        margin-bottom: 7px;
+    }
+
+    .staff-role-card p {
+        margin: 0;
+        color: var(--pa-muted);
+        font-size: 13px;
+    }
+
+    @media (max-width: 1000px) {
+        .staff-roles-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 600px) {
+        .staff-header {
+            align-items: flex-start;
+            flex-direction: column;
+        }
+
+        .staff-roles-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .staff-table-panel {
+            padding: 0;
+        }
+    }
+</style>
 {% endblock %}

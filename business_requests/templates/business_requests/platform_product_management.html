@@ -1,0 +1,330 @@
+{% extends "main/base.html" %}
+
+{% block content %}
+
+<div class="container ppm-page">
+
+    <!-- Page heading -->
+    <header class="ppm-header">
+        <div>
+            <div class="ppm-eyebrow">Faltasi · Platform Administration</div>
+            <h1 class="ppm-title">Product Management</h1>
+            <p class="ppm-subtitle">
+                Monitor products and categories across your organizations.
+            </p>
+        </div>
+
+        <a href="{% url 'business_requests:platform_dashboard' %}"
+           class="ppm-btn ppm-btn-outline">
+            <span aria-hidden="true">&larr;</span>
+            Platform Dashboard
+        </a>
+    </header>
+
+    <!-- Organization selector -->
+    <section class="ppm-panel">
+        <div class="ppm-panel-header">
+            <div>
+                <h2 class="ppm-panel-title">Organization Selection</h2>
+                <p class="ppm-panel-description">
+                    Choose an organization to view its product catalogue.
+                </p>
+            </div>
+        </div>
+
+        <div class="ppm-panel-body">
+            <form method="get" class="ppm-org-form">
+                <div>
+                    <label for="organization" class="ppm-label">
+                        ORGANIZATION
+                    </label>
+
+                    <select name="organization"
+                            id="organization"
+                            class="ppm-select"
+                            required>
+                        <option value="">Select an organization...</option>
+
+                        {% for organization in organizations %}
+                            <option value="{{ organization.id }}"
+                                {% if selected_organization and selected_organization.id == organization.id %}
+                                    selected
+                                {% endif %}>
+                                {{ organization.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <button type="submit" class="ppm-btn ppm-btn-primary">
+                    View Catalogue
+                    <span aria-hidden="true">&rarr;</span>
+                </button>
+            </form>
+        </div>
+    </section>
+
+    {% if selected_organization %}
+
+        <!-- Selected organization -->
+        <div class="ppm-org-summary">
+            <div class="ppm-org-icon" aria-hidden="true">
+                {{ selected_organization.name|first|upper }}
+            </div>
+
+            <div>
+                <p class="ppm-org-label">CURRENTLY VIEWING</p>
+                <h2 class="ppm-org-name">
+                    {{ selected_organization.name }}
+                </h2>
+                <p class="ppm-org-label">
+                    Product catalogue and category overview
+                </p>
+            </div>
+        </div>
+
+        <!-- Summary cards -->
+        <div class="ppm-stats">
+
+            <div class="ppm-stat">
+                <div class="ppm-stat-top">
+                    <span class="ppm-stat-label">TOTAL PRODUCTS</span>
+                    <span class="ppm-stat-icon" aria-hidden="true">P</span>
+                </div>
+                <p class="ppm-stat-number">{{ products|length }}</p>
+                <p class="ppm-stat-note">Products in this catalogue</p>
+            </div>
+
+            <div class="ppm-stat">
+                <div class="ppm-stat-top">
+                    <span class="ppm-stat-label">CATEGORIES</span>
+                    <span class="ppm-stat-icon" aria-hidden="true">C</span>
+                </div>
+                <p class="ppm-stat-number">{{ categories|length }}</p>
+                <p class="ppm-stat-note">Product categories registered</p>
+            </div>
+
+            <div class="ppm-stat">
+                <div class="ppm-stat-top">
+                    <span class="ppm-stat-label">ACTIVE PRODUCTS</span>
+                    <span class="ppm-stat-icon" aria-hidden="true">&#10003;</span>
+                </div>
+                <p class="ppm-stat-number">
+                    {{ products|length }}
+                </p>
+                <p class="ppm-stat-note">
+                    Listed products, including inactive items
+                </p>
+            </div>
+
+        </div>
+
+        <!-- Products table -->
+        <section class="ppm-panel">
+            <div class="ppm-panel-header">
+                <div>
+                    <h2 class="ppm-panel-title">Product Catalogue</h2>
+                    <p class="ppm-panel-description">
+                        Products registered under this organization.
+                    </p>
+                </div>
+
+                <span class="ppm-count">
+                    {{ products|length }} product{{ products|length|pluralize }}
+                </span>
+            </div>
+
+            <div class="ppm-table-wrap">
+                <table class="ppm-table">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th>SKU</th>
+                            <th>Category</th>
+                            <th>Price</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {% for product in products %}
+                            <tr>
+                                <td>
+                                    <div class="ppm-product">
+                                        {% if product.image %}
+                                            <img
+                                                src="{{ product.image.url }}"
+                                                alt="{{ product.name }}"
+                                                class="ppm-product-image"
+                                                loading="lazy">
+                                        {% else %}
+                                            <div class="ppm-product-placeholder"
+                                                 aria-hidden="true">
+                                                {{ product.name|first|upper }}
+                                            </div>
+                                        {% endif %}
+
+                                        <div>
+                                            <p class="ppm-product-name">
+                                                {{ product.name }}
+                                            </p>
+                                            <p class="ppm-product-type">
+                                                {{ product.get_product_type_display }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </td>
+
+                                <td>
+                                    <span class="ppm-sku">
+                                        {{ product.sku|default:"Not assigned" }}
+                                    </span>
+                                </td>
+
+                                <td>
+                                    {% if product.category %}
+                                        {{ product.category.name }}
+                                    {% else %}
+                                        <span class="text-muted">Uncategorised</span>
+                                    {% endif %}
+                                </td>
+
+                                <td>
+                                    <strong>
+                                        {{ product.currency }}
+                                        {{ product.price|default:"0.00" }}
+                                    </strong>
+                                </td>
+
+                                <td>
+                                    {% if product.is_active %}
+                                        <span class="ppm-status ppm-status-active">
+                                            <span class="ppm-status-dot"></span>
+                                            Active
+                                        </span>
+                                    {% else %}
+                                        <span class="ppm-status ppm-status-inactive">
+                                            <span class="ppm-status-dot"></span>
+                                            Inactive
+                                        </span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+
+                        {% empty %}
+                            <tr>
+                                <td colspan="5" class="ppm-empty">
+                                    <div class="ppm-empty-icon"
+                                         aria-hidden="true">P</div>
+                                    <div class="ppm-empty-title">
+                                        No products found
+                                    </div>
+                                    <p class="ppm-empty-text">
+                                        This organization does not have any
+                                        products registered yet.
+                                    </p>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Categories table -->
+        <section class="ppm-panel">
+            <div class="ppm-panel-header">
+                <div>
+                    <h2 class="ppm-panel-title">Product Categories</h2>
+                    <p class="ppm-panel-description">
+                        Categories available within this organization.
+                    </p>
+                </div>
+
+                <span class="ppm-count">
+                    {{ categories|length }} categor{{ categories|length|pluralize:"y,ies" }}
+                </span>
+            </div>
+
+            <div class="ppm-table-wrap">
+                <table class="ppm-table" style="min-width: 500px;">
+                    <thead>
+                        <tr>
+                            <th>Category Name</th>
+                            <th>Description</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {% for category in categories %}
+                            <tr>
+                                <td>
+                                    <strong>{{ category.name }}</strong>
+                                </td>
+
+                                <td>
+                                    {{ category.description|default:"No description provided" }}
+                                </td>
+
+                                <td>
+                                    {% if category.is_active %}
+                                        <span class="ppm-status ppm-status-active">
+                                            <span class="ppm-status-dot"></span>
+                                            Active
+                                        </span>
+                                    {% else %}
+                                        <span class="ppm-status ppm-status-inactive">
+                                            <span class="ppm-status-dot"></span>
+                                            Inactive
+                                        </span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+
+                        {% empty %}
+                            <tr>
+                                <td colspan="3" class="ppm-empty">
+                                    <div class="ppm-empty-icon"
+                                         aria-hidden="true">C</div>
+                                    <div class="ppm-empty-title">
+                                        No categories found
+                                    </div>
+                                    <p class="ppm-empty-text">
+                                        No categories have been registered
+                                        for this organization yet.
+                                    </p>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    {% else %}
+
+        <!-- Initial state -->
+        <section class="ppm-panel">
+            <div class="ppm-panel-body ppm-empty">
+                <div class="ppm-empty-icon" aria-hidden="true">P</div>
+
+                <h2 class="ppm-empty-title">
+                    Welcome to Product Management
+                </h2>
+
+                <p class="ppm-empty-text">
+                    Select an organization above to access its products
+                    and categories.
+                </p>
+            </div>
+        </section>
+
+    {% endif %}
+
+    <footer class="ppm-footer">
+        Faltasi Innovations Limited · Platform Product Management
+    </footer>
+
+</div>
+{% endblock %}

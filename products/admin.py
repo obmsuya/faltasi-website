@@ -2,7 +2,11 @@
 
 # Register your models here.
 from django.contrib import admin
-from .models import ProductCategory, Product
+from .models import (
+    ProductCategory,
+    Product,
+    OrganizationCategoryAssignment,
+)
 
 
 @admin.register(ProductCategory)
@@ -65,4 +69,29 @@ class ProductAdmin(admin.ModelAdmin):
 
     ordering = (
         "-created_at",
+    )
+
+@admin.register(OrganizationCategoryAssignment)
+class OrganizationCategoryAssignmentAdmin(admin.ModelAdmin):
+
+    list_display = (
+        "organization",
+        "category",
+        "assigned_at",
+    )
+
+    list_filter = (
+        "organization",
+        "category",
+        "assigned_at",
+    )
+
+    search_fields = (
+        "organization__name",
+        "category__name",
+    )
+
+    ordering = (
+        "organization__name",
+        "category__name",
     )

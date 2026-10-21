@@ -1,410 +1,166 @@
-{% extends "main/base.html" %}
+{% extends "main/base_business.html" %}
 
-{% block title %}
-Customers | {{ organization.name }}
-{% endblock %}
-
-{% block meta_description %}
-Manage customers for {{ organization.name }}.
-{% endblock %}
+{% block title %}Customers{% if organization %} | {{ organization.name }}{% endif %}{% endblock %}
+{% block meta_description %}Manage customers.{% endblock %}
 
 {% block content %}
-
-<section class="page-section">
-
-    <div class="container">
-
-        <!-- HEADER -->
-        <div class="page-header">
-
-            <div>
-                <h1>Customers</h1>
-
-                <p>
-                    Manage customers for
-                    <strong>{{ organization.name }}</strong>
-                </p>
-            </div>
-
-            <div>
-                <a
-                    href="{% url 'customers:create' %}"
-                    class="btn btn-primary"
-                >
-                    + Add Customer
-                </a>
-            </div>
-
-        </div>
-
-
-        <!-- MESSAGES -->
-        {% if messages %}
-
-            {% for message in messages %}
-
-                <div class="alert alert-success">
-                    {{ message }}
-                </div>
-
-            {% endfor %}
-
+<div class="pa-section-heading">
+    <div>
+        <h1>Customers</h1>
+        {% if platform_admin %}
+            <p>Customers across all organizations.</p>
+        {% else %}
+            <p>Manage customers for <strong>{{ organization.name }}</strong>.</p>
         {% endif %}
+    </div>
+    <a href="{% url 'customers:create' %}" class="pa-button">+ Add Customer</a>
+</div>
 
+{% if messages %}
+    <div class="pa-messages">
+        {% for message in messages %}
+            <div class="pa-alert pa-alert-{{ message.tags|default:'info' }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+{% endif %}
 
-        <!-- SEARCH AND FILTERS -->
-        <div class="dashboard-card">
+{% if platform_admin %}
+<div class="pa-stats-grid" style="margin-bottom: 20px;">
+    <div class="pa-stat">
+        <span class="pa-stat-label">Total customers</span>
+        <strong class="pa-stat-number">{{ stats.total_customers|default:0 }}</strong>
+    </div>
+    <div class="pa-stat">
+        <span class="pa-stat-label">Registered today</span>
+        <strong class="pa-stat-number">{{ stats.customers_today|default:0 }}</strong>
+    </div>
+    <div class="pa-stat">
+        <span class="pa-stat-label">Organizations with customers</span>
+        <strong class="pa-stat-number">{{ stats.organizations_with_customers|default:0 }}</strong>
+    </div>
+</div>
+{% endif %}
 
-            <form
-                method="get"
-                action="{% url 'customers:list' %}"
-            >
-
-                <div class="form-grid">
-
-                    <div class="form-group">
-
-                        <label for="search">
-                            Search
-                        </label>
-
-                        <input
-                            type="text"
-                            id="search"
-                            name="search"
-                            value="{{ search }}"
-                            class="form-control"
-                            placeholder="Name, company, phone or email"
-                        >
-
-                    </div>
-
-
-                    <div class="form-group">
-
-                        <label for="customer_type">
-                            Customer Type
-                        </label>
-
-                        <select
-                            id="customer_type"
-                            name="customer_type"
-                            class="form-control"
-                        >
-
-                            <option value="">
-                                All Types
-                            </option>
-
-                            {% for value, label in customer_type_choices %}
-
-                                <option
-                                    value="{{ value }}"
-                                    {% if selected_customer_type == value %}
-                                        selected
-                                    {% endif %}
-                                >
-                                    {{ label }}
-                                </option>
-
-                            {% endfor %}
-
-                        </select>
-
-                    </div>
-
-
-                    <div class="form-group">
-
-                        <label for="status">
-                            Status
-                        </label>
-
-                        <select
-                            id="status"
-                            name="status"
-                            class="form-control"
-                        >
-
-                            <option value="">
-                                All Statuses
-                            </option>
-
-                            {% for value, label in status_choices %}
-
-                                <option
-                                    value="{{ value }}"
-                                    {% if selected_status == value %}
-                                        selected
-                                    {% endif %}
-                                >
-                                    {{ label }}
-                                </option>
-
-                            {% endfor %}
-
-                        </select>
-
-                    </div>
-
-
-                    <div class="form-group form-actions">
-
-                        <button
-                            type="submit"
-                            class="btn btn-primary"
-                        >
-                            Search
-                        </button>
-
-                        <a
-                            href="{% url 'customers:list' %}"
-                            class="btn btn-secondary"
-                        >
-                            Clear
-                        </a>
-
-                    </div>
-
-                </div>
-
-            </form>
-
-        </div>
-
-
-        <!-- CUSTOMER TABLE -->
-        <div class="dashboard-card">
-
-            <div class="card-header">
-
-                <div>
-                    <h2>Customer List</h2>
-
-                    <p>
-                        {{ page_obj.paginator.count }}
-                        customer{{ page_obj.paginator.count|pluralize }}
-                    </p>
-                </div>
-
+<div class="pa-panel" style="margin-bottom: 20px;">
+    <form method="get" action="{% url 'customers:list' %}">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px;align-items:end;">
+            <div class="pa-form-row">
+                <label for="search">Search</label>
+                <input type="text" id="search" name="search" value="{{ search|default:'' }}" placeholder="Name, company, phone or email">
             </div>
 
-
-            {% if customers %}
-
-                <div class="table-responsive">
-
-                    <table class="data-table">
-
-                        <thead>
-
-                            <tr>
-
-                                <th>
-                                    Customer
-                                </th>
-
-                                <th>
-                                    Phone
-                                </th>
-
-                                <th>
-                                    Email
-                                </th>
-
-                                <th>
-                                    Type
-                                </th>
-
-                                <th>
-                                    Status
-                                </th>
-
-                                <th>
-                                    Date Added
-                                </th>
-
-                                <th>
-                                    Actions
-                                </th>
-
-                            </tr>
-
-                        </thead>
-
-
-                        <tbody>
-
-                            {% for customer in customers %}
-
-                                <tr>
-
-                                    <td>
-
-                                        <strong>
-                                            {{ customer.name }}
-                                        </strong>
-
-                                        {% if customer.company %}
-
-                                            <br>
-
-                                            <small>
-                                                {{ customer.company }}
-                                            </small>
-
-                                        {% endif %}
-
-                                    </td>
-
-
-                                    <td>
-                                        {{ customer.phone }}
-                                    </td>
-
-
-                                    <td>
-
-                                        {% if customer.email %}
-                                            {{ customer.email }}
-                                        {% else %}
-                                            —
-                                        {% endif %}
-
-                                    </td>
-
-
-                                    <td>
-                                        {{ customer.get_customer_type_display }}
-                                    </td>
-
-
-                                    <td>
-                                        {{ customer.get_status_display }}
-                                    </td>
-
-
-                                    <td>
-                                        {{ customer.created_at|date:"d M Y" }}
-                                    </td>
-
-
-                                    <td>
-
-                                        <a
-                                            href="{% url 'customers:detail' customer.id %}"
-                                            class="btn btn-sm btn-primary"
-                                        >
-                                            View
-                                        </a>
-
-                                        <a
-                                            href="{% url 'customers:edit' customer.id %}"
-                                            class="btn btn-sm btn-secondary"
-                                        >
-                                            Edit
-                                        </a>
-
-                                    </td>
-
-                                </tr>
-
-                            {% endfor %}
-
-                        </tbody>
-
-                    </table>
-
-                </div>
-
-
-                <!-- PAGINATION -->
-                {% if page_obj.has_other_pages %}
-
-                    <div class="pagination">
-
-                        {% if page_obj.has_previous %}
-
-                            <a
-                                href="?page={{ page_obj.previous_page_number }}{% if search %}&search={{ search|urlencode }}{% endif %}{% if selected_customer_type %}&customer_type={{ selected_customer_type }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}"
-                                class="pagination-link"
-                            >
-                                ← Previous
-                            </a>
-
-                        {% endif %}
-
-
-                        <span class="pagination-current">
-
-                            Page
-                            {{ page_obj.number }}
-                            of
-                            {{ page_obj.paginator.num_pages }}
-
-                        </span>
-
-
-                        {% if page_obj.has_next %}
-
-                            <a
-                                href="?page={{ page_obj.next_page_number }}{% if search %}&search={{ search|urlencode }}{% endif %}{% if selected_customer_type %}&customer_type={{ selected_customer_type }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}"
-                                class="pagination-link"
-                            >
-                                Next →
-                            </a>
-
-                        {% endif %}
-
-                    </div>
-
-                {% endif %}
-
-
-            {% else %}
-
-                <div class="empty-state">
-
-                    <h3>
-                        No customers found
-                    </h3>
-
-                    {% if search or selected_customer_type or selected_status %}
-
-                        <p>
-                            No customers match your current filters.
-                        </p>
-
-                        <a
-                            href="{% url 'customers:list' %}"
-                            class="btn btn-secondary"
-                        >
-                            Clear Filters
-                        </a>
-
-                    {% else %}
-
-                        <p>
-                            You don't have any customers yet.
-                        </p>
-
-                        <a
-                            href="{% url 'customers:create' %}"
-                            class="btn btn-primary"
-                        >
-                            Add Your First Customer
-                        </a>
-
-                    {% endif %}
-
-                </div>
-
+            {% if platform_admin %}
+            <div class="pa-form-row">
+                <label for="organization">Organization</label>
+                <select id="organization" name="organization">
+                    <option value="">All organizations</option>
+                    {% for org in organizations %}
+                    <option value="{{ org.id }}" {% if selected_organization == org.id|stringformat:"s" %}selected{% endif %}>{{ org.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
             {% endif %}
 
-        </div>
+            <div class="pa-form-row">
+                <label for="customer_type">Customer type</label>
+                <select id="customer_type" name="customer_type">
+                    <option value="">All types</option>
+                    {% for value, label in customer_type_choices %}
+                    <option value="{{ value }}" {% if selected_customer_type == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
 
+            <div class="pa-form-row">
+                <label for="status">Status</label>
+                <select id="status" name="status">
+                    <option value="">All statuses</option>
+                    {% for value, label in status_choices %}
+                    <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="pa-actions" style="margin-bottom:16px;">
+                <button type="submit">Search</button>
+                <a href="{% url 'customers:list' %}" class="pa-button pa-button-secondary">Clear</a>
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="pa-panel">
+    <div class="pa-section-heading">
+        <div>
+            <h2>Customer List</h2>
+            <p>{{ page_obj.paginator.count }} customer{{ page_obj.paginator.count|pluralize }}</p>
+        </div>
     </div>
 
-</section>
+    {% if customers %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Customer</th>
+                    <th>Phone</th>
+                    {% if platform_admin %}<th>Organization</th>{% endif %}
+                    <th>Email</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Date added</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for customer in customers %}
+                <tr>
+                    <td>
+                        <strong>{{ customer.name }}</strong>
+                        {% if customer.company %}<br><small>{{ customer.company }}</small>{% endif %}
+                    </td>
+                    <td>{{ customer.phone|default:"—" }}</td>
+                    {% if platform_admin %}
+                    <td>{% if customer.organization %}{{ customer.organization.name }}{% else %}Unassigned{% endif %}</td>
+                    {% endif %}
+                    <td>{{ customer.email|default:"—" }}</td>
+                    <td>{{ customer.get_customer_type_display }}</td>
+                    <td>{{ customer.get_status_display }}</td>
+                    <td>{{ customer.created_at|date:"d M Y" }}</td>
+                    <td>
+                        <div class="pa-actions">
+                            <a href="{% url 'customers:detail' customer.id %}" class="pa-button">View</a>
+                            <a href="{% url 'customers:edit' customer.id %}" class="pa-button pa-button-secondary">Edit</a>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 
+    {% if page_obj.has_other_pages %}
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:18px;">
+        <div>
+            {% if page_obj.has_previous %}
+                <a class="pa-button pa-button-secondary" href="?page={{ page_obj.previous_page_number }}&search={{ search|urlencode }}&organization={{ selected_organization|urlencode }}&customer_type={{ selected_customer_type|urlencode }}&status={{ selected_status|urlencode }}">&larr; Previous</a>
+            {% endif %}
+        </div>
+        <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+        <div>
+            {% if page_obj.has_next %}
+                <a class="pa-button pa-button-secondary" href="?page={{ page_obj.next_page_number }}&search={{ search|urlencode }}&organization={{ selected_organization|urlencode }}&customer_type={{ selected_customer_type|urlencode }}&status={{ selected_status|urlencode }}">Next &rarr;</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div style="padding:28px 8px;text-align:center;">
+        <h3>No customers found</h3>
+        <p>{% if search or selected_customer_type or selected_status or selected_organization %}No customers match your current filters.{% else %}You don't have any customers yet.{% endif %}</p>
+        <a href="{% url 'customers:create' %}" class="pa-button">Add Customer</a>
+    </div>
+    {% endif %}
+</div>
 {% endblock %}

@@ -1,17 +1,177 @@
-{% extends "main/base.html" %}
+{% extends "main/base_business.html" %}
 {% block title %}Business Dashboard | Faltasi Innovations Limited{% endblock %}
 {% block meta_description %}Business dashboard for managing your organization, users, departments and customer requests through the Faltasi platform.{% endblock %}
 
 {% block content %}
 <section class="page-section bd-page">
-  <div class="container bd-container">
-    {% if messages %}<div class="bd-messages" aria-live="polite">{% for message in messages %}<div class="bd-alert bd-alert-{{ message.tags|default:'info' }}">{{ message }}</div>{% endfor %}</div>{% endif %}
-    <header class="bd-welcome"><div><span class="bd-eyebrow">FALTASI BUSINESS PORTAL</span><h1>Business Dashboard</h1><p>Welcome back{% if request.user.get_full_name %}, {{ request.user.get_full_name }}{% else %}, {{ request.user.username }}{% endif %}. Here's your organization's overview.</p></div><a href="{% url 'business_requests:business_profile' %}" class="bd-button bd-button-primary"><span aria-hidden="true">＋</span> Business Profile</a></header>
-    <section class="bd-panel bd-profile-panel" aria-labelledby="bd-profile-heading"><div class="bd-org-mark" aria-hidden="true">{{ organization.name|first|upper }}</div><div class="bd-org-details"><div class="bd-org-title-row"><div><span class="bd-section-kicker">YOUR ORGANIZATION</span><h2 id="bd-profile-heading">{{ organization.name }}</h2></div>{% if organization.status %}<span class="bd-status bd-status-{{ organization.status|lower }}">{{ organization.status|title }}</span>{% endif %}</div><div class="bd-user-details"><div class="bd-detail-item"><span>Logged-in user</span><strong>{% if request.user.get_full_name %}{{ request.user.get_full_name }}{% else %}{{ request.user.username }}{% endif %}</strong></div><div class="bd-detail-item"><span>Username</span><strong>{{ request.user.username }}</strong></div><div class="bd-detail-item"><span>Organization role</span><strong>{% if current_membership %}{{ current_membership.get_role_display }}{% elif request.user.is_superuser %}Platform administrator{% else %}Not assigned{% endif %}</strong></div><div class="bd-detail-item"><span>Department</span><strong>{% if department_membership %}{{ department_membership.department.name }}{% else %}Not assigned{% endif %}</strong></div><div class="bd-detail-item"><span>Department role</span><strong>{% if department_membership %}{{ department_membership.get_role_display }}{% else %}Not assigned{% endif %}</strong></div></div></div></section>
-    <section class="bd-section" aria-labelledby="bd-overview-heading"><div class="bd-section-heading"><div><span class="bd-section-kicker">AT A GLANCE</span><h2 id="bd-overview-heading">Business Overview</h2><p>A snapshot of your organization's current activity.</p></div></div><div class="bd-stats-grid"><article class="bd-stat-card bd-stat-customers"><div class="bd-stat-top"><span class="bd-stat-icon" aria-hidden="true">♙</span><span class="bd-stat-label">CUSTOMERS</span></div><strong class="bd-stat-number">{{ customer_count }}</strong><span class="bd-stat-caption">Total customers</span></article><article class="bd-stat-card bd-stat-requests"><div class="bd-stat-top"><span class="bd-stat-icon" aria-hidden="true">▤</span><span class="bd-stat-label">BUSINESS REQUESTS</span></div><strong class="bd-stat-number">{{ request_count }}</strong><span class="bd-stat-caption">Requests recorded</span></article><article class="bd-stat-card bd-stat-users"><div class="bd-stat-top"><span class="bd-stat-icon" aria-hidden="true">♧</span><span class="bd-stat-label">USERS</span></div><strong class="bd-stat-number">{{ staff_count }}</strong><span class="bd-stat-caption">Active organization users</span></article><article class="bd-stat-card bd-stat-departments"><div class="bd-stat-top"><span class="bd-stat-icon" aria-hidden="true">▦</span><span class="bd-stat-label">DEPARTMENTS</span></div><strong class="bd-stat-number">{{ department_count }}</strong><span class="bd-stat-caption">Active departments</span></article></div></section>
-    <section class="bd-section" aria-labelledby="bd-management-heading"><div class="bd-section-heading"><div><span class="bd-section-kicker">SET UP YOUR WORKSPACE</span><h2 id="bd-management-heading">Business Management</h2><p>Manage your organization, team, departments and customer questions.</p></div></div><div class="bd-actions-grid"><a href="{% url 'business_requests:business_profile' %}" class="bd-action-card"><span class="bd-action-icon bd-icon-blue" aria-hidden="true">▣</span><span class="bd-action-content"><strong>Business Profile</strong><span>Review and update your organization information.</span></span><span class="bd-action-arrow" aria-hidden="true">↗</span></a><a href="{% url 'business_requests:staff_management' %}" class="bd-action-card"><span class="bd-action-icon bd-icon-purple" aria-hidden="true">♧</span><span class="bd-action-content"><strong>Users &amp; Roles</strong><span>Manage staff, access and responsibilities.</span></span><span class="bd-action-arrow" aria-hidden="true">↗</span></a><a href="{% url 'business_requests:department_management' %}" class="bd-action-card"><span class="bd-action-icon bd-icon-green" aria-hidden="true">▦</span><span class="bd-action-content"><strong>Departments</strong><span>Organize teams and department assignments.</span></span><span class="bd-action-arrow" aria-hidden="true">↗</span></a><a href="{% url 'business_requests:upload_category_questions' %}" class="bd-action-card"><span class="bd-action-icon bd-icon-amber" aria-hidden="true">☷</span><span class="bd-action-content"><strong>Categories &amp; Questions</strong><span>Manage categories and customer question options.</span></span><span class="bd-action-arrow" aria-hidden="true">↗</span></a></div></section>
-    <section class="bd-section bd-operations-section" aria-labelledby="bd-operations-heading"><div class="bd-section-heading"><div><span class="bd-section-kicker">DAY-TO-DAY WORK</span><h2 id="bd-operations-heading">Business Operations</h2><p>Open the tools used to handle customer activity and daily operations.</p></div></div><div class="bd-operations-list"><a href="{% url 'business_requests:dashboard' %}" class="bd-operation-link"><span class="bd-operation-symbol" aria-hidden="true">▤</span><span class="bd-operation-copy"><strong>Business Requests</strong><span>Review and manage incoming customer requests.</span></span><span class="bd-operation-cta">Open <span aria-hidden="true">→</span></span></a><a href="{% url 'business_requests:department_management' %}" class="bd-operation-link"><span class="bd-operation-symbol" aria-hidden="true">▦</span><span class="bd-operation-copy"><strong>Manage Departments</strong><span>Review departments and how work is organized.</span></span><span class="bd-operation-cta">Open <span aria-hidden="true">→</span></span></a><a href="{% url 'business_requests:staff_management' %}" class="bd-operation-link"><span class="bd-operation-symbol" aria-hidden="true">♧</span><span class="bd-operation-copy"><strong>Users &amp; Roles</strong><span>Review team accounts and assigned roles.</span></span><span class="bd-operation-cta">Open <span aria-hidden="true">→</span></span></a></div></section>
-    {% if request.user.is_superuser or is_platform_admin %}<section class="bd-admin-strip"><div><strong>Platform administration</strong><p>Create and manage tenant organizations, assign owner accounts, or switch the organization you are managing.</p></div><div style="display:flex;gap:10px;flex-wrap:wrap"><a href="{% url 'business_requests:organization_management' %}" class="bd-button bd-button-primary">Manage Organizations</a><a href="{% url 'business_requests:switch_organization' %}" class="bd-button bd-button-secondary">Switch Organization</a></div></section>{% endif %}
-  </div>
+    <div class="container bd-container">
+        {% if messages %}
+            <div class="bd-messages" aria-live="polite">
+                {% for message in messages %}
+                    <div class="bd-alert bd-alert-{{ message.tags|default:'info' }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <!-- Dashboard welcome -->
+        <header class="bd-welcome">
+            <div>
+                <span class="bd-eyebrow">FALTASI BUSINESS PORTAL</span>
+                <h1>Business Dashboard</h1>
+                <p>Welcome back{% if request.user.get_full_name %}, {{ request.user.get_full_name }}{% else %}, {{ request.user.username }}{% endif %}. Here's your organization's overview.</p>
+            </div>
+            <a href="{% url 'business_requests:business_profile' %}" class="bd-button bd-button-primary">
+                <span aria-hidden="true">＋</span> Business Profile
+            </a>
+        </header>
+
+        <!-- Organization profile -->
+        <section class="bd-panel bd-profile-panel" aria-labelledby="bd-profile-heading">
+            <div class="bd-org-mark" aria-hidden="true">{{ organization.name|first|upper }}</div>
+            <div class="bd-org-details">
+                <div class="bd-org-title-row">
+                    <div>
+                        <span class="bd-section-kicker">YOUR ORGANIZATION</span>
+                        <h2 id="bd-profile-heading">{{ organization.name }}</h2>
+                    </div>
+                    {% if organization.status %}
+                        <span class="bd-status bd-status-{{ organization.status|lower }}">{{ organization.status|title }}</span>
+                    {% endif %}
+                </div>
+
+                <div class="bd-user-details">
+                    <div class="bd-detail-item">
+                        <span>Logged-in user</span>
+                        <strong>{% if request.user.get_full_name %}{{ request.user.get_full_name }}{% else %}{{ request.user.username }}{% endif %}</strong>
+                    </div>
+                    <div class="bd-detail-item">
+                        <span>Username</span>
+                        <strong>{{ request.user.username }}</strong>
+                    </div>
+                    <div class="bd-detail-item">
+                        <span>Organization role</span>
+                        <strong>{% if current_membership %}{{ current_membership.get_role_display }}{% elif request.user.is_superuser %}Platform administrator{% else %}Not assigned{% endif %}</strong>
+                    </div>
+                    <div class="bd-detail-item">
+                        <span>Department</span>
+                        <strong>{% if department_membership %}{{ department_membership.department.name }}{% else %}Not assigned{% endif %}</strong>
+                    </div>
+                    <div class="bd-detail-item">
+                        <span>Department role</span>
+                        <strong>{% if department_membership %}{{ department_membership.get_role_display }}{% else %}Not assigned{% endif %}</strong>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Business overview -->
+        <section class="bd-section" aria-labelledby="bd-overview-heading">
+            <div class="bd-section-heading">
+                <div>
+                    <span class="bd-section-kicker">AT A GLANCE</span>
+                    <h2 id="bd-overview-heading">Business Overview</h2>
+                    <p>A snapshot of your organization's current activity.</p>
+                </div>
+            </div>
+            <div class="bd-stats-grid">
+                <article class="bd-stat-card bd-stat-customers">
+                    <div class="bd-stat-top"><span class="bd-stat-icon" aria-hidden="true">♙</span><span class="bd-stat-label">CUSTOMERS</span></div>
+                    <strong class="bd-stat-number">{{ customer_count }}</strong>
+                    <span class="bd-stat-caption">Total customers</span>
+                </article>
+                <article class="bd-stat-card bd-stat-requests">
+                    <div class="bd-stat-top"><span class="bd-stat-icon" aria-hidden="true">▤</span><span class="bd-stat-label">BUSINESS REQUESTS</span></div>
+                    <strong class="bd-stat-number">{{ request_count }}</strong>
+                    <span class="bd-stat-caption">Requests recorded</span>
+                </article>
+                <article class="bd-stat-card bd-stat-users">
+                    <div class="bd-stat-top"><span class="bd-stat-icon" aria-hidden="true">♧</span><span class="bd-stat-label">USERS</span></div>
+                    <strong class="bd-stat-number">{{ staff_count }}</strong>
+                    <span class="bd-stat-caption">Active organization users</span>
+                </article>
+                <article class="bd-stat-card bd-stat-departments">
+                    <div class="bd-stat-top"><span class="bd-stat-icon" aria-hidden="true">▦</span><span class="bd-stat-label">DEPARTMENTS</span></div>
+                    <strong class="bd-stat-number">{{ department_count }}</strong>
+                    <span class="bd-stat-caption">Active departments</span>
+                </article>
+            </div>
+        </section>
+
+        <!-- Business management -->
+        <section class="bd-section" aria-labelledby="bd-management-heading">
+            <div class="bd-section-heading">
+                <div>
+                    <span class="bd-section-kicker">SET UP YOUR WORKSPACE</span>
+                    <h2 id="bd-management-heading">Business Management</h2>
+                    <p>Manage your organization, team, departments and customer questions.</p>
+                </div>
+            </div>
+            <div class="bd-actions-grid">
+                <a href="{% url 'business_requests:business_profile' %}" class="bd-action-card">
+                    <span class="bd-action-icon bd-icon-blue" aria-hidden="true">▣</span>
+                    <span class="bd-action-content"><strong>Business Profile</strong><span>Review and update your organization information.</span></span>
+                    <span class="bd-action-arrow" aria-hidden="true">↗</span>
+                </a>
+                <a href="{% url 'business_requests:staff_management' %}" class="bd-action-card">
+                    <span class="bd-action-icon bd-icon-purple" aria-hidden="true">♧</span>
+                    <span class="bd-action-content"><strong>Users &amp; Roles</strong><span>Manage staff, access and responsibilities.</span></span>
+                    <span class="bd-action-arrow" aria-hidden="true">↗</span>
+                </a>
+                <a href="{% url 'business_requests:department_management' %}" class="bd-action-card">
+                    <span class="bd-action-icon bd-icon-green" aria-hidden="true">▦</span>
+                    <span class="bd-action-content"><strong>Departments</strong><span>Organize teams and department assignments.</span></span>
+                    <span class="bd-action-arrow" aria-hidden="true">↗</span>
+                </a>
+                <a href="{% url 'business_requests:upload_category_questions' %}" class="bd-action-card">
+                    <span class="bd-action-icon bd-icon-amber" aria-hidden="true">☷</span>
+                    <span class="bd-action-content"><strong>Categories &amp; Questions</strong><span>Manage categories and customer question options.</span></span>
+                    <span class="bd-action-arrow" aria-hidden="true">↗</span>
+                </a>
+            </div>
+        </section>
+
+        <!-- Business operations -->
+        <section class="bd-section bd-operations-section" aria-labelledby="bd-operations-heading">
+            <div class="bd-section-heading">
+                <div>
+                    <span class="bd-section-kicker">DAY-TO-DAY WORK</span>
+                    <h2 id="bd-operations-heading">Business Operations</h2>
+                    <p>Open the tools used to handle customer activity and daily operations.</p>
+                </div>
+            </div>
+            <div class="bd-operations-list">
+                <a href="{% url 'business_requests:dashboard' %}" class="bd-operation-link">
+                    <span class="bd-operation-symbol" aria-hidden="true">▤</span>
+                    <span class="bd-operation-copy"><strong>Business Requests</strong><span>Review and manage incoming customer requests.</span></span>
+                    <span class="bd-operation-cta">Open <span aria-hidden="true">→</span></span>
+                </a>
+                <a href="{% url 'business_requests:department_management' %}" class="bd-operation-link">
+                    <span class="bd-operation-symbol" aria-hidden="true">▦</span>
+                    <span class="bd-operation-copy"><strong>Manage Departments</strong><span>Review departments and how work is organized.</span></span>
+                    <span class="bd-operation-cta">Open <span aria-hidden="true">→</span></span>
+                </a>
+                <a href="{% url 'business_requests:staff_management' %}" class="bd-operation-link">
+                    <span class="bd-operation-symbol" aria-hidden="true">♧</span>
+                    <span class="bd-operation-copy"><strong>Users &amp; Roles</strong><span>Review team accounts and assigned roles.</span></span>
+                    <span class="bd-operation-cta">Open <span aria-hidden="true">→</span></span>
+                </a>
+            </div>
+        </section>
+
+        <!-- Platform administration -->
+        {% if request.user.is_superuser or is_platform_admin %}
+            <section class="bd-admin-strip" aria-label="Platform administration">
+                <div>
+                    <strong>Platform administration</strong>
+                    <p>Create and manage tenant organizations, assign owner accounts, or switch the organization you are managing.</p>
+                </div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <a href="{% url 'business_requests:organization_management' %}" class="bd-button bd-button-primary">Manage Organizations</a>
+                    <a href="{% url 'business_requests:switch_organization' %}" class="bd-button bd-button-secondary">Switch Organization</a>
+                    <a href="/business-requests/platform-dashboard/" class="bd-button bd-button-secondary">Platform Dashboard</a>
+                </div>
+            </section>
+        {% endif %}
+    </div>
 </section>
 {% endblock %}
