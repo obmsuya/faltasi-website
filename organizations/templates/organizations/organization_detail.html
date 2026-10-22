@@ -2,7 +2,7 @@
 {% load static %}
 {% block title %}{{ org.name }} | Organization Management{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{% static 'organizations/css/organization_management.css' %}">
+<link rel="stylesheet" href="{% static 'main/css/platform_admin.css' %}">
 <div class="org-page">
 <header class="org-header"><div><span class="org-eyebrow">ORGANIZATION PROFILE</span><h1>{{ org.name }}</h1><p>{{ org.get_organization_type_display }} · {{ org.city|default:"Location not set" }}</p><span class="org-badge {{ org.status }}">{{ org.get_status_display }}</span></div><div class="org-actions"><a class="org-btn org-secondary" href="{% url 'organizations:edit' org.pk %}">Edit</a><a class="org-btn org-plain" href="{% url 'organizations:list' %}">All organizations</a></div></header>
 {% if messages %}{% for message in messages %}<div class="org-alert">{{ message }}</div>{% endfor %}{% endif %}

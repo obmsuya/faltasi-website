@@ -2,7 +2,7 @@
 {% load static %}
 {% block title %}Delete organization | Faltasi{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{% static 'organizations/css/organization_management.css' %}">
+<link rel="stylesheet" href="{% static 'main/css/platform_admin.css' %}">
 <div class="org-page"><header class="org-header"><div><span class="org-eyebrow">IRREVERSIBLE ACTION</span><h1>Delete organization</h1><p>Review related records before continuing.</p></div><a class="org-btn org-plain" href="{% url 'organizations:detail' org.pk %}">Cancel</a></header>
 <section class="org-panel org-danger-zone"><h2>Delete {{ org.name }} permanently?</h2><p>Related records configured with cascading deletion will be deleted. Django's transaction will roll back if a protected relationship prevents deletion. The platform superuser and login accounts are not deleted by this operation. Organization payment history is included in the deletion.</p>
 <div class="org-delete-counts">{% for label,count in counts.items %}<div><span>{{ label|title }}</span><strong>{{ count|default:0 }}</strong></div>{% endfor %}</div>
