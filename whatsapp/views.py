@@ -1720,12 +1720,14 @@ def webhook(request):
                 print("RECIPIENT ID:", status_item.get("recipient_id"))
 
                 if new_status == "failed":
-                    print("WHATSAPP DELIVERY FAILURE DETAILS:")
+                    print("WHATSAPP DELIVERY FAILURE DETAILS:", flush=True)
                     print(
                         json.dumps(
                             status_item.get("errors", []),
                             indent=2,
-                        )
+                            ensure_ascii=False,
+                        ),
+                         flush=True,
                     )           
 
                 allowed_statuses = {
