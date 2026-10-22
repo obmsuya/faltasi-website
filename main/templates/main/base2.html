@@ -4,90 +4,213 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>{% block title %}Faltasi Platform Administration{% endblock %}</title>
+
     <meta name="description" content="{% block meta_description %}Faltasi platform administration.{% endblock %}">
+
     <link rel="stylesheet" href="{% static 'main/css/platform_admin.css' %}">
+
     {% block extra_head %}{% endblock %}
 </head>
+
 <body class="platform-admin-body">
+
 <div class="pa-shell">
+
+    <!-- SIDEBAR -->
     <aside class="pa-sidebar" id="paSidebar">
+
+        <!-- BRAND -->
         <a class="pa-brand" href="{% url 'business_requests:platform_dashboard' %}">
             <span class="pa-brand-mark">F</span>
-            <span class="pa-brand-text"><strong>FALTASI</strong><small>PLATFORM ADMIN</small></span>
+
+            <span class="pa-brand-text">
+                <strong>FALTASI</strong>
+                <small>PLATFORM ADMIN</small>
+            </span>
         </a>
+
+        <!-- PLATFORM NAVIGATION -->
         <div class="pa-sidebar-label">PLATFORM</div>
+
         <nav class="pa-nav" aria-label="Platform administration">
-            <a class="pa-nav-link {% if request.resolver_match.url_name == 'platform_dashboard' %}is-active{% endif %}" href="{% url 'business_requests:platform_dashboard' %}"><span class="pa-nav-icon">▦</span><span>Dashboard</span></a>
 
-           <a class="pa-nav-link" href="{% url 'organizations:list' %}"><span class="pa-nav-icon">▣</span><span>Organizations</span></a>
+            <a
+                class="pa-nav-link {% if request.resolver_match.url_name == 'platform_dashboard' %}is-active{% endif %}"
+                href="{% url 'business_requests:platform_dashboard' %}"
+            >
+                <span class="pa-nav-icon">▦</span>
+                <span>Dashboard</span>
+            </a>
 
-            <a class="pa-nav-link" href="{% url 'business_requests:staff_management' %}"><span class="pa-nav-icon">▣</span><span>Organization Members</span></a>
+            <a
+                class="pa-nav-link {% if request.resolver_match.namespace == 'organizations' %}is-active{% endif %}"
+                href="{% url 'organizations:list' %}"
+            >
+                <span class="pa-nav-icon">▣</span>
+                <span>Organizations</span>
+            </a>
+
+            <a
+                class="pa-nav-link {% if request.resolver_match.url_name == 'staff_management' %}is-active{% endif %}"
+                href=""
+            >
+                <span class="pa-nav-icon">♧</span>
+                <span>Organization Members</span>
+            </a>
+
+            <a
+                class="pa-nav-link"
+                href="{% url 'business_requests:platform_dashboard' %}#master-categories-heading"
+            >
+                <span class="pa-nav-icon">▤</span>
+                <span>Product Categories</span>
+            </a>
+
+            <a
+                class="pa-nav-link"
+                href="{% url 'business_requests:platform_dashboard' %}#category-assignments-heading"
+            >
+                <span class="pa-nav-icon">⇄</span>
+                <span>Category Assignments</span>
+            </a>
+
+        </nav>
+
+        <!-- ADMINISTRATION NAVIGATION -->
+        <div class="pa-sidebar-label">ADMINISTRATION</div>
+
+        <nav class="pa-nav" aria-label="Platform administration tools">
+
+            <a
+                class="pa-nav-link"
+                href="{% url 'business_requests:business_dashboard' %}"
+            >
+                <span class="pa-nav-icon">⌂</span>
+                <span>Faltasi Business Dashboard</span>
+            </a>
+
             
-            <a class="pa-nav-link" href="{% url 'business_requests:platform_dashboard' %}#master-categories-heading"><span class="pa-nav-icon">▤</span><span>Product Categories</span></a>
-            <a class="pa-nav-link" href="{% url 'business_requests:platform_dashboard' %}#category-assignments-heading"><span class="pa-nav-icon">⇄</span><span>Category Assignments</span></a>
         </nav>
-        <div class="pa-sidebar-label">OPERATIONS</div>
-        <nav class="pa-nav" aria-label="Platform operations">
-            <a class="pa-nav-link" href="{% url 'customers:list' %}"><span class="pa-nav-icon">♧</span><span>Customers</span></a>
-            <a class="pa-nav-link" href="{% url 'admin:business_requests_businessrequest_changelist' %}"><span class="pa-nav-icon">▧</span><span>Business Requests</span></a>
-            <a class="pa-nav-link" href="{% url 'admin:business_requests_department_changelist' %}"><span class="pa-nav-icon">▥</span><span>Departments</span></a>
-            <a class="pa-nav-link" href="{% url 'admin:index' %}"><span class="pa-nav-icon">⚙</span><span>Django Administration</span></a>
-        </nav>
+
+        <!-- SIDEBAR USER AND LOGOUT -->
         <div class="pa-sidebar-bottom">
+
             <div class="pa-sidebar-user">
-                <span class="pa-avatar">{% if request.user.get_full_name %}{{ request.user.get_full_name|slice:":1"|upper }}{% else %}{{ request.user.username|slice:":1"|upper }}{% endif %}</span>
-                <span class="pa-user-copy"><strong>{% if request.user.get_full_name %}{{ request.user.get_full_name }}{% else %}{{ request.user.username }}{% endif %}</strong><small>Platform administrator</small></span>
+
+                <span class="pa-avatar">
+                    {% if request.user.get_full_name %}
+                        {{ request.user.get_full_name|slice:":1"|upper }}
+                    {% else %}
+                        {{ request.user.username|slice:":1"|upper }}
+                    {% endif %}
+                </span>
+
+                <span class="pa-user-copy">
+                    <strong>
+                        {% if request.user.get_full_name %}
+                            {{ request.user.get_full_name }}
+                        {% else %}
+                            {{ request.user.username }}
+                        {% endif %}
+                    </strong>
+
+                    <small>Platform administrator</small>
+                </span>
+
             </div>
-            <form method="post" action="{% url 'accounts:logout' %}">{% csrf_token %}<button type="submit" class="pa-logout-button">Log out</button></form>
+
+            <form method="post" action="{% url 'accounts:logout' %}">
+                {% csrf_token %}
+                <button type="submit" class="pa-logout-button">
+                    Log out
+                </button>
+            </form>
+
         </div>
+
     </aside>
+
+    <!-- MAIN CONTENT AREA -->
     <div class="pa-main">
+
+        <!-- TOP BAR -->
         <header class="pa-topbar">
-            <button type="button" class="pa-menu-toggle" id="paMenuToggle" aria-label="Toggle sidebar" aria-controls="paSidebar" aria-expanded="false">☰</button>
-            <div class="pa-breadcrumb"><span>Faltasi</span><span class="pa-breadcrumb-separator">/</span><strong>{% block page_heading %}Platform Dashboard{% endblock %}</strong></div>
-            <div class="pa-topbar-right"><span class="pa-status-dot"></span><span>Administration</span></div>
+
+            <button
+                type="button"
+                class="pa-menu-toggle"
+                id="paMenuToggle"
+                aria-label="Toggle sidebar"
+                aria-controls="paSidebar"
+                aria-expanded="false"
+            >
+                ☰
+            </button>
+
+            <div class="pa-breadcrumb">
+                <span>Faltasi</span>
+                <span class="pa-breadcrumb-separator">/</span>
+
+                <strong>
+                    {% block page_heading %}Platform Dashboard{% endblock %}
+                </strong>
+            </div>
+
+            <div class="pa-topbar-right">
+                <span class="pa-status-dot"></span>
+                <span>Administration</span>
+            </div>
+
         </header>
+
+        <!-- PAGE CONTENT -->
         <main class="pa-content">
-            {% if messages %}<div class="pa-messages" aria-live="polite">{% for message in messages %}<div class="pa-alert pa-alert-{{ message.tags|default:'info' }}">{{ message }}</div>{% endfor %}</div>{% endif %}
+
+            {% if messages %}
+                <div class="pa-messages" aria-live="polite">
+
+                    {% for message in messages %}
+                        <div class="pa-alert pa-alert-{{ message.tags|default:'info' }}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+
+                </div>
+            {% endif %}
+
             {% block content %}{% endblock %}
+
         </main>
-        <footer class="pa-footer"><span>Faltasi Innovations Limited</span><span>Platform Administration</span></footer>
+
+        <!-- FOOTER -->
+        <footer class="pa-footer">
+            <span>Faltasi Innovations Limited</span>
+            <span>Platform Administration</span>
+        </footer>
+
     </div>
+
 </div>
+
+<!-- RESPONSIVE SIDEBAR SCRIPT -->
 <script>
 (function () {
     const button = document.getElementById("paMenuToggle");
     const sidebar = document.getElementById("paSidebar");
+
     if (button && sidebar) {
         button.addEventListener("click", function () {
             const opened = sidebar.classList.toggle("is-open");
+
             button.setAttribute("aria-expanded", String(opened));
         });
     }
 }());
 </script>
+
 {% block extra_js %}{% endblock %}
-
-<!-- Organization Management Popup -->
-<div id="organizationsModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.65); z-index:99999; padding:30px; box-sizing:border-box;">
-    <div style="background:#fff; width:100%; height:100%; max-width:1400px; margin:auto; border-radius:12px; overflow:hidden; display:flex; flex-direction:column;">
-        
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 20px; background:#1e293b; color:white;">
-            <h3 style="margin:0;">Organization Management</h3>
-            <button id="closeOrganizationsModal" type="button" style="background:#dc2626; color:white; border:none; padding:9px 16px; border-radius:6px; cursor:pointer; font-size:16px;">
-                ✕ Close
-            </button>
-        </div>
-
-        <iframe
-            id="organizationsFrame"
-            title="Organization Management"
-            src="about:blank"
-            style="width:100%; flex:1; border:none; background:white;"
-        ></iframe>
-    </div>
-</div>
 
 </body>
 </html>

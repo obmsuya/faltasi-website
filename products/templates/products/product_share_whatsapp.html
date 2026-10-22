@@ -1,0 +1,231 @@
+
+{% extends "main/base_business.html" %}
+
+{% block title %}Share Product | Faltasi{% endblock %}
+
+{% block content %}
+
+<div class="container py-4">
+
+    <!-- PAGE HEADER -->
+    <div class="d-flex flex-column flex-md-row
+                justify-content-between align-items-md-center mb-4">
+
+        <div>
+            <h2 class="mb-2">Share Product on WhatsApp</h2>
+            <p class="text-muted mb-0">
+                Send product details directly to an existing or new customer.
+            </p>
+        </div>
+
+        <a href="{% url 'products:product_list' %}"
+           class="btn btn-outline-secondary mt-3 mt-md-0">
+            &larr; Back to Products
+        </a>
+
+    </div>
+
+    <!-- NOTIFICATIONS -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show"
+                 role="alert">
+                {{ message }}
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="alert"
+                        aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="row g-4">
+
+        <!-- PRODUCT INFORMATION -->
+        <div class="col-lg-5">
+
+            <div class="card shadow-sm h-100">
+
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Product Information</h5>
+                </div>
+
+                <div class="card-body">
+
+                    {% if product.image %}
+                        <div class="text-center mb-3">
+                            <img src="{{ product.image.url }}"
+                                 alt="{{ product.name }}"
+                                 class="img-fluid rounded"
+                                 style="max-height: 220px;">
+                        </div>
+                    {% endif %}
+
+                    <h5 class="mb-2">{{ product.name }}</h5>
+
+                    {% if product.category %}
+                        <p class="text-muted mb-3">
+                            {{ product.category.name }}
+                        </p>
+                    {% endif %}
+
+                    <hr>
+
+                    <div class="d-flex justify-content-between mb-3">
+                        <span class="text-muted">Price</span>
+                        <strong>
+                            {% if product.price != None %}
+                                {{ product.currency }}
+                                {{ product.price|floatformat:2 }}
+                            {% else %}
+                                Available on request
+                            {% endif %}
+                        </strong>
+                    </div>
+
+                    <div class="d-flex justify-content-between mb-3">
+                        <span class="text-muted">Availability</span>
+                        <span class="badge bg-success">
+                            {{ product.get_availability_display }}
+                        </span>
+                    </div>
+
+                    {% if product.short_description %}
+                        <hr>
+                        <p class="text-muted mb-0">
+                            {{ product.short_description }}
+                        </p>
+                    {% endif %}
+
+                </div>
+            </div>
+
+        </div>
+
+        <!-- CUSTOMER INFORMATION -->
+        <div class="col-lg-7">
+
+            <div class="card shadow-sm">
+
+                <div class="card-header bg-light">
+                    <h5 class="mb-1">Customer Details</h5>
+                    <small class="text-muted">
+                        Choose a saved customer or enter a new recipient.
+                    </small>
+                </div>
+
+                <div class="card-body">
+
+                    <form method="post">
+                        {% csrf_token %}
+
+                        <!-- EXISTING CUSTOMER -->
+                        <div class="mb-4">
+                            <label for="customer_id" class="form-label">
+                                Select Existing Customer
+                            </label>
+
+                            <select name="customer_id"
+                                    id="customer_id"
+                                    class="form-select">
+                                <option value="">
+                                    -- Select a customer --
+                                </option>
+
+                                {% for customer in customers %}
+                                    <option value="{{ customer.id }}">
+                                        {{ customer.name }} — {{ customer.phone }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+
+                            <div class="form-text">
+                                Selecting a customer uses their saved phone number.
+                            </div>
+                        </div>
+
+                        <div class="d-flex align-items-center gap-3 mb-4">
+                            <hr class="flex-grow-1">
+                            <span class="text-muted small">OR NEW CUSTOMER</span>
+                            <hr class="flex-grow-1">
+                        </div>
+
+                        <!-- NEW CUSTOMER NAME -->
+                        <div class="mb-3">
+                            <label for="recipient_name" class="form-label">
+                                Customer Name
+                            </label>
+
+                            <input type="text"
+                                   name="recipient_name"
+                                   id="recipient_name"
+                                   class="form-control"
+                                   maxlength="200"
+                                   placeholder="Enter customer's name">
+                        </div>
+
+                        <!-- NEW CUSTOMER PHONE -->
+                        <div class="mb-3">
+                            <label for="recipient_phone" class="form-label">
+                                WhatsApp Phone Number
+                            </label>
+
+                            <input type="tel"
+                                   name="recipient_phone"
+                                   id="recipient_phone"
+                                   class="form-control"
+                                   placeholder="e.g. 0712345678 or +254712345678">
+
+                            <div class="form-text">
+                                Tanzanian numbers can start with 0 or 255.
+                                For other countries, include the country code.
+                            </div>
+                        </div>
+
+                        <!-- SAVE CUSTOMER -->
+                        <div class="form-check mb-4">
+                            <input class="form-check-input"
+                                   type="checkbox"
+                                   name="save_customer"
+                                   id="save_customer">
+
+                            <label class="form-check-label"
+                                   for="save_customer">
+                                Save this new customer for future use
+                            </label>
+                        </div>
+
+                        <div class="alert alert-info">
+                            <strong>Note:</strong>
+                            Product details will be sent using Faltasi's
+                            connected WhatsApp account.
+                        </div>
+
+                        <!-- ACTION BUTTONS -->
+                        <div class="d-flex flex-column flex-sm-row
+                                    justify-content-end gap-2 pt-3">
+
+                            <a href="{% url 'products:product_list' %}"
+                               class="btn btn-outline-secondary">
+                                Cancel
+                            </a>
+
+                            <button type="submit" class="btn btn-success">
+                                <i class="bi bi-whatsapp me-1"></i>
+                                Send Product on WhatsApp
+                            </button>
+
+                        </div>
+
+                    </form>
+
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}

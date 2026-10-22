@@ -1,398 +1,811 @@
 {% extends "main/base2.html" %}
+
 {% block title %}Platform Dashboard | Faltasi Innovations Limited{% endblock %}
-{% block meta_description %}Faltasi platform administration dashboard for monitoring organizations, members, customers, requests, departments and product categories.{% endblock %}
+
+{% block meta_description %}
+Faltasi platform administration dashboard for managing organizations,
+memberships, departments, and shared product categories.
+{% endblock %}
 
 {% block content %}
-<section class="page-section bd-page">
-  <div class="container bd-container">
 
-    {% if messages %}
-      <div class="bd-messages" aria-live="polite">
-        {% for message in messages %}
-          <div class="bd-alert bd-alert-{{ message.tags|default:'info' }}">{{ message }}</div>
-        {% endfor %}
-      </div>
-    {% endif %}
+<section class="bd-dashboard">
+    <div class="bd-container">
 
-    <!-- Dashboard Welcome -->
-    <header class="bd-welcome">
-      <div class="bd-welcome-copy">
-        <span class="bd-eyebrow">FALTASI PLATFORM CONTROL CENTRE</span>
-        <h1>Platform Owner Dashboard</h1>
-        <p>
-          Welcome back{% if request.user.get_full_name %}, {{ request.user.get_full_name }}{% else %}, {{ request.user.username }}{% endif %}.
-          Monitor the platform and manage organizations from one place.
-        </p>
-      </div>
-      <a href="{% url 'business_requests:business_dashboard' %}" class="bd-button bd-button-primary">
-        <span aria-hidden="true">⚙</span> ← Back to Faltasi Business Portal
-      </a>
+        <!-- =====================================================
+             PAGE HEADER
+        ====================================================== -->
+        <header class="bd-page-header">
 
+            <div class="bd-page-heading">
+                <span class="bd-eyebrow">
+                    FALTASI PLATFORM CONTROL CENTRE
+                </span>
+
+                <h1>Platform Dashboard</h1>
+
+                <p>
+                    Manage organizations, memberships, departments,
+                    and shared product categories across the platform.
+                </p>
+            </div>
+
+        </header>
 
 
+        <!-- =====================================================
+             PLATFORM PROFILE
+        ====================================================== -->
+        <section
+            class="bd-section"
+            aria-labelledby="platform-profile-heading"
+        >
 
-    </header>
+            <div class="bd-section-heading">
+                <div>
+                    <span class="bd-section-kicker">
+                        ADMINISTRATOR PROFILE
+                    </span>
 
-    <!-- Platform Profile -->
-    <section class="bd-panel bd-profile-panel" aria-labelledby="platform-profile-heading">
-      <div class="bd-org-mark" aria-hidden="true">F</div>
-      <div class="bd-org-details">
-        <div class="bd-org-title-row">
-          <div>
-            <span class="bd-section-kicker">PLATFORM ACCESS</span>
-            <h2 id="platform-profile-heading">Faltasi Innovations Limited</h2>
-          </div>
-          <span class="bd-status">Administrator access</span>
-        </div>
+                    <h2 id="platform-profile-heading">
+                        Platform Profile
+                    </h2>
 
-        <div class="bd-user-details">
-          <div class="bd-detail-item">
-            <span>Logged-in user</span>
-            <strong>{% if request.user.get_full_name %}{{ request.user.get_full_name }}{% else %}{{ request.user.username }}{% endif %}</strong>
-          </div>
-          <div class="bd-detail-item">
-            <span>Username</span>
-            <strong>{{ request.user.username }}</strong>
-          </div>
-          <div class="bd-detail-item">
-            <span>Access level</span>
-            <strong>Platform administrator</strong>
-          </div>
-        </div>
-      </div>
-    </section>
+                    <p>
+                        Your access and responsibilities across the platform.
+                    </p>
+                </div>
+            </div>
 
-    <!-- Platform Overview -->
-    <section class="bd-section" aria-labelledby="platform-overview-heading">
-      <div class="bd-section-heading">
-        <div>
-          <span class="bd-section-kicker">PLATFORM AT A GLANCE</span>
-          <h2 id="platform-overview-heading">Platform Overview</h2>
-          <p>A platform-wide snapshot across organizations.</p>
-        </div>
-      </div>
+            <div class="bd-panel">
+                <div class="bd-profile-grid">
 
-      <div class="bd-stats-grid">
-        <article class="bd-stat-card bd-stat-customers">
-          <div class="bd-stat-top">
-            <span class="bd-stat-icon" aria-hidden="true">▣</span>
-            <span class="bd-stat-label">ORGANIZATIONS</span>
-          </div>
-          <strong class="bd-stat-number">{{ organization_count }}</strong>
-          <span class="bd-stat-caption">Organizations registered on the platform</span>
-        </article>
+                    <div class="bd-profile-item">
+                        <span>Account</span>
 
-        <article class="bd-stat-card bd-stat-requests">
-          <div class="bd-stat-top">
-            <span class="bd-stat-icon" aria-hidden="true">✓</span>
-            <span class="bd-stat-label">ACTIVE ORGANIZATIONS</span>
-          </div>
-          <strong class="bd-stat-number">{{ active_organization_count }}</strong>
-          <span class="bd-stat-caption">Organizations with active status</span>
-        </article>
+                        <strong>
+                            {% if request.user.get_full_name %}
+                                {{ request.user.get_full_name }}
+                            {% else %}
+                                {{ request.user.username }}
+                            {% endif %}
+                        </strong>
+                    </div>
 
-        <article class="bd-stat-card bd-stat-users">
-          <div class="bd-stat-top">
-            <span class="bd-stat-icon" aria-hidden="true">♧</span>
-            <span class="bd-stat-label">ORGANIZATION MEMBERS</span>
-          </div>
-          <strong class="bd-stat-number">{{ organization_member_count }}</strong>
-          <span class="bd-stat-caption">Distinct users with active membership</span>
-        </article>
+                    <div class="bd-profile-item">
+                        <span>Email address</span>
 
-        <article class="bd-stat-card bd-stat-departments">
-          <div class="bd-stat-top">
-            <span class="bd-stat-icon" aria-hidden="true">▦</span>
-            <span class="bd-stat-label">ACTIVE DEPARTMENTS</span>
-          </div>
-          <strong class="bd-stat-number">{{ department_count }}</strong>
-          <span class="bd-stat-caption">Active departments across the platform</span>
-        </article>
+                        <strong>
+                            {{ request.user.email|default:"Not provided" }}
+                        </strong>
+                    </div>
 
-        <article class="bd-stat-card bd-stat-customers">
-          <div class="bd-stat-top">
-            <span class="bd-stat-icon" aria-hidden="true">♙</span>
-            <span class="bd-stat-label">CUSTOMERS</span>
-          </div>
-          <strong class="bd-stat-number">{{ customer_count }}</strong>
-          <span class="bd-stat-caption">Customers recorded across organizations</span>
-        </article>
+                    <div class="bd-profile-item">
+                        <span>Access level</span>
 
-        <article class="bd-stat-card bd-stat-requests">
-          <div class="bd-stat-top">
-            <span class="bd-stat-icon" aria-hidden="true">▤</span>
-            <span class="bd-stat-label">BUSINESS REQUESTS</span>
-          </div>
-          <strong class="bd-stat-number">{{ request_count }}</strong>
-          <span class="bd-stat-caption">Requests recorded across the platform</span>
-        </article>
-      </div>
-    </section>
+                        <strong>Platform administrator</strong>
+                    </div>
 
-    <!-- Platform Management -->
-    <section class="bd-section" aria-labelledby="platform-management-heading">
-      <div class="bd-section-heading">
-        <div>
-          <span class="bd-section-kicker">ADMINISTRATION</span>
-          <h2 id="platform-management-heading">Platform Management</h2>
-          <p>Access the main tools used to administer Faltasi and its organizations.</p>
-        </div>
-      </div>
+                </div>
+            </div>
 
-      <div class="bd-actions-grid">
-        <a href="{% url 'organizations:list' %}" class="bd-action-card">
-          <span class="bd-action-icon bd-icon-blue" aria-hidden="true">▣</span>
-          <span class="bd-action-content">
-            <strong>Organization Management</strong>
-            <span>Manage registered organizations and review their details.</span>
-          </span>
-          <span class="bd-action-arrow" aria-hidden="true">↗</span>
-        </a>
+        </section>
 
-        <a href="{% url 'business_requests:switch_organization' %}" class="bd-action-card">
-          <span class="bd-action-icon bd-icon-purple" aria-hidden="true">⇄</span>
-          <span class="bd-action-content">
-            <strong>Switch Organization</strong>
-            <span>Select an organization to work in its business context.</span>
-          </span>
-          <span class="bd-action-arrow" aria-hidden="true">↗</span>
-        </a>
 
-        <a href="{% url 'business_requests:business_dashboard' %}" class="bd-action-card">
-          <span class="bd-action-icon bd-icon-green" aria-hidden="true">▦</span>
-          <span class="bd-action-content">
-            <strong>Organization Dashboard</strong>
-            <span>Open the business dashboard for the currently selected organization.</span>
-          </span>
-          <span class="bd-action-arrow" aria-hidden="true">↗</span>
-        </a>
-      </div>
-    </section>
+        <!-- =====================================================
+             PLATFORM OVERVIEW
+        ====================================================== -->
+        <section
+            class="bd-section"
+            aria-labelledby="platform-overview-heading"
+        >
 
-    <!-- Operational Shortcuts -->
-    <section class="bd-section bd-operations-section" aria-labelledby="platform-operations-heading">
-      <div class="bd-section-heading">
-        <div>
-          <span class="bd-section-kicker">PLATFORM OPERATIONS</span>
-          <h2 id="platform-operations-heading">Operational Shortcuts</h2>
-          <p>Use these shortcuts for platform-wide records and administration.</p>
-        </div>
-      </div>
+            <div class="bd-section-heading">
+                <div>
+                    <span class="bd-section-kicker">
+                        PLATFORM AT A GLANCE
+                    </span>
 
-      <div class="bd-operations-list">
-        <a href="{% url 'organizations:list' %}" class="bd-operation-link">
-          <span class="bd-operation-symbol" aria-hidden="true">▣</span>
-          <span class="bd-operation-copy">
-            <strong>Organizations</strong>
-            <span>Review registered organizations and their status.</span>
-          </span>
-          <span class="bd-operation-cta">Manage <span aria-hidden="true">→</span></span>
-        </a>
+                    <h2 id="platform-overview-heading">
+                        Platform Overview
+                    </h2>
 
-        <a href="{% url 'business_requests:staff_management' %}" class="bd-operation-link">
-          <span class="bd-operation-symbol" aria-hidden="true">♧</span>
-          <span class="bd-operation-copy">
-            <strong>Organization Memberships</strong>
-            <span>Review organization access and membership assignments.</span>
-          </span>
-          <span class="bd-operation-cta">Manage <span aria-hidden="true">→</span></span>
-        </a>
+                    <p>
+                        A platform-wide snapshot across organizations.
+                    </p>
+                </div>
+            </div>
 
-        <a href="{% url 'admin:business_requests_department_changelist' %}" class="bd-operation-link">
-          <span class="bd-operation-symbol" aria-hidden="true">▦</span>
-          <span class="bd-operation-copy">
-            <strong>Departments</strong>
-            <span>Review departments registered across organizations.</span>
-          </span>
-          <span class="bd-operation-cta">Manage <span aria-hidden="true">→</span></span>
-        </a>
-      </div>
-    </section>
+            <div class="bd-stats-grid">
 
-    <!-- Master Product Categories -->
-    <section class="bd-section" aria-labelledby="master-categories-heading">
-      <div class="bd-section-heading">
-        <div>
-          <span class="bd-section-kicker">PRODUCT MANAGEMENT</span>
-          <h2 id="master-categories-heading">Master Product Categories</h2>
-          <p>
-            Create shared product categories here. You will be able to assign
-            these categories to organizations in the next step.
-          </p>
-        </div>
-      </div>
+                <!-- Total Organizations -->
+                <article class="bd-stat-card bd-stat-customers">
 
-      <!-- Create Category Form -->
-      <div class="bd-panel" style="padding: 24px; margin-bottom: 24px;">
-        <h3>Create a Master Category</h3>
+                    <div class="bd-stat-top">
+                        <span
+                            class="bd-stat-icon"
+                            aria-hidden="true"
+                        >▣</span>
 
-        <form method="post">
-          {% csrf_token %}
-          <input type="hidden" name="action" value="create_master_category">
+                        <span class="bd-stat-label">
+                            ORGANIZATIONS
+                        </span>
+                    </div>
 
-          <div style="margin-bottom: 16px;">
-            <label for="master-category-name">Category Name</label>
-            <input
-              type="text"
-              id="master-category-name"
-              name="name"
-              required
-              maxlength="150"
-              placeholder="e.g. Plumbing"
-              style="display: block; width: 100%; padding: 12px; margin-top: 6px;"
+                    <strong class="bd-stat-number">
+                        {{ organization_count }}
+                    </strong>
+
+                    <span class="bd-stat-caption">
+                        Organizations registered on the platform
+                    </span>
+
+                </article>
+
+
+                <!-- Active Organizations -->
+                <article class="bd-stat-card bd-stat-requests">
+
+                    <div class="bd-stat-top">
+                        <span
+                            class="bd-stat-icon"
+                            aria-hidden="true"
+                        >✓</span>
+
+                        <span class="bd-stat-label">
+                            ACTIVE ORGANIZATIONS
+                        </span>
+                    </div>
+
+                    <strong class="bd-stat-number">
+                        {{ active_organization_count }}
+                    </strong>
+
+                    <span class="bd-stat-caption">
+                        Organizations with active status
+                    </span>
+
+                </article>
+
+
+                <!-- Organization Members -->
+                <article class="bd-stat-card bd-stat-users">
+
+                    <div class="bd-stat-top">
+                        <span
+                            class="bd-stat-icon"
+                            aria-hidden="true"
+                        >♧</span>
+
+                        <span class="bd-stat-label">
+                            ORGANIZATION MEMBERS
+                        </span>
+                    </div>
+
+                    <strong class="bd-stat-number">
+                        {{ organization_member_count }}
+                    </strong>
+
+                    <span class="bd-stat-caption">
+                        Distinct users with active membership
+                    </span>
+
+                </article>
+
+
+                <!-- Active Departments -->
+                <article class="bd-stat-card bd-stat-departments">
+
+                    <div class="bd-stat-top">
+                        <span
+                            class="bd-stat-icon"
+                            aria-hidden="true"
+                        >▦</span>
+
+                        <span class="bd-stat-label">
+                            ACTIVE DEPARTMENTS
+                        </span>
+                    </div>
+
+                    <strong class="bd-stat-number">
+                        {{ department_count }}
+                    </strong>
+
+                    <span class="bd-stat-caption">
+                        Active departments across the platform
+                    </span>
+
+                </article>
+
+            </div>
+
+        </section>
+
+
+        <!-- =====================================================
+             PLATFORM MANAGEMENT
+        ====================================================== -->
+        <section
+            class="bd-section"
+            aria-labelledby="platform-management-heading"
+        >
+
+            <div class="bd-section-heading">
+                <div>
+                    <span class="bd-section-kicker">
+                        ADMINISTRATION
+                    </span>
+
+                    <h2 id="platform-management-heading">
+                        Platform Management
+                    </h2>
+
+                    <p>
+                        Access the main tools used to administer
+                        Faltasi and its organizations.
+                    </p>
+                </div>
+            </div>
+
+            <div class="bd-actions-grid">
+
+                <!-- Organization Management -->
+                <a
+                    href="{% url 'organizations:list' %}"
+                    class="bd-action-card"
+                >
+
+                    <span
+                        class="bd-action-icon bd-icon-blue"
+                        aria-hidden="true"
+                    >▣</span>
+
+                    <span class="bd-action-content">
+
+                        <strong>
+                            Organization Management
+                        </strong>
+
+                        <span>
+                            Manage registered organizations and
+                            review their details.
+                        </span>
+
+                    </span>
+
+                    <span
+                        class="bd-action-arrow"
+                        aria-hidden="true"
+                    >↗</span>
+
+                </a>
+
+
+                <!-- Switch Organization -->
+                <a
+                    href="{% url 'business_requests:switch_organization' %}"
+                    class="bd-action-card"
+                >
+
+                    <span
+                        class="bd-action-icon bd-icon-purple"
+                        aria-hidden="true"
+                    >⇄</span>
+
+                    <span class="bd-action-content">
+
+                        <strong>
+                            Switch Organization
+                        </strong>
+
+                        <span>
+                            Select an organization to work in
+                            its business context.
+                        </span>
+
+                    </span>
+
+                    <span
+                        class="bd-action-arrow"
+                        aria-hidden="true"
+                    >↗</span>
+
+                </a>
+
+
+                <!-- Faltasi Business Dashboard -->
+                <a
+                    href="{% url 'business_requests:business_dashboard' %}"
+                    class="bd-action-card"
+                >
+
+                    <span
+                        class="bd-action-icon bd-icon-green"
+                        aria-hidden="true"
+                    >▦</span>
+
+                    <span class="bd-action-content">
+
+                        <strong>
+                            Faltasi Business Dashboard
+                        </strong>
+
+                        <span>
+                            Open the business dashboard for Faltasi's
+                            own operations, including product management.
+                        </span>
+
+                    </span>
+
+                    <span
+                        class="bd-action-arrow"
+                        aria-hidden="true"
+                    >↗</span>
+
+                </a>
+
+            </div>
+
+        </section>
+
+
+        <!-- =====================================================
+             PLATFORM ADMINISTRATION SHORTCUTS
+        ====================================================== -->
+        <section
+            class="bd-section bd-operations-section"
+            aria-labelledby="platform-operations-heading"
+        >
+
+            <div class="bd-section-heading">
+                <div>
+                    <span class="bd-section-kicker">
+                        PLATFORM ADMINISTRATION
+                    </span>
+
+                    <h2 id="platform-operations-heading">
+                        Administration Shortcuts
+                    </h2>
+
+                    <p>
+                        Manage memberships and review platform-wide
+                        organizational structure.
+                    </p>
+                </div>
+            </div>
+
+            <div class="bd-operations-list">
+
+                <!-- Organization Memberships -->
+                <a
+                    href="{% url 'business_requests:staff_management' %}"
+                    class="bd-operation-link"
+                >
+
+                    <span
+                        class="bd-operation-symbol"
+                        aria-hidden="true"
+                    >♧</span>
+
+                    <span class="bd-operation-copy">
+
+                        <strong>
+                            Organization Memberships
+                        </strong>
+
+                        <span>
+                            Open the staff management interface to review
+                            available membership and staff controls.
+                        </span>
+
+                    </span>
+
+                    <span class="bd-operation-cta">
+                        Manage
+                        <span aria-hidden="true">→</span>
+                    </span>
+
+                </a>
+
+
+                <!-- Departments -->
+                <a
+                    href="{% url 'admin:business_requests_department_changelist' %}"
+                    class="bd-operation-link"
+                >
+
+                    <span
+                        class="bd-operation-symbol"
+                        aria-hidden="true"
+                    >▦</span>
+
+                    <span class="bd-operation-copy">
+
+                        <strong>
+                            Departments
+                        </strong>
+
+                        <span>
+                            Review departments registered across organizations.
+                        </span>
+
+                    </span>
+
+                    <span class="bd-operation-cta">
+                        Manage
+                        <span aria-hidden="true">→</span>
+                    </span>
+
+                </a>
+
+            </div>
+
+        </section>
+
+
+        <!-- =====================================================
+             MASTER PRODUCT CATEGORIES
+        ====================================================== -->
+        <section
+            class="bd-section"
+            aria-labelledby="master-categories-heading"
+        >
+
+            <div class="bd-section-heading">
+                <div>
+                    <span class="bd-section-kicker">
+                        SHARED PRODUCT CONFIGURATION
+                    </span>
+
+                    <h2 id="master-categories-heading">
+                        Master Product Categories
+                    </h2>
+
+                    <p>
+                        Create shared master categories and assign them
+                        to active organizations. Manage Faltasi's own
+                        products from the Faltasi Business Dashboard.
+                    </p>
+                </div>
+            </div>
+
+
+            <!-- Create Master Category -->
+            <div
+                class="bd-panel"
+                style="padding: 24px; margin-bottom: 24px;"
             >
-          </div>
 
-          <div style="margin-bottom: 16px;">
-            <label for="master-category-description">Description (optional)</label>
-            <textarea
-              id="master-category-description"
-              name="description"
-              rows="3"
-              placeholder="Describe the category"
-              style="display: block; width: 100%; padding: 12px; margin-top: 6px;"
-            ></textarea>
-          </div>
+                <h3>Create a Master Category</h3>
 
-          <button type="submit" class="bd-button bd-button-primary">
-            Create Category
-          </button>
-        </form>
-      </div>
+                <form method="post">
 
-      <!-- Existing Categories -->
-      <div class="bd-panel" style="padding: 24px;">
-        <h3>Existing Master Categories</h3>
+                    {% csrf_token %}
 
-        {% if master_categories %}
-          <div style="overflow-x: auto;">
-            <table style="width: 100%; border-collapse: collapse;">
-              <thead>
-                <tr>
-                  <th style="text-align: left; padding: 12px;">Category Name</th>
-                  <th style="text-align: left; padding: 12px;">Description</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for category in master_categories %}
-                  <tr>
-                    <td style="padding: 12px;">{{ category.name }}</td>
-                    <td style="padding: 12px;">
-                      {{ category.description|default:"—" }}
-                    </td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        {% else %}
-          <p>No master categories have been created yet.</p>
-        {% endif %}
-      </div>
-    </section>
+                    <input
+                        type="hidden"
+                        name="action"
+                        value="create_master_category"
+                    >
 
-    <!-- Assign Categories to Organizations -->
-<div id="category-assignments-heading" class="bd-panel" style="padding: 24px; margin-top: 24px; scroll-margin-top: 24px;">
-    <h3>Assign Categories to Organizations</h3>
+                    <div style="margin-bottom: 16px;">
 
-    <form method="post">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="assign_category">
+                        <label for="master-category-name">
+                            Category Name
+                        </label>
 
-        <div style="margin-bottom: 16px;">
-            <label for="organization-id">Select Organization</label>
+                        <input
+                            type="text"
+                            id="master-category-name"
+                            name="name"
+                            required
+                            maxlength="150"
+                            placeholder="e.g. Plumbing"
+                            style="display: block; width: 100%; padding: 12px; margin-top: 6px;"
+                        >
 
-            <select
-                id="organization-id"
-                name="organization_id"
-                required
-                style="display: block; width: 100%; padding: 12px; margin-top: 6px;"
+                    </div>
+
+                    <div style="margin-bottom: 16px;">
+
+                        <label for="master-category-description">
+                            Description (optional)
+                        </label>
+
+                        <textarea
+                            id="master-category-description"
+                            name="description"
+                            rows="3"
+                            placeholder="Describe the category"
+                            style="display: block; width: 100%; padding: 12px; margin-top: 6px;"
+                        ></textarea>
+
+                    </div>
+
+                    <button
+                        type="submit"
+                        class="bd-button bd-button-primary"
+                    >
+                        Create Category
+                    </button>
+
+                </form>
+
+            </div>
+
+
+            <!-- Existing Master Categories -->
+            <div
+                class="bd-panel"
+                style="padding: 24px;"
             >
-                <option value="">Choose an organization</option>
 
-                {% for organization in organizations %}
-                    <option value="{{ organization.id }}">
-                        {{ organization.name }}
-                    </option>
-                {% endfor %}
-            </select>
-        </div>
+                <h3>Existing Master Categories</h3>
 
-        <div style="margin-bottom: 16px;">
-            <label for="category-id">Select Master Category</label>
+                {% if master_categories %}
 
-            <select
-                id="category-id"
-                name="category_id"
-                required
-                style="display: block; width: 100%; padding: 12px; margin-top: 6px;"
+                    <div style="overflow-x: auto;">
+
+                        <table
+                            style="width: 100%; border-collapse: collapse;"
+                        >
+
+                            <thead>
+                                <tr>
+                                    <th style="text-align: left; padding: 12px;">
+                                        Category Name
+                                    </th>
+
+                                    <th style="text-align: left; padding: 12px;">
+                                        Description
+                                    </th>
+                                </tr>
+                            </thead>
+
+                            <tbody>
+
+                                {% for category in master_categories %}
+
+                                    <tr>
+
+                                        <td style="padding: 12px;">
+                                            {{ category.name }}
+                                        </td>
+
+                                        <td style="padding: 12px;">
+                                            {{ category.description|default:"—" }}
+                                        </td>
+
+                                    </tr>
+
+                                {% endfor %}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                {% else %}
+
+                    <p>
+                        No master categories have been created yet.
+                    </p>
+
+                {% endif %}
+
+            </div>
+
+        </section>
+
+
+        <!-- =====================================================
+             ASSIGN CATEGORIES TO ORGANIZATIONS
+        ====================================================== -->
+        <section
+            class="bd-section"
+            aria-labelledby="category-assignments-heading"
+        >
+
+            <div class="bd-section-heading">
+                <div>
+                    <span class="bd-section-kicker">
+                        CATEGORY DISTRIBUTION
+                    </span>
+
+                    <h2 id="category-assignments-heading">
+                        Assign Categories to Organizations
+                    </h2>
+
+                    <p>
+                        Make shared product categories available
+                        to selected active organizations.
+                    </p>
+                </div>
+            </div>
+
+            <div
+                class="bd-panel"
+                style="padding: 24px;"
             >
-                <option value="">Choose a category</option>
 
-                {% for category in master_categories %}
-                    <option value="{{ category.id }}">
-                        {{ category.name }}
-                    </option>
-                {% endfor %}
-            </select>
-        </div>
+                <form method="post">
 
-        <button type="submit" class="bd-button bd-button-primary">
-            Assign Category
-        </button>
-    </form>
-</div>
+                    {% csrf_token %}
+
+                    <input
+                        type="hidden"
+                        name="action"
+                        value="assign_category"
+                    >
 
 
-    <!-- Existing Category Assignments -->
-<div class="bd-panel" style="padding: 24px; margin-top: 24px;">
-    <h3>Existing Category Assignments</h3>
+                    <!-- Organization Selection -->
+                    <div style="margin-bottom: 16px;">
 
-    {% if category_assignments %}
-        <div style="overflow-x: auto;">
-            <table style="width: 100%; border-collapse: collapse;">
-                <thead>
-                    <tr>
-                        <th style="text-align: left; padding: 12px;">Organization</th>
-                        <th style="text-align: left; padding: 12px;">Assigned Category</th>
-                    </tr>
-                </thead>
+                        <label for="organization-id">
+                            Select Organization
+                        </label>
 
-                <tbody>
-                    {% for assignment in category_assignments %}
-                        <tr>
-                            <td style="padding: 12px;">
-                                {{ assignment.organization.name }}
-                            </td>
+                        <select
+                            id="organization-id"
+                            name="organization_id"
+                            required
+                            style="display: block; width: 100%; padding: 12px; margin-top: 6px;"
+                        >
 
-                            <td style="padding: 12px;">
-                                {{ assignment.category.name }}
-                            </td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    {% else %}
-        <p>No categories have been assigned to organizations yet.</p>
-    {% endif %}
-</div>
+                            <option value="">
+                                Choose an organization
+                            </option>
 
-    <!-- Platform Controls -->
-    <section class="bd-admin-strip">
-      <div>
-        <strong>Platform-wide controls</strong>
-        <p>
-          Subscription billing and global platform settings can be connected
-          here when those features are implemented.
-        </p>
-      </div>
-      <a href="{% url 'admin:index' %}" class="bd-button bd-button-secondary">
-        Open Administration
-      </a>
-    </section>
+                            {% for organization in organizations %}
 
-  </div>
+                                <option value="{{ organization.id }}">
+                                    {{ organization.name }}
+                                </option>
 
+                            {% endfor %}
+
+                        </select>
+
+                    </div>
+
+
+                    <!-- Category Selection -->
+                    <div style="margin-bottom: 16px;">
+
+                        <label for="category-id">
+                            Select Master Category
+                        </label>
+
+                        <select
+                            id="category-id"
+                            name="category_id"
+                            required
+                            style="display: block; width: 100%; padding: 12px; margin-top: 6px;"
+                        >
+
+                            <option value="">
+                                Choose a category
+                            </option>
+
+                            {% for category in master_categories %}
+
+                                <option value="{{ category.id }}">
+                                    {{ category.name }}
+                                </option>
+
+                            {% endfor %}
+
+                        </select>
+
+                    </div>
+
+
+                    <button
+                        type="submit"
+                        class="bd-button bd-button-primary"
+                    >
+                        Assign Category
+                    </button>
+
+                </form>
+
+            </div>
+
+        </section>
+
+
+        <!-- =====================================================
+             EXISTING CATEGORY ASSIGNMENTS
+        ====================================================== -->
+        <section
+            class="bd-section"
+            aria-labelledby="existing-category-assignments-heading"
+        >
+
+            <div class="bd-section-heading">
+                <div>
+                    <span class="bd-section-kicker">
+                        CURRENT DISTRIBUTION
+                    </span>
+
+                    <h2 id="existing-category-assignments-heading">
+                        Existing Category Assignments
+                    </h2>
+
+                    <p>
+                        Review which master categories have been
+                        assigned to each organization.
+                    </p>
+                </div>
+            </div>
+
+            <div
+                class="bd-panel"
+                style="padding: 24px;"
+            >
+
+                {% if category_assignments %}
+
+                    <div style="overflow-x: auto;">
+
+                        <table
+                            style="width: 100%; border-collapse: collapse;"
+                        >
+
+                            <thead>
+                                <tr>
+
+                                    <th style="text-align: left; padding: 12px;">
+                                        Organization
+                                    </th>
+
+                                    <th style="text-align: left; padding: 12px;">
+                                        Assigned Category
+                                    </th>
+
+                                </tr>
+                            </thead>
+
+                            <tbody>
+
+                                {% for assignment in category_assignments %}
+
+                                    <tr>
+
+                                        <td style="padding: 12px;">
+                                            {{ assignment.organization.name }}
+                                        </td>
+
+                                        <td style="padding: 12px;">
+                                            {{ assignment.category.name }}
+                                        </td>
+
+                                    </tr>
+
+                                {% endfor %}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                {% else %}
+
+                    <p>
+                        No categories have been assigned to organizations yet.
+                    </p>
+
+                {% endif %}
+
+            </div>
+
+        </section>
+
+
+    </div>
 </section>
+
 {% endblock %}

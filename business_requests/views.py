@@ -172,7 +172,7 @@ def platform_dashboard(request):
                     "created successfully.",
                 )
 
-            return redirect("platform_dashboard")
+            return redirect("business_requests:platform_dashboard")
 
     context = {
         "organization_count": Organization.objects.count(),
@@ -216,43 +216,21 @@ def platform_dashboard(request):
         context,
     )
 
+
 @login_required
 def platform_product_management(request):
-    """Manage products and categories across organizations."""
+    """Manage product categories at the platform level."""
+
     if not is_platform_administrator(request.user):
         return HttpResponseForbidden(
-            "You are not authorized to manage platform products."
+            "You are not authorized to manage product categories."
         )
 
-    organizations = Organization.objects.filter(
-        status="active"
+    categories = ProductCategory.objects.filter(
+        organization__isnull=True
     ).order_by("name")
 
-    selected_organization_id = request.GET.get("organization")
-    selected_organization = None
-    products = Product.objects.none()
-    categories = ProductCategory.objects.none()
-
-    if selected_organization_id:
-        selected_organization = get_object_or_404(
-            Organization,
-            id=selected_organization_id,
-            status="active",
-        )
-
-        products = Product.objects.filter(
-            organization=selected_organization,
-            deleted_at__isnull=True,
-        ).order_by("name")
-
-        categories = ProductCategory.objects.filter(
-            organization=selected_organization,
-        ).order_by("name")
-
     context = {
-        "organizations": organizations,
-        "selected_organization": selected_organization,
-        "products": products,
         "categories": categories,
     }
 
