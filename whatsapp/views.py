@@ -1717,6 +1717,16 @@ def webhook(request):
 
                 print("MESSAGE ID:", whatsapp_message_id)
                 print("NEW STATUS:", new_status)
+                print("RECIPIENT ID:", status_item.get("recipient_id"))
+
+                if new_status == "failed":
+                    print("WHATSAPP DELIVERY FAILURE DETAILS:")
+                    print(
+                        json.dumps(
+                            status_item.get("errors", []),
+                            indent=2,
+                        )
+                    )           
 
                 allowed_statuses = {
                     "sent",
