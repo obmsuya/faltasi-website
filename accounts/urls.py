@@ -1,3 +1,4 @@
+
 from django.urls import path
 from django.contrib.auth import views as auth_views
 from . import views
@@ -5,61 +6,52 @@ from . import views
 app_name = "accounts"
 
 urlpatterns = [
+    path("login/", views.RememberMeLoginView.as_view(), name="login"),
+
     path(
-        "login/",
-        views.RememberMeLoginView.as_view(),
-        name="login",
-    ),
-    path("force-password-change/", views.force_password_change, name="force_password_change"),
-
-
-
-    # Logout
-    path(
-        "logout/",
-        auth_views.LogoutView.as_view(),
-        name="logout",
+        "force-password-change/",
+        views.force_password_change,
+        name="force_password_change",
     ),
 
-    # Create account
-    path(
-        "register/",
-        views.register,
-        name="register",
-    ),
+    path("logout/", auth_views.LogoutView.as_view(), name="logout"),
 
-    # Forgot password
+    path("register/", views.register, name="register"),
+
     path(
         "password-reset/",
         auth_views.PasswordResetView.as_view(
-            template_name="accounts/password_reset.html"
+            template_name="accounts/password_reset.html",
+            email_template_name="accounts/password_reset_email.txt",
+            subject_template_name="registration/password_reset_subject.txt",
+            success_url="/accounts/password-reset/done/",
+            extra_email_context={
+                "site_name": "Faltasi Innovations Ltd",
+            },
         ),
         name="password_reset",
     ),
 
-    # Password reset email sent
     path(
         "password-reset/done/",
         auth_views.PasswordResetDoneView.as_view(
-            template_name="accounts/password_reset_done.html"
+            template_name="accounts/password_reset_done.html",
         ),
         name="password_reset_done",
     ),
 
-    # New password
     path(
         "reset/<uidb64>/<token>/",
         auth_views.PasswordResetConfirmView.as_view(
-            template_name="accounts/password_reset_confirm.html"
+            template_name="accounts/password_reset_confirm.html",
         ),
         name="password_reset_confirm",
     ),
 
-    # Password successfully changed
     path(
         "reset/done/",
         auth_views.PasswordResetCompleteView.as_view(
-            template_name="accounts/password_reset_complete.html"
+            template_name="accounts/password_reset_complete.html",
         ),
         name="password_reset_complete",
     ),
