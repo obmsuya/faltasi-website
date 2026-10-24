@@ -173,11 +173,10 @@ def send_whatsapp_message(whatsapp_phone, phone_number, message):
 
     Production:
         Uses the selected organization's connected WhatsApp account.
-        Faltasi's platform-owner connection may use the configured
-        environment token if its database token is empty.
 
     Local development:
-        Falls back to verified WhatsApp settings when DEBUG=True.
+        If DEBUG=True and database connection records are missing,
+        uses the verified WhatsApp settings from .env.
     """
     import requests
     from django.conf import settings
@@ -188,7 +187,7 @@ def send_whatsapp_message(whatsapp_phone, phone_number, message):
 
         connection = None
 
-        # Find the connected WhatsApp connection for this phone record.
+        # Use a database connection when a phone record is available.
         if whatsapp_phone:
             connection = (
                 WhatsAppConnection.objects
@@ -206,7 +205,7 @@ def send_whatsapp_message(whatsapp_phone, phone_number, message):
                 .first()
             )
 
-        # Prefer the token stored on the organization's connection.
+        # Prefer the organization's own connection token.
         access_token = (
             connection.access_token
             if connection and connection.access_token
@@ -219,8 +218,8 @@ def send_whatsapp_message(whatsapp_phone, phone_number, message):
             else None
         )
 
-        # Only Faltasi's platform-owner connection may use the
-        # platform environment token in production.
+        # Production fallback: only Faltasi's platform-owner
+        # connection may use the platform environment access token.
         is_platform_owner = (
             whatsapp_phone is not None
             and whatsapp_phone.organization.organization_type
@@ -232,7 +231,7 @@ def send_whatsapp_message(whatsapp_phone, phone_number, message):
                 settings, "WHATSAPP_ACCESS_TOKEN", None
             )
 
-        # Preserve the existing local-development fallback.
+        # Preserve the historical local-development fallback.
         if settings.DEBUG:
             if not access_token:
                 access_token = getattr(
@@ -245,10 +244,7 @@ def send_whatsapp_message(whatsapp_phone, phone_number, message):
                 )
 
         if not access_token:
-            print(
-                "WHATSAPP SEND ERROR: No access token available "
-                "from the permitted sources."
-            )
+            print("WHATSAPP SEND ERROR: No access token available.")
             return None
 
         if not phone_number_id:
@@ -285,26 +281,19 @@ def send_whatsapp_message(whatsapp_phone, phone_number, message):
 
         print("WHATSAPP SEND STATUS:", response.status_code)
 
-        # Never log the access token or authorization headers.
-        # Log Meta's response to help diagnose sending failures.
-        print("WHATSAPP SEND RESPONSE:", response.text[:2000])
+        # Do not print the access token or request headers.
+        print("WHATSAPP SEND RESPONSE:", response.text)
 
         return response
 
     except requests.RequestException as exc:
-        # Avoid logging request headers or credentials.
-        print(
-            "WHATSAPP SEND REQUEST ERROR:",
-            type(exc).__name__,
-        )
+        print("WHATSAPP SEND REQUEST ERROR:", str(exc))
         return None
 
     except Exception as exc:
-        print(
-            "WHATSAPP SEND GENERAL ERROR:",
-            type(exc).__name__,
-        )
+        print("WHATSAPP SEND GENERAL ERROR:", str(exc))
         return None
+
 
 def get_or_create_customer(phone_number):
     """
