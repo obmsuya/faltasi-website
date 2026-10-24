@@ -21,6 +21,7 @@ from .models import (
     Message,
 )
 from customers.models import Customer
+from products.models import Product
 from business_requests.models import (
     BusinessRequest,
     RequestCategory,
@@ -3648,11 +3649,8 @@ def webhook(request):
 
 
 
-            reply = process_customer_message(
-
-                text
-
-            )
+            product_reply = search_whatsapp_products(text, organization)
+            reply = product_reply or process_customer_message(text)
 
 
 
@@ -3941,6 +3939,89 @@ def webhook(request):
             status=500,
 
         )
+
+def search_whatsapp_products(text, organization):
+    """Search active products enabled for WhatsApp."""
+    if not text or not organization:
+        return None
+
+    stop_words = {
+        "i", "me", "my", "we", "you", "a", "an", "the", "am",
+        "is", "are", "need", "want", "looking", "for", "please",
+        "can", "could", "do", "have", "get", "buy", "to", "some",
+        "any", "your", "and", "or", "of", "with", "would", "like",
+        "hello", "hi", "hey", "what", "how", "much", "price", "prices",
+    }
+    terms = list(dict.fromkeys(
+        word for word in re.findall(r"[a-zA-Z0-9]+", text.lower())
+        if len(word) > 1 and word not in stop_words
+    ))
+    if not terms:
+        return None
+
+    fields = (
+        "name", "brand", "model", "sku",
+        "short_description", "description", "category__name",
+    )
+    query = Q()
+    for term in terms:
+        for field in fields:
+            query |= Q(**{f"{field}__icontains": term})
+
+    products = Product.objects.filter(
+        organization=organization,
+        is_active=True,
+        deleted_at__isnull=True,
+        show_on_whatsapp=True,
+    ).filter(query).select_related("category").distinct()
+
+    def score(product):
+        searchable = " ".join((
+            product.name or "",
+            product.brand or "",
+            product.model or "",
+            product.sku or "",
+            product.short_description or "",
+            product.description or "",
+            product.category.name if product.category else "",
+        )).lower()
+        result = sum(term in searchable for term in terms)
+        if all(term in (product.name or "").lower() for term in terms):
+            result += 10
+        return result
+
+    matches = sorted(
+        products,
+        key=lambda p: (-score(p), p.display_order, p.name.lower()),
+    )[:5]
+    if not matches:
+        return None
+
+    lines = ["Here are some products matching your request:", ""]
+    for number, product in enumerate(matches, start=1):
+        lines.append(f"{number}. {product.name}")
+        if product.brand:
+            lines.append(f"   Brand: {product.brand}")
+        if product.model:
+            lines.append(f"   Model: {product.model}")
+        price = (
+            f"{product.currency} {product.price:,.2f}"
+            if product.price is not None
+            else "Price available on request"
+        )
+        lines.append(f"   Price: {price}")
+        lines.append(f"   Availability: {product.get_availability_display()}")
+        lines.append("")
+
+    lines.extend([
+        "View our catalogue:",
+        "https://www.faltasi.com/products/",
+        "",
+        "Reply with the product name you are interested in for more information.",
+    ])
+    return "\n".join(lines)
+
+
 def process_customer_message(text):
     """Return a simple fallback when no request category is identified."""
     if not text or not text.strip():
