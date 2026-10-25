@@ -46,19 +46,21 @@
 
             <a
                 class="pa-nav-link {% if request.resolver_match.namespace == 'organizations' %}is-active{% endif %}"
-                href="{% url 'organizations:list' %}"
+                href="{% url 'business_requests:organization_management' %}"
             >
                 <span class="pa-nav-icon">▣</span>
                 <span>Organizations</span>
             </a>
 
+
             <a
-                class="pa-nav-link {% if request.resolver_match.url_name == 'staff_management' %}is-active{% endif %}"
-                href=""
+                class="pa-nav-link {% if request.resolver_match.url_name == 'organization_owners' %}is-active{% endif %}"
+                href="{% url 'business_requests:organization_owners' %}"
             >
-                <span class="pa-nav-icon">♧</span>
-                <span>Organization Members</span>
+                <span class="pa-nav-icon">♙</span>
+                <span>Organization Owners</span>
             </a>
+
 
             <a
                 class="pa-nav-link"
@@ -91,7 +93,7 @@
                 <span>Faltasi Business Dashboard</span>
             </a>
 
-            
+
         </nav>
 
         <!-- SIDEBAR USER AND LOGOUT -->

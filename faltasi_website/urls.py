@@ -16,10 +16,9 @@ urlpatterns = [
     path("business-requests/products/", include("products.urls")),
     path("accounts/", include("accounts.urls"),),
     path("customers/", include("customers.urls"),),
-    path("organizations/manage/", include("organizations.urls")),
-   
-    
-    
+
+
+
 ]
 
 

@@ -39,7 +39,6 @@ from django.contrib.auth.decorators import login_required
 from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404, redirect, render
 
-from organizations.models import Organization, OrganizationMember
 from business_requests.models import Department, DepartmentMember
 from products.models import Product, ProductCategory, OrganizationCategoryAssignment
 
@@ -3647,6 +3646,29 @@ def organization_management(request):
         request,
         "business_requests/organization_management.html",
         {"organizations": organizations},
+    )
+
+
+
+@login_required
+def organization_owners(request):
+    """Read-only list of organization owners for platform administrators."""
+    if not is_platform_administrator(request.user):
+        return HttpResponseForbidden(
+            "You are not authorized to view organization owners."
+        )
+
+    owners = (
+        OrganizationMember.objects
+        .filter(role="owner")
+        .select_related("organization", "user")
+        .order_by("organization__name", "user__username")
+    )
+
+    return render(
+        request,
+        "business_requests/organization_owners.html",
+        {"owners": owners},
     )
 
 

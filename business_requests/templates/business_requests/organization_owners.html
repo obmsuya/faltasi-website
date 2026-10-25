@@ -1,0 +1,65 @@
+
+{% extends "main/base2.html" %}
+
+{% block title %}Organization Owners | Faltasi{% endblock %}
+{% block page_heading %}Organization Owners{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 1200px; margin: auto; padding: 24px 16px;">
+
+    <h1>Organization Owners</h1>
+    <p>View owner accounts across all organizations on the Faltasi platform.</p>
+
+    <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; margin-top: 24px;">
+            <thead>
+                <tr style="text-align: left; border-bottom: 2px solid #ddd;">
+                    <th style="padding: 12px;">Organization</th>
+                    <th style="padding: 12px;">Owner Name</th>
+                    <th style="padding: 12px;">Username</th>
+                    <th style="padding: 12px;">Email</th>
+                    <th style="padding: 12px;">WhatsApp Phone</th>
+                    <th style="padding: 12px;">Membership Status</th>
+                    <th style="padding: 12px;">Date Joined</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for membership in owners %}
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 12px;">{{ membership.organization.name }}</td>
+                    <td style="padding: 12px;">
+                        {{ membership.user.get_full_name|default:"—" }}
+                    </td>
+                    <td style="padding: 12px;">{{ membership.user.username }}</td>
+                    <td style="padding: 12px;">{{ membership.user.email|default:"—" }}</td>
+                    <td style="padding: 12px;">{{ membership.phone_number|default:"—" }}</td>
+                    <td style="padding: 12px;">
+                        {% if membership.is_active %}
+                            Active
+                        {% else %}
+                            Inactive
+                        {% endif %}
+                    </td>
+                    <td style="padding: 12px;">
+                        {{ membership.joined_at|date:"d M Y" }}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" style="padding: 20px; text-align: center;">
+                        No organization owner accounts found.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <p style="margin-top: 24px;">
+        <a href="{% url 'business_requests:organization_management' %}">
+            Back to Organizations
+        </a>
+    </p>
+
+</div>
+{% endblock %}

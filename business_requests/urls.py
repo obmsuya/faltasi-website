@@ -39,6 +39,7 @@ urlpatterns = [
     path("platform-products/", views.platform_product_management, name="platform_product_management"),
     path("switch-organization/", views.switch_organization, name="switch_organization"),
     path("organizations/", views.organization_management, name="organization_management"),
+    path("organization-owners/", views.organization_owners, name="organization_owners"),
     path("organizations/create/", views.organization_create, name="organization_create"),
     path("organizations/<int:organization_id>/create-owner/", views.organization_create_owner, name="organization_create_owner"),
     path("organizations/<int:organization_id>/status/", views.organization_toggle_status, name="organization_toggle_status"),
