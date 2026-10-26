@@ -97,6 +97,7 @@ INSTALLED_APPS = [
     "organizations",
     "billing",
     "accounts",
+    "product_knowledge",
 ]
 
 MIDDLEWARE = [

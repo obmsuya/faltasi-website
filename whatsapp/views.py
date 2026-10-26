@@ -165,8 +165,6 @@ def normalize_phone_number(phone_number):
     # Fallback
     return phone
 
-
-
 def send_whatsapp_message(whatsapp_phone, phone_number, message):
     """
     Send a WhatsApp text message.
@@ -294,6 +292,90 @@ def send_whatsapp_message(whatsapp_phone, phone_number, message):
         print("WHATSAPP SEND GENERAL ERROR:", str(exc))
         return None
 
+
+def send_whatsapp_image(whatsapp_phone, phone_number, image_url, caption=""):
+    """Send a product image through the existing WhatsApp connection."""
+    import requests
+
+    if not image_url:
+        return None
+
+    # Reuse the existing sender's connection and authentication setup.
+    # The image URL must be publicly accessible by Meta.
+    try:
+        import json
+        from django.conf import settings
+        from whatsapp.models import WhatsAppConnection
+
+        connection = None
+        if whatsapp_phone:
+            connection = (
+                WhatsAppConnection.objects
+                .select_related("whatsapp_business_account", "organization")
+                .filter(
+                    whatsapp_business_account=whatsapp_phone.whatsapp_business_account,
+                    organization=whatsapp_phone.organization,
+                    status="connected",
+                )
+                .first()
+            )
+
+        access_token = (
+            connection.access_token
+            if connection and connection.access_token
+            else None
+        )
+        phone_number_id = (
+            getattr(whatsapp_phone, "phone_number_id", None)
+            if whatsapp_phone else None
+        )
+
+        is_platform_owner = (
+            whatsapp_phone is not None
+            and whatsapp_phone.organization.organization_type == "platform_owner"
+        )
+
+        if not access_token and is_platform_owner:
+            access_token = getattr(settings, "WHATSAPP_ACCESS_TOKEN", None)
+
+        if settings.DEBUG:
+            if not access_token:
+                access_token = getattr(settings, "WHATSAPP_ACCESS_TOKEN", None)
+            if not phone_number_id:
+                phone_number_id = getattr(settings, "WHATSAPP_PHONE_NUMBER_ID", None)
+
+        if not access_token or not phone_number_id or not phone_number:
+            print("WHATSAPP IMAGE ERROR: Missing connection details.")
+            return None
+
+        url = f"https://graph.facebook.com/v26.0/{phone_number_id}/messages"
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": str(phone_number).strip().lstrip("+"),
+            "type": "image",
+            "image": {"link": image_url},
+        }
+        if caption:
+            payload["image"]["caption"] = caption[:1024]
+
+        response = requests.post(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=30,
+        )
+        print("WHATSAPP IMAGE STATUS:", response.status_code)
+        print("WHATSAPP IMAGE RESPONSE:", response.text)
+        return response
+
+    except requests.RequestException as exc:
+        print("WHATSAPP IMAGE REQUEST ERROR:", str(exc))
+        return None
+    except Exception as exc:
+        print("WHATSAPP IMAGE GENERAL ERROR:", str(exc))
+        return None
 
 def get_or_create_customer(phone_number):
     """
@@ -2313,6 +2395,8 @@ def webhook(request):
             incoming_message,
 
         )
+        print("DEBUG SAVED MESSAGE CONVERSATION ID:", incoming_message.conversation_id)
+        print("DEBUG WEBHOOK CONVERSATION ID:", conversation.id)
 
 
 
@@ -2424,22 +2508,25 @@ def webhook(request):
 
         # =================================================
 
-
-
-        detected_category = find_request_category(
-
-            text, organization=organization
-
+        product_flow_reply = handle_whatsapp_product_conversation(
+            text,
+            organization,
+            state,
         )
 
+        product_flow_handled = product_flow_reply is not None
 
+        if product_flow_handled:
+            reply = product_flow_reply
+            detected_category = None
+        else:
+            detected_category = find_request_category(
+                text, organization=organization
+            )
 
         print(
-
             "DETECTED CATEGORY:",
-
             detected_category,
-
         )
 
 
@@ -2456,8 +2543,7 @@ def webhook(request):
 
 
 
-        if current_category and state.waiting_for:
-
+        if not product_flow_handled and current_category and state.waiting_for:
 
 
             try:
@@ -2532,7 +2618,7 @@ def webhook(request):
 
 
 
-        if not current_category:
+        if not product_flow_handled and not current_category:
 
 
 
@@ -2564,7 +2650,7 @@ def webhook(request):
 
 
 
-        else:
+        elif not product_flow_handled:
 
 
 
@@ -2924,7 +3010,7 @@ def webhook(request):
 
 
 
-        if new_request:
+        if not product_flow_handled and new_request:
 
 
 
@@ -3218,7 +3304,7 @@ def webhook(request):
 
 
 
-        elif current_category:
+        elif not product_flow_handled and current_category:
 
 
 
@@ -3374,8 +3460,7 @@ def webhook(request):
 
 
 
-        elif detected_category:
-
+        elif not product_flow_handled and detected_category:
 
 
             category = detected_category
@@ -3624,7 +3709,7 @@ def webhook(request):
 
 
 
-        else:
+        elif not product_flow_handled:
 
 
 
@@ -3638,7 +3723,7 @@ def webhook(request):
 
 
 
-            product_reply = search_whatsapp_products(text, organization)
+            product_reply = search_whatsapp_products(text, organization, state)
             reply = product_reply or process_customer_message(text)
 
 
@@ -3929,8 +4014,176 @@ def webhook(request):
 
         )
 
-def search_whatsapp_products(text, organization):
-    """Search active products enabled for WhatsApp."""
+
+def handle_whatsapp_product_conversation(text, organization, state):
+    """Handle product selection and follow-up questions in Swahili."""
+    if not text or not organization or not state:
+        return None
+
+    step = state.current_step
+    data = dict(state.data or {})
+    normalized = text.strip().lower()
+
+    # Only handle replies belonging to this product conversation.
+    if step not in {
+        "whatsapp_product_selection",
+        "whatsapp_product_quantity",
+        "whatsapp_product_next_action",
+    }:
+        return None
+
+    def save_state(new_step, waiting_for, updates=None):
+        current_data = dict(state.data or {})
+        if updates:
+            current_data.update(updates)
+        state.current_step = new_step
+        state.waiting_for = waiting_for
+        state.data = current_data
+        state.save()
+
+    # STEP 1: Customer chooses one of the displayed products.
+    if step == "whatsapp_product_selection":
+        product_ids = data.get("whatsapp_product_ids", [])
+        selected_id = None
+
+        # Accept a displayed number such as "1".
+        if normalized.isdigit():
+            choice = int(normalized)
+            if 1 <= choice <= len(product_ids):
+                selected_id = product_ids[choice - 1]
+
+        # Also accept the product name.
+        if selected_id is None:
+            for product in Product.objects.filter(
+                organization=organization,
+                id__in=product_ids,
+                is_active=True,
+                deleted_at__isnull=True,
+                show_on_whatsapp=True,
+            ):
+                if normalized == product.name.lower():
+                    selected_id = product.id
+                    break
+
+        if selected_id is None:
+            return (
+                "Samahani 😊 Sijaweza kutambua bidhaa uliyochagua. "
+                "Tafadhali jibu kwa namba ya bidhaa kwenye orodha, "
+                "au andika jina lake."
+            )
+
+        product = Product.objects.filter(
+            organization=organization,
+            id=selected_id,
+            is_active=True,
+            deleted_at__isnull=True,
+            show_on_whatsapp=True,
+        ).first()
+
+        if not product:
+            save_state(None, None, {
+                "whatsapp_product_ids": [],
+                "selected_whatsapp_product_id": None,
+            })
+            return (
+                "Samahani, bidhaa hiyo haipatikani kwa sasa. "
+                "Tafadhali tuambie bidhaa nyingine unayohitaji."
+            )
+
+        save_state(
+            "whatsapp_product_quantity",
+            "product_quantity",
+            {
+                "selected_whatsapp_product_id": product.id,
+                "selected_whatsapp_product_name": product.name,
+            },
+        )
+
+        return (
+            f"Asante! 😊 Umechagua {product.name}.\n\n"
+            "Unahitaji kiasi gani? Tafadhali taja idadi unayohitaji."
+        )
+
+    # STEP 2: Capture quantity.
+    if step == "whatsapp_product_quantity":
+        import re
+
+        quantity_match = re.search(r"\d+", normalized)
+        if not quantity_match or int(quantity_match.group()) < 1:
+            return (
+                "Tafadhali tuambie idadi unayohitaji, "
+                "kwa mfano vipande 10."
+            )
+
+        quantity = int(quantity_match.group())
+        save_state(
+            "whatsapp_product_next_action",
+            "product_next_action",
+            {"whatsapp_product_quantity": quantity},
+        )
+
+        return (
+            f"Sawa, umehitaji kiasi cha {quantity}. 😊\n\n"
+            "Ungependa nikusaidie kupata nukuu ya bei, "
+            "kuulizia upatikanaji na delivery, au kuwasiliana "
+            "na timu yetu ya mauzo?\n\n"
+            "Andika: Bei, Delivery, au Mauzo."
+        )
+
+    # STEP 3: Ask what assistance the customer needs.
+    if step == "whatsapp_product_next_action":
+        if any(word in normalized for word in (
+            "bei", "quotation", "quote", "nukuu", "gharama",
+        )):
+            action = "quotation"
+            response = (
+                "Asante! 😊 Tumepokea ombi lako la nukuu ya bei. "
+                "Timu yetu ya mauzo itakusaidia kuthibitisha bei."
+            )
+        elif any(word in normalized for word in (
+            "delivery", "usafiri", "kusafirisha", "kuleta",
+        )):
+            action = "delivery"
+            response = (
+                "Sawa! 😊 Tunaweza kukusaidia kuhusu delivery. "
+                "Tafadhali tueleze eneo unalotaka bidhaa ipelekwe."
+            )
+        elif any(word in normalized for word in (
+            "mauzo", "sales", "mtu", "wakala", "ongea",
+        )):
+            action = "sales"
+            response = (
+                "Sawa kabisa! 😊 Tutakusaidia kuwasiliana na "
+                "mwakilishi wetu wa mauzo."
+            )
+        elif any(word in normalized for word in (
+            "ufungaji", "installation", "kufunga", "fundi",
+        )):
+            action = "installation"
+            response = (
+                "Sawa! 😊 Tafadhali tueleze eneo la ufungaji "
+                "ili timu yetu iweze kukushauri."
+            )
+        else:
+            return (
+                "Ungependa nukuu ya bei, delivery, au kuzungumza "
+                "na timu ya mauzo? Unaweza pia kuomba ufungaji "
+                "ikiwa huduma hiyo inahitajika."
+            )
+
+        save_state(
+            "whatsapp_product_completed",
+            None,
+            {"whatsapp_product_action": action},
+        )
+
+        return response
+
+    return None
+
+
+def search_whatsapp_products(text, organization, state=None):
+    """Search WhatsApp-enabled products and remember the displayed choices."""
     if not text or not organization:
         return None
 
@@ -3941,10 +4194,12 @@ def search_whatsapp_products(text, organization):
         "any", "your", "and", "or", "of", "with", "would", "like",
         "hello", "hi", "hey", "what", "how", "much", "price", "prices",
     }
+
     terms = list(dict.fromkeys(
         word for word in re.findall(r"[a-zA-Z0-9]+", text.lower())
         if len(word) > 1 and word not in stop_words
     ))
+
     if not terms:
         return None
 
@@ -3952,6 +4207,7 @@ def search_whatsapp_products(text, organization):
         "name", "brand", "model", "sku",
         "short_description", "description", "category__name",
     )
+
     query = Q()
     for term in terms:
         for field in fields:
@@ -3974,30 +4230,48 @@ def search_whatsapp_products(text, organization):
             product.description or "",
             product.category.name if product.category else "",
         )).lower()
+
         result = sum(term in searchable for term in terms)
+
         if all(term in (product.name or "").lower() for term in terms):
             result += 10
+
         return result
 
     matches = sorted(
         products,
         key=lambda p: (-score(p), p.display_order, p.name.lower()),
     )[:5]
+
     if not matches:
         return None
 
+    # Remember the exact choices for this conversation.
+    if state is not None:
+        state_data = dict(state.data or {})
+        state_data["whatsapp_product_ids"] = [p.id for p in matches]
+        state.current_step = "whatsapp_product_selection"
+        state.waiting_for = "product_selection"
+        state.data = state_data
+        state.save()
+
     lines = ["Here are some products matching your request:", ""]
+
     for number, product in enumerate(matches, start=1):
         lines.append(f"{number}. {product.name}")
+
         if product.brand:
             lines.append(f"   Brand: {product.brand}")
+
         if product.model:
             lines.append(f"   Model: {product.model}")
+
         price = (
             f"{product.currency} {product.price:,.2f}"
             if product.price is not None
             else "Price available on request"
         )
+
         lines.append(f"   Price: {price}")
         lines.append(f"   Availability: {product.get_availability_display()}")
         lines.append("")
@@ -4006,8 +4280,9 @@ def search_whatsapp_products(text, organization):
         "View our catalogue:",
         "https://www.faltasi.com/products/",
         "",
-        "Reply with the product name you are interested in for more information.",
+        "Reply with the product number (for example, 1) or its name to continue.",
     ])
+
     return "\n".join(lines)
 
 
