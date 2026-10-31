@@ -136,7 +136,7 @@ def platform_dashboard(request):
                         "organization.",
                     )
 
-            return redirect("platform_dashboard")
+            return redirect("business_requests:platform_dashboard")
 
         # Create a master product category.
         if action == "create_master_category":
