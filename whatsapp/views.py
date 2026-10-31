@@ -11,6 +11,7 @@ import requests
 import re
 import hmac
 import hashlib
+from urllib.parse import urlsplit
 
 from .models import (
     WhatsAppBusinessAccount,
@@ -376,6 +377,123 @@ def send_whatsapp_image(whatsapp_phone, phone_number, image_url, caption=""):
     except Exception as exc:
         print("WHATSAPP IMAGE GENERAL ERROR:", str(exc))
         return None
+
+
+def get_public_product_image_url(product, request=None):
+    """Return an absolute HTTPS image URL that Meta can attempt to fetch."""
+    try:
+        if not product or not product.image:
+            return None
+        image_url = product.image.url
+    except (AttributeError, ValueError, OSError) as exc:
+        print("PRODUCT IMAGE URL ERROR:", str(exc))
+        return None
+
+    # Image storage may return a relative media path.
+    if not urlsplit(image_url).scheme and request is not None:
+        image_url = request.build_absolute_uri(image_url)
+
+    parsed_url = urlsplit(image_url)
+
+    # WhatsApp Cloud API requires a publicly reachable HTTPS URL.
+    if parsed_url.scheme.lower() != "https" or not parsed_url.netloc:
+        print(
+            "PRODUCT IMAGE SKIPPED: image URL must be an absolute HTTPS URL.",
+            "| PRODUCT:",
+            getattr(product, "name", None),
+        )
+        return None
+
+    return image_url
+
+
+def send_and_log_whatsapp_product_image(
+    whatsapp_phone,
+    phone_number,
+    product,
+    conversation,
+    organization,
+    request=None,
+):
+    """Send one verified product image and save the WhatsApp message record."""
+    image_url = get_public_product_image_url(product, request=request)
+    if not image_url:
+        return False
+
+    caption_lines = [product.name]
+
+    if product.brand:
+        caption_lines.append(f"Brand: {product.brand}")
+
+    if product.model:
+        caption_lines.append(f"Model: {product.model}")
+
+    if product.price is not None:
+        caption_lines.append(
+            f"Price: {product.currency} {product.price:,.2f}"
+        )
+    else:
+        caption_lines.append("Price available on request")
+
+    caption_lines.append(
+        f"Availability: {product.get_availability_display()}"
+    )
+    caption = "\n".join(caption_lines)[:1024]
+
+    response = send_whatsapp_image(
+        whatsapp_phone,
+        phone_number,
+        image_url,
+        caption=caption,
+    )
+
+    succeeded = response is not None and response.status_code in (200, 201)
+
+    try:
+        response_data = response.json() if response is not None else {
+            "error": "No response received from WhatsApp image endpoint."
+        }
+    except ValueError:
+        response_data = {"raw_response": response.text}
+
+    whatsapp_message_id = None
+    try:
+        whatsapp_message_id = (
+            response_data.get("messages", [{}])[0].get("id")
+        )
+    except (AttributeError, IndexError, TypeError):
+        whatsapp_message_id = None
+
+    Message.objects.create(
+        organization=organization,
+        conversation=conversation,
+        direction="outgoing",
+        sender_type="faltasi",
+        message_type="image",
+        content=caption,
+        whatsapp_message_id=whatsapp_message_id,
+        delivery_status="sent" if succeeded else "failed",
+        metadata={
+            "product_id": product.id,
+            "product_sku": product.sku,
+            "image_url": image_url,
+            "whatsapp_response": response_data,
+        },
+    )
+
+    if succeeded:
+        from django.utils import timezone
+        conversation.last_message_at = timezone.now()
+        conversation.save(update_fields=["last_message_at"])
+    else:
+        print(
+            "WHATSAPP PRODUCT IMAGE FAILED:",
+            getattr(response, "status_code", None),
+            response_data,
+        )
+
+    return succeeded
+
 
 def get_or_create_customer(phone_number):
     """
@@ -2508,6 +2626,10 @@ def webhook(request):
 
         # =================================================
 
+        # Product images are sent only when the normal product search
+        # produces a list of WhatsApp-enabled products.
+        product_images_to_send = []
+
         product_flow_reply = handle_whatsapp_product_conversation(
             text,
             organization,
@@ -3726,6 +3848,25 @@ def webhook(request):
             product_reply = search_whatsapp_products(text, organization, state)
             reply = product_reply or process_customer_message(text)
 
+            if product_reply and state is not None:
+                displayed_product_ids = (state.data or {}).get(
+                    "whatsapp_product_ids", []
+                )
+                products_by_id = Product.objects.filter(
+                    organization=organization,
+                    id__in=displayed_product_ids,
+                    is_active=True,
+                    deleted_at__isnull=True,
+                    show_on_whatsapp=True,
+                ).in_bulk()
+
+                # Preserve the same order used in the customer-facing list.
+                product_images_to_send = [
+                    products_by_id[product_id]
+                    for product_id in displayed_product_ids
+                    if product_id in products_by_id
+                ]
+
 
 
         # =================================================
@@ -3901,6 +4042,18 @@ def webhook(request):
                 ]
 
             )
+
+            # Send the real product images after the numbered text list.
+            # The selected product can then be chosen using the same numbers.
+            for product in product_images_to_send:
+                send_and_log_whatsapp_product_image(
+                    whatsapp_phone=whatsapp_phone,
+                    phone_number=sender,
+                    product=product,
+                    conversation=conversation,
+                    organization=organization,
+                    request=request,
+                )
 
 
 
