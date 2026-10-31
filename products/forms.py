@@ -46,6 +46,7 @@ class ProductForm(forms.ModelForm):
         self.fields["category"].queryset = ProductCategory.objects.filter(
             organization__isnull=True,
             is_active=True,
+            organization_assignments__organization=organization,
         ).order_by("name")
 
     def save(self, commit=True):
