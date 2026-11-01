@@ -1,6 +1,7 @@
 
 {% extends "main/base2.html" %}
 {% block page_heading %}Create Organization Owner{% endblock %}
+
 {% block content %}
 <section class="page-section">
     <div class="container" style="max-width: 1000px; margin: 0 auto; padding: 32px 16px;">
@@ -33,8 +34,8 @@
             </h2>
 
             <p style="color: #64748b; line-height: 1.7;">
-                Create a login account for the owner of this organization.
-                The account will be assigned to this organization.
+                Create a secure login account for this organization's owner.
+                The owner will receive an email activation link and a WhatsApp welcome notification.
             </p>
         </header>
 
@@ -94,7 +95,7 @@
                             type="text"
                             name="username"
                             value="{{ request.POST.username|default:'' }}"
-                            autocomplete="off"
+                            autocomplete="username"
                             required
                             placeholder="Choose a username"
                             style="width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #cbd5e1; border-radius: 7px;"
@@ -107,7 +108,7 @@
 
                     <div>
                         <label for="email" style="display: block; font-weight: 600; margin-bottom: 8px;">
-                            Email Address
+                            Email Address *
                         </label>
 
                         <input
@@ -116,9 +117,14 @@
                             name="email"
                             value="{{ request.POST.email|default:'' }}"
                             autocomplete="email"
+                            required
                             placeholder="owner@example.com"
                             style="width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #cbd5e1; border-radius: 7px;"
                         >
+
+                        <small style="display: block; margin-top: 6px; color: #64748b;">
+                            The secure password-activation link will be sent to this email.
+                        </small>
                     </div>
 
                     <div>
@@ -133,37 +139,45 @@
                             value="{{ request.POST.phone_number|default:'' }}"
                             autocomplete="tel"
                             required
-                            placeholder="e.g. 0653397942"
+                            placeholder="e.g. +255653397942"
                             style="width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #cbd5e1; border-radius: 7px;"
                         >
 
                         <small style="display: block; margin-top: 6px; color: #64748b;">
-                            The onboarding message will be sent to this number.
+                            The approved Faltasi WhatsApp welcome template will be sent to this number.
                         </small>
                     </div>
 
                 </div>
 
-                <div style="margin-top: 28px; padding: 18px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+                <div style="margin-top: 28px; padding: 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+
                     <h3 style="margin-top: 0; font-size: 16px;">
-                        Temporary Password
+                        Secure Account Activation
                     </h3>
 
-                    <p style="margin-bottom: 8px;">
-                        The system will generate the temporary password automatically
-                        from the username.
+                    <p>
+                        No temporary password is generated or sent.
+                        The owner receives an email containing their username
+                        and a secure, one-time password-activation link.
                     </p>
 
-                    <p style="margin-bottom: 8px;">
-                        <strong>Format:</strong> First letter capitalized, followed by
-                        the rest of the username and <code>@123</code>.
+                    <p>
+                        The owner creates their own password through that link.
+                        The link expires and can only be used once.
                     </p>
 
-                    <p style="margin-bottom: 0; color: #64748b; font-size: 14px;">
-                        The temporary password and username will be included in the
-                        WhatsApp onboarding message. We recommend changing the
-                        password after the first login.
+                    <h3 style="font-size: 16px; margin-bottom: 8px;">
+                        WhatsApp Welcome Notification
+                    </h3>
+
+                    <p style="margin-bottom: 0;">
+                        A welcome notification is sent using the approved
+                        <strong>faltasi_owner_welcome</strong> Meta Utility template.
+                        It contains the owner's name and organization name.
+                        Passwords and activation links are not sent through WhatsApp.
                     </p>
+
                 </div>
 
                 <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px;">

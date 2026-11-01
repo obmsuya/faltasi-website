@@ -12,7 +12,12 @@ from django.core.mail import send_mail
 
 from django.http import HttpResponse
 
-from products.models import Product, ProductCategory
+
+from products.models import (
+    OrganizationCategoryAssignment,
+    Product,
+    ProductCategory,
+)
 
 from customers.models import Customer
 
@@ -438,116 +443,77 @@ def partners(request):
     return render(request, "main/partners.html")
 
 
+
 def products(request):
-
-
-
     organization = Organization.objects.filter(
-
         name="Faltasi Innovations Limited",
-
         organization_type="platform_owner",
-
         status="active",
-
     ).first()
 
-
-
     if not organization:
-
         return render(
-
             request,
-
             "main/products.html",
-
             {
-
                 "products": Product.objects.none(),
-
                 "categories": ProductCategory.objects.none(),
-
                 "selected_category": None,
-
-            }
-
+            },
         )
 
-
+    # Load active master categories assigned to Faltasi.
+    assigned_category_ids = (
+        OrganizationCategoryAssignment.objects.filter(
+            organization=organization,
+            category__organization__isnull=True,
+            category__is_active=True,
+        ).values_list("category_id", flat=True)
+    )
 
     categories = ProductCategory.objects.filter(
-
-        organization=organization,
-
+        id__in=assigned_category_ids,
         is_active=True,
+    ).order_by("name")
 
-    )
-
-
-
+    # Public website: only Faltasi's active, non-deleted,
+    # explicitly website-visible products.
     products = Product.objects.filter(
-
         organization=organization,
-
         is_active=True,
-
-    ).select_related(
-
-        "category"
-
+        deleted_at__isnull=True,
+        show_on_website=True,
+        category_id__in=assigned_category_ids,
+    ).select_related("category").order_by(
+        "display_order",
+        "name",
     )
-
-
 
     category_id = request.GET.get("category")
-
-
-
-    if category_id:
-
-        products = products.filter(
-
-            category_id=category_id,
-
-            category__organization=organization,
-
-        )
-
-
-
     selected_category = None
 
-
-
     if category_id:
-
         try:
-
             selected_category = int(category_id)
-
-        except ValueError:
-
+        except (TypeError, ValueError):
             selected_category = None
 
-
+        if selected_category is not None:
+            if categories.filter(pk=selected_category).exists():
+                products = products.filter(
+                    category_id=selected_category,
+                )
+            else:
+                selected_category = None
 
     return render(
-
         request,
-
         "main/products.html",
-
         {
-
             "products": products,
-
             "categories": categories,
-
             "selected_category": selected_category,
-
-        }
-
+        },
     )
 
 def sitemap(request):

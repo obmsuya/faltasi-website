@@ -1,3 +1,4 @@
+
 from django.db import models
 from organizations.models import Organization
 
@@ -60,6 +61,41 @@ class Customer(models.Model):
         choices=CONTACT_METHOD_CHOICES,
         default="whatsapp",
     )
+
+    # ==========================================
+    # WHATSAPP MARKETING CONSENT
+    # ==========================================
+
+    whatsapp_marketing_opt_in = models.BooleanField(
+        default=False,
+        help_text=(
+            "Whether this customer has explicitly "
+            "agreed to receive WhatsApp marketing messages."
+        ),
+    )
+
+    whatsapp_marketing_opt_in_at = models.DateTimeField(
+        blank=True,
+        null=True,
+    )
+
+    whatsapp_marketing_opt_in_source = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        help_text=(
+            "How consent was obtained, e.g. whatsapp_reply."
+        ),
+    )
+
+    whatsapp_marketing_opt_out_at = models.DateTimeField(
+        blank=True,
+        null=True,
+    )
+
+    # ==========================================
+    # CUSTOMER LOCATION AND DETAILS
+    # ==========================================
 
     country = models.CharField(
         max_length=100,

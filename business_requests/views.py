@@ -1,4 +1,4 @@
-from django.http import HttpResponseForbidden
+﻿from django.http import HttpResponseForbidden
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404, redirect, render
@@ -20,7 +20,10 @@ from django.contrib.auth import login
 from django.core.mail import send_mail
 from django.utils import timezone
 from whatsapp.models import Conversation, Message, WhatsAppPhoneNumber
-from whatsapp.views import send_whatsapp_message
+from whatsapp.views import (
+    send_whatsapp_message,
+    send_whatsapp_template,
+)
 from django.conf import settings
 
 
@@ -1714,7 +1717,7 @@ def staff_management(request):
         OrganizationMember.objects
         .filter(
             organization=organization,
-            
+
         )
         .select_related(
             "user",
@@ -3763,16 +3766,21 @@ def organization_create(request):
 
 
 
+
 @login_required
 @transaction.atomic
 def organization_create_owner(request, organization_id):
-    """Create an organization owner and send WhatsApp onboarding details."""
+    """Create an organization owner and send secure onboarding notifications."""
+
     if not is_platform_administrator(request.user):
         return HttpResponseForbidden(
             "You are not authorized to create organization owners."
         )
 
-    organization = get_object_or_404(Organization, pk=organization_id)
+    organization = get_object_or_404(
+        Organization,
+        pk=organization_id,
+    )
 
     if organization.organization_type == "platform_owner":
         messages.error(
@@ -3792,12 +3800,17 @@ def organization_create_owner(request, organization_id):
     )
 
     if request.method == "POST":
+
         username = request.POST.get("username", "").strip()
         email = request.POST.get("email", "").strip().lower()
         full_name = request.POST.get("full_name", "").strip()
         phone_number = request.POST.get("phone_number", "").strip()
 
         errors = []
+
+        # -------------------------------------------------
+        # VALIDATION
+        # -------------------------------------------------
 
         if existing_owner:
             errors.append(
@@ -3807,11 +3820,26 @@ def organization_create_owner(request, organization_id):
 
         if not username:
             errors.append("Username is required.")
+
         elif User.objects.filter(username__iexact=username).exists():
             errors.append("That username is already in use.")
 
-        if email and User.objects.filter(email__iexact=email).exists():
-            errors.append("That email address is already in use.")
+        # Email is mandatory for secure account activation.
+        if not email:
+            errors.append(
+                "Owner's email address is required for secure account activation."
+            )
+        else:
+            from django.core.validators import validate_email
+            from django.core.exceptions import ValidationError
+
+            try:
+                validate_email(email)
+            except ValidationError:
+                errors.append("Enter a valid owner email address.")
+
+            if User.objects.filter(email__iexact=email).exists():
+                errors.append("That email address is already in use.")
 
         if not phone_number:
             errors.append("Owner's WhatsApp phone number is required.")
@@ -3821,27 +3849,34 @@ def organization_create_owner(request, organization_id):
                 messages.error(request, error)
 
         else:
-            # Generate the temporary password automatically.
-            # Example: gracem becomes Gracem@123.
-            temporary_password = (
-                username[0].upper() + username[1:] + "@123"
-            )
 
-            user = User.objects.create_user(
+            # -------------------------------------------------
+            # CREATE OWNER USER ACCOUNT
+            # -------------------------------------------------
+
+            user = User(
                 username=username,
                 email=email,
-                password=temporary_password,
                 first_name=(
                     full_name.split(" ", 1)[0]
-                    if full_name
-                    else ""
+                    if full_name else ""
                 ),
                 last_name=(
                     full_name.split(" ", 1)[1]
-                    if " " in full_name
-                    else ""
+                    if " " in full_name else ""
                 ),
+                is_active=True,
+                is_staff=False,
+                is_superuser=False,
             )
+
+            # Never generate or send a temporary password.
+            user.set_unusable_password()
+            user.save()
+
+            # -------------------------------------------------
+            # CREATE ORGANIZATION MEMBERSHIP
+            # -------------------------------------------------
 
             membership = OrganizationMember.objects.create(
                 organization=organization,
@@ -3857,19 +3892,115 @@ def organization_create_owner(request, organization_id):
                 update_fields=["updated_by", "updated_at"]
             )
 
+            # -------------------------------------------------
+            # SEND ONBOARDING NOTIFICATIONS AFTER COMMIT
+            # -------------------------------------------------
+
             def send_owner_onboarding():
-                recipient = (
-                    phone_number.strip()
-                    .replace(" ", "")
-                    .replace("-", "")
-                    .replace("(", "")
-                    .replace(")", "")
+
+                import re
+
+                from django.conf import settings
+                from django.core.mail import send_mail
+                from django.urls import reverse
+                from django.utils.encoding import force_bytes
+                from django.utils.http import urlsafe_base64_encode
+                from django.contrib.auth.tokens import default_token_generator
+                from django.utils import timezone
+
+
+
+                owner_name = full_name or username
+
+                # =============================================
+                # 1. SECURE EMAIL ACTIVATION
+                # =============================================
+
+                email_sent = False
+                email_error = ""
+
+                try:
+                    uid = urlsafe_base64_encode(
+                        force_bytes(user.pk)
+                    )
+
+                    token = default_token_generator.make_token(user)
+
+                    reset_path = reverse(
+                        "accounts:password_reset_confirm",
+                        kwargs={
+                            "uidb64": uid,
+                            "token": token,
+                        },
+                    )
+
+                    activation_url = request.build_absolute_uri(
+                        reset_path
+                    )
+
+                    subject = "Set up your Faltasi owner account"
+
+                    email_body = (
+                        f"Hello {owner_name},\n\n"
+                        f"Your organization owner account for "
+                        f"{organization.name} has been created.\n\n"
+                        f"Username: {username}\n\n"
+                        "To create your password securely, open "
+                        "this one-time link:\n"
+                        f"{activation_url}\n\n"
+                        "For your security, this link expires and can "
+                        "only be used once. Do not forward it or share "
+                        "it with anyone. If you did not expect this "
+                        "account, contact Faltasi Innovations Limited.\n\n"
+                        "Faltasi Innovations Limited"
+                    )
+
+                    sent_count = send_mail(
+                        subject,
+                        email_body,
+                        getattr(
+                            settings,
+                            "DEFAULT_FROM_EMAIL",
+                            None,
+                        ),
+                        [email],
+                        fail_silently=False,
+                    )
+
+                    if sent_count < 1:
+                        raise RuntimeError(
+                            "Email backend did not confirm sending the message."
+                        )
+
+                    email_sent = True
+
+                except Exception as exc:
+                    email_error = str(exc)[:1000]
+
+                    print(
+                        "OWNER ACTIVATION EMAIL ERROR:",
+                        email_error,
+                    )
+
+                # =============================================
+                # 2. NORMALIZE WHATSAPP RECIPIENT
+                # =============================================
+
+                recipient = re.sub(
+                    r"[^\d+]",
+                    "",
+                    phone_number,
                 )
 
                 if recipient.startswith("+"):
                     recipient = recipient[1:]
+
                 elif recipient.startswith("0"):
                     recipient = "255" + recipient[1:]
+
+                # =============================================
+                # 3. CREATE WHATSAPP AUDIT RECORD
+                # =============================================
 
                 log = OrganizationOnboardingMessage.objects.create(
                     organization=organization,
@@ -3879,130 +4010,225 @@ def organization_create_owner(request, organization_id):
                     attempt_number=1,
                 )
 
-                # Explicitly use Faltasi's platform-owner connection.
+                # =============================================
+                # 4. FIND FALTASI PLATFORM-OWNER WHATSAPP
+                # =============================================
+
                 faltasi_whatsapp = (
                     WhatsAppPhoneNumber.objects
+                    .select_related(
+                        "organization",
+                        "whatsapp_business_account",
+                    )
                     .filter(
                         organization__organization_type="platform_owner",
+                        organization__status="active",
                         status="connected",
                         is_active=True,
+                        whatsapp_business_account__status="connected",
+                        whatsapp_business_account__is_active=True,
                     )
                     .order_by("-is_default", "id")
                     .first()
                 )
 
                 if not faltasi_whatsapp:
+
                     log.status = "failed"
+
                     log.error_message = (
-                        "No active WhatsApp connection found for "
-                        "Faltasi's platform-owner organization."
+                        "No active connected WhatsApp phone number "
+                        "was found for Faltasi's platform-owner organization."
                     )
+
                     log.attempted_at = timezone.now()
-                    log.save()
+
+                    log.save(
+                        update_fields=[
+                            "status",
+                            "error_message",
+                            "attempted_at",
+                        ]
+                    )
 
                     messages.warning(
                         request,
-                        "Owner account created, but Faltasi's WhatsApp "
-                        "connection could not be found. The owner was not notified.",
-                    )
-                    return
-
-                owner_name = full_name or username
-
-                notification_text = (
-                    f"Hello {owner_name},\n\n"
-                    f"Welcome to {organization.name}!\n\n"
-                    "Faltasi Innovations Limited has created your "
-                    "organization owner account.\n\n"
-                    f"Username: {username}\n"
-                    f"Temporary password: {temporary_password}\n\n"
-                    "You can now log in to your account. For your "
-                    "security, we recommend changing your temporary "
-                    "password after logging in.\n\n"
-                    "Welcome aboard!\n\n"
-                    "Faltasi Innovations Limited"
-                )
-
-                try:
-                    whatsapp_response = send_whatsapp_message(
-                        faltasi_whatsapp,
-                        recipient,
-                        notification_text,
+                        "Faltasi's WhatsApp connection was unavailable. "
+                        "The owner account was still created."
                     )
 
-                    log.attempted_at = timezone.now()
+                else:
+
+                    # =========================================
+                    # 5. SEND APPROVED META TEMPLATE
+                    # =========================================
+
+                    template_name = getattr(
+                        settings,
+                        "WHATSAPP_ONBOARDING_TEMPLATE_NAME",
+                        "faltasi_owner_welcome",
+                    )
+
+                    template_language = getattr(
+                        settings,
+                        "WHATSAPP_ONBOARDING_TEMPLATE_LANGUAGE",
+                        "en_US",
+                    )
+
+                    # Approved template variables:
+                    # {{1}} = Owner's name
+                    # {{2}} = Organization name
+
+                    components = [
+                        {
+                            "type": "body",
+                            "parameters": [
+                                {
+                                    "type": "text",
+                                    "text": owner_name,
+                                },
+                                {
+                                    "type": "text",
+                                    "text": organization.name,
+                                },
+                            ],
+                        }
+                    ]
+
+                    response = send_whatsapp_template(
+                        whatsapp_phone=faltasi_whatsapp,
+                        phone_number=recipient,
+                        template_name=template_name,
+                        language_code=template_language,
+                        components=components,
+                    )
+
+                    # =========================================
+                    # 6. RECORD META RESPONSE
+                    # =========================================
 
                     if (
-                        whatsapp_response is not None
-                        and getattr(
-                            whatsapp_response,
-                            "status_code",
-                            None,
-                        ) in (200, 201)
+                        response is not None
+                        and response.status_code == 200
                     ):
-                        log.status = "accepted"
 
                         try:
-                            log.provider_message_id = (
-                                whatsapp_response.json()
-                                .get("messages", [{}])[0]
-                                .get("id", "")
+                            response_data = response.json()
+                        except ValueError:
+                            response_data = {}
+
+                        provider_message_id = None
+
+                        response_messages = response_data.get(
+                            "messages",
+                            [],
+                        )
+
+                        if response_messages:
+                            provider_message_id = (
+                                response_messages[0].get("id")
                             )
-                        except (
-                            ValueError,
-                            IndexError,
-                            AttributeError,
-                            TypeError,
-                        ):
-                            pass
+
+                        log.status = "accepted"
+
+                        log.provider_message_id = provider_message_id
+
+                        log.error_message = ""
+
+                        log.attempted_at = timezone.now()
+
+                        log.save(
+                            update_fields=[
+                                "status",
+                                "provider_message_id",
+                                "error_message",
+                                "attempted_at",
+                            ]
+                        )
 
                         messages.success(
                             request,
-                            "WhatsApp onboarding message was accepted by Meta.",
+                            "The approved Faltasi owner welcome "
+                            "WhatsApp template was accepted by Meta."
+                        )
+
+                        print(
+                            "OWNER WHATSAPP TEMPLATE ACCEPTED:",
+                            provider_message_id,
                         )
 
                     else:
+
                         log.status = "failed"
-                        log.error_message = (
-                            getattr(
-                                whatsapp_response,
-                                "text",
-                                "WhatsApp returned no response details.",
-                            )[:1000]
-                            if whatsapp_response is not None
-                            else "WhatsApp sending returned no response."
+
+                        if response is not None:
+                            error_text = response.text[:900]
+                        else:
+                            error_text = (
+                                "No response received from WhatsApp API."
+                            )
+
+                        log.error_message = error_text
+
+                        log.attempted_at = timezone.now()
+
+                        log.save(
+                            update_fields=[
+                                "status",
+                                "error_message",
+                                "attempted_at",
+                            ]
                         )
 
                         messages.warning(
                             request,
-                            "Owner account created, but WhatsApp did not "
-                            "confirm the message. Check the WhatsApp connection "
-                            "and Meta response.",
+                            "The owner account was created, but the "
+                            "WhatsApp welcome message could not be sent. "
+                            "Check the WhatsApp connection and Meta response."
                         )
 
-                except Exception as exc:
-                    log.status = "failed"
-                    log.error_message = str(exc)[:1000]
-                    log.attempted_at = timezone.now()
+                        print(
+                            "OWNER WHATSAPP TEMPLATE FAILED:",
+                            error_text,
+                        )
+
+                # =============================================
+                # 7. REPORT EMAIL RESULT INDEPENDENTLY
+                # =============================================
+
+                if email_sent:
+
+                    messages.success(
+                        request,
+                        f"A secure password-setup link was sent to {email}.",
+                    )
+
+                else:
 
                     messages.warning(
                         request,
-                        "Owner account created, but WhatsApp sending failed. "
-                        "Check the application logs.",
+                        "Owner account was created, but the activation "
+                        "email failed. Check the email configuration."
                     )
 
-                log.save()
+                    print(
+                        "OWNER EMAIL FAILURE:",
+                        email_error,
+                    )
 
+            # Run notifications only after the database commits.
             transaction.on_commit(send_owner_onboarding)
 
             messages.success(
                 request,
                 f"Owner account '{username}' was created for "
-                f"{organization.name}. A WhatsApp onboarding message "
-                "will be attempted.",
+                f"{organization.name}. Secure email activation "
+                "will be attempted."
             )
 
-            return redirect("business_requests:organization_management")
+            return redirect(
+                "business_requests:organization_management"
+            )
 
     return render(
         request,
@@ -4012,6 +4238,7 @@ def organization_create_owner(request, organization_id):
             "existing_owner": existing_owner,
         },
     )
+
 
 
 @login_required

@@ -216,15 +216,23 @@ def product_toggle_status(request, product_id):
 
 
 
+
+
 @login_required
 def product_share_whatsapp(request, product_id):
     import re
 
     from django.conf import settings
+    from django.utils import timezone
     from django.urls import reverse
+
     from customers.models import Customer
-    from whatsapp.models import WhatsAppPhoneNumber
-    from whatsapp.views import send_whatsapp_message
+    from whatsapp.models import (
+        WhatsAppPhoneNumber,
+        Conversation,
+        Message,
+    )
+    from whatsapp.views import send_whatsapp_template
 
     organization, membership = _organization_for_user(request)
 
@@ -267,15 +275,12 @@ def product_share_whatsapp(request, product_id):
     recipient_name = request.POST.get("recipient_name", "").strip()
     recipient_phone = request.POST.get("recipient_phone", "").strip()
 
-    customer = None
-
     if customer_id:
-        customer = get_object_or_404(
-            customers,
-            pk=customer_id,
-        )
+        customer = get_object_or_404(customers, pk=customer_id)
         recipient_name = customer.name
         recipient_phone = customer.phone
+    else:
+        customer = None
 
     if not recipient_phone:
         messages.error(request, "Enter a customer's phone number.")
@@ -284,7 +289,7 @@ def product_share_whatsapp(request, product_id):
             product_id=product.id,
         )
 
-    # Normalize Tanzanian numbers while allowing international numbers.
+    # Normalize Tanzanian numbers and international numbers.
     recipient_phone = re.sub(r"[\s().-]", "", recipient_phone)
 
     if recipient_phone.startswith("+"):
@@ -293,32 +298,89 @@ def product_share_whatsapp(request, product_id):
         recipient_phone = "255" + recipient_phone[1:]
 
     if not recipient_phone.isdigit() or not 8 <= len(recipient_phone) <= 15:
+        messages.error(request, "Enter a valid WhatsApp phone number.")
+        return redirect(
+            "products:product_share_whatsapp",
+            product_id=product.id,
+        )
+    if customer is None:
+        customer = customers.filter(phone=recipient_phone).first()
+        if customer:
+            recipient_name = customer.name
+
+    # Marketing messages require recorded, explicit customer consent.
+    if not customer:
+        if request.POST.get("save_customer") == "on" and recipient_name:
+            Customer.objects.get_or_create(
+                organization=organization,
+                phone=recipient_phone,
+                defaults={
+                    "name": recipient_name,
+                    "preferred_contact_method": "whatsapp",
+                    "status": "active",
+                },
+            )
+
         messages.error(
             request,
-            "Enter a valid phone number with its country code if needed.",
+            "This customer must first be saved and explicitly opt in "
+            "to WhatsApp marketing by replying YES. Saving a customer "
+            "does not subscribe them.",
         )
         return redirect(
             "products:product_share_whatsapp",
             product_id=product.id,
         )
 
-    platform_org = Organization.objects.filter(
-        organization_type="platform_owner",
-        status="active",
-    ).order_by("created_at").first()
-
-    if not platform_org:
+    if (
+        customer.organization_id != organization.id
+        or not customer.whatsapp_marketing_opt_in
+    ):
         messages.error(
             request,
-            "Faltasi's WhatsApp account is not configured.",
+            "This customer has not opted in to WhatsApp marketing."
         )
-        return redirect("products:product_list")
+        return redirect(
+            "products:product_share_whatsapp",
+            product_id=product.id,
+        )
 
+    # Fail closed unless product-sharing template sending is enabled.
+    if not getattr(
+        settings,
+        "WHATSAPP_PRODUCT_SHARE_TEMPLATE_ENABLED",
+        False,
+    ):
+        messages.error(
+            request,
+            "WhatsApp product sharing is currently disabled."
+        )
+        return redirect(
+            "products:product_share_whatsapp",
+            product_id=product.id,
+        )
+
+    # Require an organization slug for the public product URL.
+    if not organization.slug:
+        messages.error(
+            request,
+            "Your organization needs a public URL slug before "
+            "products can be shared."
+        )
+        return redirect(
+            "products:product_share_whatsapp",
+            product_id=product.id,
+        )
+
+    # Use only this organization's connected WhatsApp number.
     whatsapp_phone = WhatsAppPhoneNumber.objects.filter(
-        organization=platform_org,
+        organization=organization,
         is_active=True,
         status="connected",
         phone_number_id__isnull=False,
+        whatsapp_business_account__organization=organization,
+        whatsapp_business_account__is_active=True,
+        whatsapp_business_account__status="connected",
     ).select_related(
         "whatsapp_business_account",
     ).order_by(
@@ -329,66 +391,154 @@ def product_share_whatsapp(request, product_id):
     if not whatsapp_phone:
         messages.error(
             request,
-            "No connected Faltasi WhatsApp number is available.",
+            "Your organization does not have a connected WhatsApp number."
         )
-        return redirect("products:product_list")
+        return redirect(
+            "products:product_share_whatsapp",
+            product_id=product.id,
+        )
 
-    product_url = request.build_absolute_uri(
-        reverse("products:product_list")
-    )
+    # Reuse the organization's active conversation with this customer.
+    conversation = Conversation.objects.filter(
+        organization=organization,
+        whatsapp_phone_number=whatsapp_phone,
+        customer=customer,
+        phone_number=recipient_phone,
+        status="active",
+    ).first()
 
+    if not conversation:
+        conversation = Conversation.objects.create(
+            organization=organization,
+            whatsapp_phone_number=whatsapp_phone,
+            customer=customer,
+            phone_number=recipient_phone,
+            whatsapp_user_id=recipient_phone,
+            status="active",
+        )
+
+    # Product pricing.
     price_text = (
         f"{product.currency} {product.price:,.2f}"
         if product.price is not None
         else "Price available on request"
     )
 
-    description = (
-        product.short_description
-        or product.description
-        or ""
-    )
-
-    message = (
-        f"*{organization.name}*\n"
-        f"*{product.name}*\n"
-        f"{description}\n"
-        f"Price: {price_text}\n"
-        f"Availability: {product.get_availability_display()}\n"
-        f"Contact us for more information.\n"
-        f"{product_url}"
-    )
-
-    response = send_whatsapp_message(
-        whatsapp_phone,
-        recipient_phone,
-        message,
-    )
-
-    if response is not None and response.status_code in (200, 201):
-        if customer is None and recipient_name:
-            # Save the new customer only when requested by the sender.
-            if request.POST.get("save_customer") == "on":
-                Customer.objects.get_or_create(
-                    organization=organization,
-                    phone=recipient_phone,
-                    defaults={
-                        "name": recipient_name,
-                        "preferred_contact_method": "whatsapp",
-                        "status": "active",
-                    },
-                )
-
-        messages.success(
-            request,
-            f"WhatsApp accepted the product message for "
-            f"{recipient_name or recipient_phone}.",
+    # Generate the public product-detail URL.
+    product_url = request.build_absolute_uri(
+        reverse(
+            "products:public_product_detail",
+            kwargs={
+                "organization_slug": organization.slug,
+                "product_id": product.id,
+            },
         )
-    else:
+    )
+
+    # Six parameters matching the approved Meta template.
+    parameters = [
+        recipient_name or customer.name or "Customer",
+        organization.name,
+        product.name,
+        price_text,
+        product.get_availability_display(),
+        product_url,
+    ]
+
+    components = [
+        {
+            "type": "body",
+            "parameters": [
+                {"type": "text", "text": str(value)}
+                for value in parameters
+            ],
+        }
+    ]
+
+    response = send_whatsapp_template(
+        whatsapp_phone=whatsapp_phone,
+        phone_number=recipient_phone,
+        template_name="product_share_notification",
+        language_code="en",
+        components=components,
+    )
+
+    if response is None or response.status_code not in (200, 201):
         messages.error(
             request,
-            "WhatsApp could not accept the message. Check the "
-            "connected WhatsApp account and Meta API response.",
+            "WhatsApp could not accept the product-sharing message. "
+            "Check your organization's WhatsApp connection."
+        )
+        return redirect(
+            "products:product_share_whatsapp",
+            product_id=product.id,
         )
 
+    try:
+        response_data = response.json()
+        whatsapp_message_id = (
+            response_data.get("messages", [{}])[0].get("id")
+        )
+    except (ValueError, AttributeError, IndexError, TypeError):
+        response_data = {}
+        whatsapp_message_id = None
+
+    # Record the outgoing template message.
+    Message.objects.create(
+        organization=organization,
+        conversation=conversation,
+        direction="outgoing",
+        sender_type="faltasi",
+        message_type="template",
+        content="Marketing template: product_share_notification",
+        whatsapp_message_id=whatsapp_message_id,
+        delivery_status="sent",
+        metadata={
+            "template_name": "product_share_notification",
+            "language_code": "en",
+            "product_id": product.id,
+            "product_url": product_url,
+            "customer_consent": True,
+            "provider_response": response_data,
+            "sent_at": timezone.now().isoformat(),
+        },
+    )
+
+    conversation.last_message_at = timezone.now()
+    conversation.save(update_fields=["last_message_at"])
+
+    messages.success(
+        request,
+        f"Product-sharing message accepted by WhatsApp for "
+        f"{recipient_name or customer.name or recipient_phone}."
+    )
+
     return redirect("products:product_list")
+
+
+
+
+def public_product_detail(request, organization_slug, product_id):
+    organization = get_object_or_404(
+        Organization,
+        slug=organization_slug,
+        status="active",
+    )
+
+    product = get_object_or_404(
+        Product,
+        pk=product_id,
+        organization=organization,
+        is_active=True,
+        deleted_at__isnull=True,
+        show_on_whatsapp=True,
+    )
+
+    return render(
+        request,
+        "products/public_product_detail.html",
+        {
+            "organization": organization,
+            "product": product,
+        },
+    )

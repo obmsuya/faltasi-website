@@ -124,6 +124,10 @@ class ProductKnowledgeDocument(models.Model):
         GENERAL = "general", "General Knowledge"
         OTHER = "other", "Other"
 
+    class AccessLevel(models.TextChoices):
+        EMPLOYEE = "employee", "Employee Access"
+        ADMIN_ONLY = "admin_only", "Admin Only"
+
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
         PROCESSING = "processing", "Processing"
@@ -172,6 +176,14 @@ class ProductKnowledgeDocument(models.Model):
         max_length=30,
         choices=DocumentType.choices,
         default=DocumentType.GENERAL,
+        db_index=True,
+    )
+
+    # Document visibility for AI STAFF. New documents are private by default.
+    access_level = models.CharField(
+        max_length=20,
+        choices=AccessLevel.choices,
+        default=AccessLevel.ADMIN_ONLY,
         db_index=True,
     )
 

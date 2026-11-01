@@ -1,7 +1,9 @@
 
 import re
+from urllib.parse import urlsplit
 
-from django.db.models import Q
+from django.db.models import CharField, Q
+from django.db.models.functions import Cast
 
 from products.models import Product
 from business_requests.models import RequestCategory
@@ -10,6 +12,35 @@ from .models import ProductKnowledgeDocument, ProductKnowledgeChunk
 
 MAX_QUERY_LENGTH = 500
 DEFAULT_LIMIT = 5
+
+
+PUBLIC_PRODUCT_MEDIA_HOST = "media.faltasi.com"
+
+
+def get_public_product_image_url(product):
+    """
+    Return only HTTPS product image URLs from Faltasi's approved
+    public Cloudflare R2 media domain.
+    """
+    if not product.image or not product.image.name:
+        return None
+
+    try:
+        url = product.image.url
+        parsed = urlsplit(str(url))
+    except Exception:
+        return None
+
+    if (
+        parsed.scheme.lower() != "https"
+        or parsed.netloc.lower() != PUBLIC_PRODUCT_MEDIA_HOST
+        or not parsed.path
+        or parsed.query
+        or parsed.fragment
+    ):
+        return None
+
+    return str(url)
 
 
 def _tokens(query):
@@ -153,6 +184,8 @@ def search_document_chunks(
     organization,
     query,
     limit=DEFAULT_LIMIT,
+    *,
+    can_access_admin_only=False,
 ):
     """
     Search chunks from ready, active documents in one organization.
@@ -179,7 +212,14 @@ def search_document_chunks(
         document__deleted_at__isnull=True,
     ).filter(
         _matching_q(["text", "section_title"], tokens)
-    ).select_related("document")
+    )
+
+    if not can_access_admin_only:
+        queryset = queryset.filter(
+            document__access_level=ProductKnowledgeDocument.AccessLevel.EMPLOYEE
+        )
+
+    queryset = queryset.select_related("document")
 
     candidates = list(queryset[:500])
     normalized_query = str(query).strip().lower()
@@ -303,19 +343,22 @@ def get_request_categories(organization, query=None, limit=20):
     return results[:limit]
 
 
+
 def retrieve_knowledge(
     organization,
     query,
     product_limit=5,
     document_limit=5,
     category_limit=5,
+    *,
+    can_access_admin_only=False,
 ):
     """
-    Retrieve product records, document passages, and Excel-configured
-    request categories for a single customer query.
+    Retrieve organization-specific products, document passages, and
+    configured request categories for the AI knowledge assistant.
 
-    This function prepares local knowledge only. It does not call an AI
-    provider or send messages to WhatsApp.
+    Sales product retrieval uses its own visibility rules. The existing
+    search_products() function remains unchanged for its other callers.
     """
     if organization is None or not _tokens(query):
         return {
@@ -327,13 +370,166 @@ def retrieve_knowledge(
 
     return {
         "query": str(query)[:MAX_QUERY_LENGTH],
-        "products": search_products(
-            organization, query, limit=product_limit
+        "products": search_sales_products(
+            organization,
+            query,
+            limit=product_limit,
         ),
         "documents": search_document_chunks(
-            organization, query, limit=document_limit
+            organization,
+            query,
+            limit=document_limit,
+            can_access_admin_only=can_access_admin_only,
         ),
         "request_categories": get_request_categories(
-            organization, query, limit=category_limit
+            organization,
+            query,
+            limit=category_limit,
         ),
     }
+
+
+def _normalize_relevance_token(token):
+    """Normalize simple English plurals for product-query matching."""
+    token = str(token).lower()
+    if len(token) > 4 and token.endswith("ies"):
+        return token[:-3] + "y"
+    if len(token) > 4 and token.endswith(("ches", "shes", "xes", "zes")):
+        return token[:-2]
+    if len(token) > 3 and token.endswith("s") and not token.endswith("ss"):
+        return token[:-1]
+    return token
+
+
+def _relevance_tokens(value):
+    return {
+        _normalize_relevance_token(token)
+        for token in _tokens(value)
+    }
+
+
+def search_sales_products(organization, query, limit=DEFAULT_LIMIT):
+    """
+    Search products for the internal AI sales assistant using relevance
+    thresholds so a single incidental word does not return unrelated items.
+
+    Visibility remains organization-scoped, active, not deleted, and
+    WhatsApp-approved. Returns selling information only.
+    """
+    tokens = _tokens(query)
+
+    if not tokens or organization is None:
+        return []
+
+    # Remove conversational words that should not influence product matching.
+    ignored_tokens = {
+        "a", "an", "and", "are", "available", "can", "do", "for",
+        "me", "my", "of", "please", "show", "the", "to", "what",
+        "which", "with", "would", "you", "your", "find", "get", "need",
+    }
+    query_tokens = {
+        _normalize_relevance_token(token)
+        for token in tokens
+        if token not in ignored_tokens
+    }
+    if not query_tokens:
+        query_tokens = {_normalize_relevance_token(token) for token in tokens}
+
+    limit = _safe_limit(limit)
+
+    fields = [
+        "name", "sku", "barcode", "brand", "model", "manufacturer",
+        "short_description", "description", "category__name",
+        "_specifications_text", "_additional_information_text",
+    ]
+
+    queryset = Product.objects.filter(
+        organization=organization,
+        is_active=True,
+        deleted_at__isnull=True,
+        show_on_whatsapp=True,
+    ).annotate(
+        _specifications_text=Cast("specifications", output_field=CharField()),
+        _additional_information_text=Cast(
+            "additional_information", output_field=CharField()
+        ),
+    ).filter(
+        _matching_q(fields, tokens)
+    ).select_related("category").order_by("pk")
+
+    candidates = list(queryset[:500])
+    results = []
+
+    # A longer, specific query must match at least half its meaningful terms
+    # and at least two terms. Short searches such as "router" remain useful.
+    minimum_matches = 2 if len(query_tokens) >= 3 else 1
+    required_coverage = 0.5 if len(query_tokens) >= 3 else 1 / len(query_tokens)
+
+    for product in candidates:
+        specifications = product.specifications or {}
+        additional_information = product.additional_information or {}
+        searchable_values = {
+            "name": product.name or "",
+            "sku": product.sku or "",
+            "barcode": product.barcode or "",
+            "brand": product.brand or "",
+            "model": product.model or "",
+            "manufacturer": product.manufacturer or "",
+            "short_description": product.short_description or "",
+            "description": product.description or "",
+            "specifications": str(specifications),
+            "additional_information": str(additional_information),
+            "category": product.category.name if product.category else "",
+        }
+
+        field_tokens = {
+            field: _relevance_tokens(value)
+            for field, value in searchable_values.items()
+        }
+        all_product_tokens = set().union(*field_tokens.values())
+        matched_tokens = query_tokens.intersection(all_product_tokens)
+        coverage = len(matched_tokens) / len(query_tokens)
+
+        if len(matched_tokens) < minimum_matches or coverage < required_coverage:
+            continue
+
+        # If the query contains the product's explicit brand, reward that
+        # match strongly and do not let a competing product win on generic
+        # words such as "network" or "switch".
+        brand_tokens = field_tokens["brand"]
+        name_tokens = field_tokens["name"]
+        matched_brand_tokens = query_tokens.intersection(brand_tokens)
+        if matched_brand_tokens and not matched_brand_tokens.issubset(
+            brand_tokens.union(name_tokens)
+        ):
+            continue
+
+        score = len(matched_tokens) * 10
+        score += len(query_tokens.intersection(name_tokens)) * 5
+        score += len(query_tokens.intersection(brand_tokens)) * 12
+        score += len(query_tokens.intersection(field_tokens["model"])) * 8
+        score += round(coverage * 10)
+
+        results.append({
+            "source": "product",
+            "id": product.pk,
+            "name": product.name,
+            "sku": product.sku,
+            "brand": product.brand,
+            "model": product.model,
+            "category": searchable_values["category"] or None,
+            "description": product.short_description or product.description,
+            "price": str(product.price) if product.price is not None else None,
+            "currency": product.currency,
+            "unit": product.unit,
+            "availability": product.availability,
+            "specifications": specifications,
+            "additional_information": additional_information,
+            "image_url": get_public_product_image_url(product),
+            "score": score,
+        })
+
+    results.sort(
+        key=lambda item: (-item["score"], (item["name"] or "").lower())
+    )
+    return results[:limit]

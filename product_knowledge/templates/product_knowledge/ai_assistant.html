@@ -1,0 +1,213 @@
+
+{% extends "main/base_business.html" %}
+
+{% block title %}AI | Business Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+    <!-- PAGE HEADER -->
+    <div class="mb-4">
+        <h1 class="h3 mb-1">AI</h1>
+        <p class="text-muted mb-1">
+            Ask questions about your organization's products, services,
+            documents and available business information.
+        </p>
+
+        {% if organization %}
+        <small class="text-muted">
+            Organization: {{ organization.name }}
+        </small>
+        {% endif %}
+    </div>
+
+    <!-- ORGANIZATION ACCESS / SELECTION -->
+    {% if access_error %}
+    <div class="alert alert-warning" role="alert">
+        <strong>Organization selection required</strong>
+        <p class="mb-2">{{ access_error }}</p>
+
+        {% if memberships %}
+        <form method="post" class="mt-3">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="select_organization">
+
+            <label for="organization_id" class="form-label">
+                Select an organization
+            </label>
+
+            <select id="organization_id"
+                    name="organization_id"
+                    class="form-select mb-3"
+                    required>
+                <option value="">Choose an organization</option>
+
+                {% for membership in memberships %}
+                <option value="{{ membership.organization_id }}">
+                    {{ membership.organization.name }}
+                    &mdash; {{ membership.get_role_display }}
+                </option>
+                {% endfor %}
+            </select>
+
+            <button type="submit" class="btn btn-primary">
+                Continue
+            </button>
+        </form>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- ERROR MESSAGE -->
+    {% if error %}
+    <div class="alert alert-danger" role="alert">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    <!-- ASK AI FORM -->
+    {% if can_ask %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white">
+            <h2 class="h5 mb-0">Ask AI</h2>
+        </div>
+
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+
+                <label for="question" class="form-label">
+                    Your question
+                </label>
+
+                <textarea id="question"
+                          name="question"
+                          class="form-control mb-3"
+                          rows="4"
+                          maxlength="4000"
+                          required
+                          placeholder="For example: What services does our organization provide?">{{ question|default:"" }}</textarea>
+
+                <button type="submit" class="btn btn-primary">
+                    Ask AI
+                </button>
+            </form>
+
+            <small class="text-muted d-block mt-3">
+                AI answers are based on available organizational knowledge.
+                Verify important information against your official records.
+            </small>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- AI ANSWER -->
+    {% if answer %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white">
+            <h2 class="h5 mb-0">Answer</h2>
+        </div>
+
+        <div class="card-body">
+
+            <!-- PRODUCT IMAGES -->
+            {% if sources.products %}
+            <div class="row g-3 mb-4">
+                {% for item in sources.products %}
+                    {% if item.image_url %}
+                    <div class="col-12 col-sm-6 col-lg-4">
+                        <div class="border rounded p-3 h-100">
+
+                            <img
+                                src="{{ item.image_url }}"
+                                alt="{{ item.name|default:'Product image' }}"
+                                class="img-fluid rounded mb-2"
+                                loading="lazy"
+                                style="max-height: 220px; width: 100%; object-fit: contain;"
+                            >
+
+                            <div class="fw-semibold">
+                                {{ item.name|default:"Product" }}
+                            </div>
+
+                            {% if item.sku %}
+                            <small class="text-muted">
+                                SKU: {{ item.sku }}
+                            </small>
+                            {% endif %}
+
+                        </div>
+                    </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <!-- ANSWER TEXT -->
+            <div style="white-space: pre-wrap; overflow-wrap: anywhere;">{{ answer }}</div>
+
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- RETRIEVED SOURCES -->
+    {% if sources %}
+    <div class="card shadow-sm">
+        <div class="card-header bg-white">
+            <h2 class="h5 mb-0">Retrieved sources</h2>
+        </div>
+
+        <div class="card-body">
+
+            <!-- PRODUCTS -->
+            {% if sources.products %}
+            <h3 class="h6">Products</h3>
+            <ul>
+                {% for item in sources.products %}
+                <li>{{ item.name|default:item }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+
+            <!-- KNOWLEDGE DOCUMENTS -->
+            {% if sources.documents %}
+            <h3 class="h6">Knowledge documents</h3>
+            <ul>
+                {% for item in sources.documents %}
+                    {% with title=item.title|default:"Knowledge document" %}
+                        {% ifchanged title %}
+                        <li>
+                            {{ title }}
+                            {% if item.page_number %}
+                                &mdash; page {{ item.page_number }}
+                            {% endif %}
+                        </li>
+                        {% endifchanged %}
+                    {% endwith %}
+                {% endfor %}
+            </ul>
+            {% endif %}
+
+            <!-- REQUEST CATEGORIES -->
+            {% if sources.categories %}
+            <h3 class="h6">Request categories</h3>
+            <ul>
+                {% for item in sources.categories %}
+                <li>{{ item.name|default:item }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+
+            <!-- NO SOURCES -->
+            {% if not sources.products and not sources.documents and not sources.categories %}
+            <p class="text-muted mb-0">
+                No source references were returned for this answer.
+            </p>
+            {% endif %}
+
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

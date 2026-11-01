@@ -251,3 +251,4 @@ LOGIN_URL = "/accounts/login/"
 LOGIN_REDIRECT_URL = "/business-requests/dashboard/"
 
 LOGOUT_REDIRECT_URL = "/"
+WHATSAPP_PRODUCT_SHARE_TEMPLATE_ENABLED = True

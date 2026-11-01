@@ -166,6 +166,233 @@ def normalize_phone_number(phone_number):
     # Fallback
     return phone
 
+
+
+def send_whatsapp_template(
+    whatsapp_phone,
+    phone_number,
+    template_name,
+    language_code="en_US",
+    components=None,
+):
+    """
+    Send an approved WhatsApp template through the selected
+    organization's own connected WhatsApp account.
+    """
+    import requests
+
+    from django.conf import settings
+    from whatsapp.models import WhatsAppConnection
+
+    try:
+        if not whatsapp_phone or not phone_number or not template_name:
+            print("WHATSAPP TEMPLATE ERROR: Missing required parameters.")
+            return None
+
+        organization = whatsapp_phone.organization
+        business_account = whatsapp_phone.whatsapp_business_account
+
+        # Confirm that the phone, WABA and organization belong together.
+        if business_account.organization_id != organization.id:
+            print("WHATSAPP TEMPLATE ERROR: Organization mismatch.")
+            return None
+
+        if organization.status != "active":
+            print("WHATSAPP TEMPLATE ERROR: Organization is inactive.")
+            return None
+
+        if (
+            whatsapp_phone.status != "connected"
+            or not whatsapp_phone.is_active
+            or not whatsapp_phone.phone_number_id
+        ):
+            print("WHATSAPP TEMPLATE ERROR: Phone number is not connected.")
+            return None
+
+        if (
+            business_account.status != "connected"
+            or not business_account.is_active
+        ):
+            print("WHATSAPP TEMPLATE ERROR: Business account is not connected.")
+            return None
+
+        connection = (
+            WhatsAppConnection.objects
+            .filter(
+                whatsapp_business_account=business_account,
+                organization=organization,
+                status="connected",
+            )
+            .first()
+        )
+
+        is_platform_owner = (
+            organization.organization_type == "platform_owner"
+        )
+
+        access_token = None
+
+        if connection and connection.access_token:
+            access_token = connection.access_token
+
+        # Global credentials are permitted only for Faltasi itself.
+        if not access_token and is_platform_owner:
+            access_token = getattr(
+                settings,
+                "WHATSAPP_ACCESS_TOKEN",
+                None,
+            )
+
+        # Never substitute Faltasi credentials for a tenant.
+        if not access_token:
+            print("WHATSAPP TEMPLATE ERROR: No valid organization token.")
+            return None
+
+        phone_number_id = whatsapp_phone.phone_number_id
+
+        url = (
+            f"https://graph.facebook.com/v26.0/"
+            f"{phone_number_id}/messages"
+        )
+
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+
+        template = {
+            "name": str(template_name).strip(),
+            "language": {
+                "code": str(language_code).strip(),
+            },
+        }
+
+        if components:
+            template["components"] = components
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": str(phone_number).strip().lstrip("+"),
+            "type": "template",
+            "template": template,
+        }
+
+        response = requests.post(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=30,
+        )
+
+        print("WHATSAPP TEMPLATE STATUS:", response.status_code)
+
+        # Do not print tokens or authorization headers.
+        print("WHATSAPP TEMPLATE RESPONSE:", response.text[:1000])
+
+        return response
+
+    except requests.RequestException as exc:
+        print("WHATSAPP TEMPLATE REQUEST ERROR:", str(exc))
+        return None
+
+    except Exception as exc:
+        print("WHATSAPP TEMPLATE GENERAL ERROR:", str(exc))
+        return None
+
+def send_product_marketing_template(
+    customer,
+    whatsapp_phone,
+    phone_number,
+    conversation,
+    incoming_message_id,
+):
+    """
+    Send and log the product marketing template.
+
+    Requirements:
+    - Customer must have explicitly opted in.
+    - Incoming WhatsApp message ID is required.
+    - Duplicate template sends for the same incoming message are blocked.
+    - The tenant's own WhatsApp connection is used.
+    """
+
+    if (
+        not customer
+        or not customer.whatsapp_marketing_opt_in
+        or not incoming_message_id
+        or not whatsapp_phone
+        or not conversation
+    ):
+        return False
+
+    organization = customer.organization
+
+    if (
+        not organization
+        or conversation.organization_id != organization.id
+        or whatsapp_phone.organization_id != organization.id
+    ):
+        print("MARKETING TEMPLATE BLOCKED: Organization mismatch.")
+        return False
+
+    already_sent = Message.objects.filter(
+        organization=organization,
+        conversation=conversation,
+        direction="outgoing",
+        metadata__template_name="product_enquiry_response",
+        metadata__triggered_by_incoming_message_id=incoming_message_id,
+    ).exists()
+
+    if already_sent:
+        print("DUPLICATE MARKETING TEMPLATE PREVENTED.")
+        return False
+
+    response = send_whatsapp_template(
+        whatsapp_phone=whatsapp_phone,
+        phone_number=phone_number,
+        template_name="product_enquiry_response",
+        language_code="en",
+        components=None,
+    )
+
+    if response is None or response.status_code != 200:
+        print("PRODUCT MARKETING TEMPLATE FAILED.")
+        return False
+
+    try:
+        response_data = response.json()
+    except ValueError:
+        response_data = {"raw_response": response.text}
+
+    template_message_id = None
+
+    try:
+        template_message_id = (
+            response_data.get("messages", [{}])[0].get("id")
+        )
+    except (IndexError, AttributeError, TypeError):
+        pass
+
+    Message.objects.create(
+        organization=organization,
+        conversation=conversation,
+        direction="outgoing",
+        sender_type="faltasi",
+        message_type="text",
+        content="Marketing template: product_enquiry_response",
+        whatsapp_message_id=template_message_id,
+        delivery_status="sent",
+        metadata={
+            "template_name": "product_enquiry_response",
+            "language_code": "en",
+            "triggered_by_incoming_message_id": incoming_message_id,
+            "provider_response": response_data,
+        },
+    )
+
+    print("PRODUCT MARKETING TEMPLATE SENT AND LOGGED.")
+    return True
+
 def send_whatsapp_message(whatsapp_phone, phone_number, message):
     """
     Send a WhatsApp text message.
@@ -495,31 +722,6 @@ def send_and_log_whatsapp_product_image(
     return succeeded
 
 
-def get_or_create_customer(phone_number):
-    """
-    Find an existing customer by WhatsApp phone number.
-    If none exists, create a basic customer record.
-    """
-
-    customer = Customer.objects.filter(
-        phone=phone_number
-    ).first()
-
-    if customer:
-        return customer
-
-    customer = Customer.objects.create(
-        phone=phone_number,
-        name="WhatsApp Customer",
-        customer_type="individual",
-        preferred_contact_method="whatsapp",
-        status="active",
-    )
-
-    print("NEW CUSTOMER CREATED:", customer)
-
-    return customer
-
 def get_or_create_conversation_state(conversation):
     """
     Get the ConversationState for a conversation.
@@ -531,6 +733,45 @@ def get_or_create_conversation_state(conversation):
     else:
         print('CONVERSATION STATE FOUND:', state)
     return state
+
+def process_whatsapp_marketing_consent(customer, text):
+    """
+    Process explicit WhatsApp marketing opt-in and opt-out.
+    Consent belongs to the customer's organization-specific record.
+    """
+
+    if not customer or not text:
+        return None
+
+    command = text.strip().upper()
+
+    if command == "YES":
+
+        if not customer.whatsapp_marketing_opt_in:
+            customer.whatsapp_marketing_opt_in = True
+            customer.whatsapp_marketing_opt_in_at = timezone.now()
+            customer.whatsapp_marketing_opt_in_source = "whatsapp_reply"
+            customer.whatsapp_marketing_opt_out_at = None
+            customer.save()
+
+        return (
+            "Thank you. You have successfully subscribed to "
+            "WhatsApp marketing updates from this business."
+        )
+
+    if command == "STOP":
+
+        customer.whatsapp_marketing_opt_in = False
+        customer.whatsapp_marketing_opt_out_at = timezone.now()
+        customer.save()
+
+        return (
+            "You have successfully unsubscribed from marketing "
+            "messages from this business. You can still contact "
+            "us for product enquiries and support."
+        )
+
+    return None
 
 def create_business_request(
     customer,
@@ -1918,7 +2159,7 @@ def webhook(request):
                             ensure_ascii=False,
                         ),
                          flush=True,
-                    )           
+                    )
 
                 allowed_statuses = {
                     "sent",
@@ -2628,29 +2869,52 @@ def webhook(request):
 
         # Product images are sent only when the normal product search
         # produces a list of WhatsApp-enabled products.
+        # Product images are sent only when the normal product search
+        # produces a list of WhatsApp-enabled products.
         product_images_to_send = []
+        should_send_product_marketing_template = False
 
-        product_flow_reply = handle_whatsapp_product_conversation(
+        # =================================================
+        # PROCESS WHATSAPP MARKETING CONSENT
+        # =================================================
+
+        consent_reply = process_whatsapp_marketing_consent(
+            customer,
             text,
-            organization,
-            state,
         )
 
-        product_flow_handled = product_flow_reply is not None
+        if consent_reply is not None:
 
-        if product_flow_handled:
-            reply = product_flow_reply
+            reply = consent_reply
+            product_flow_handled = True
             detected_category = None
+
+            print("WHATSAPP MARKETING CONSENT PROCESSED:", customer)
+
         else:
-            detected_category = find_request_category(
-                text, organization=organization
+
+            # =================================================
+            # NORMAL PRODUCT CONVERSATION
+            # =================================================
+
+            product_flow_reply = handle_whatsapp_product_conversation(
+                text,
+                organization,
+                state,
             )
 
-        print(
-            "DETECTED CATEGORY:",
-            detected_category,
-        )
+            product_flow_handled = product_flow_reply is not None
 
+            if product_flow_handled:
+                reply = product_flow_reply
+                detected_category = None
+            else:
+                detected_category = find_request_category(
+                    text,
+                    organization=organization,
+                )
+
+        print("DETECTED CATEGORY:", detected_category)
 
 
         # =================================================
@@ -3847,6 +4111,12 @@ def webhook(request):
 
             product_reply = search_whatsapp_products(text, organization, state)
             reply = product_reply or process_customer_message(text)
+            should_send_product_marketing_template = bool(
+                product_reply
+                and customer
+                and customer.whatsapp_marketing_opt_in
+                and whatsapp_message_id
+            )
 
             if product_reply and state is not None:
                 displayed_product_ids = (state.data or {}).get(
@@ -4054,14 +4324,15 @@ def webhook(request):
                     organization=organization,
                     request=request,
                 )
-
-
-
-        else:
-
-
-
-            print(
+            if should_send_product_marketing_template:
+                send_product_marketing_template(
+                    customer=customer,
+                    whatsapp_phone=whatsapp_phone,
+                    phone_number=sender,
+                    conversation=conversation,
+                    incoming_message_id=whatsapp_message_id,
+                )
+        else:           print(
 
                 "OUTGOING MESSAGE WAS NOT SAVED "
 

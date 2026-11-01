@@ -102,6 +102,11 @@
                 <span>WhatsApp Conversations</span>
             </a>
 
+            <a class="pa-nav-link {% if request.resolver_match.app_name == 'product_knowledge' and request.resolver_match.url_name == 'ai_assistant' %}is-active{% endif %}"
+                href="{% url 'product_knowledge:ai_assistant' %}">
+                <span class="pa-nav-icon">✦</span>
+                <span>AI</span>
+            </a>
         </nav>
 
         <!-- PLATFORM ADMINISTRATION -->

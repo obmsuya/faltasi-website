@@ -6,6 +6,7 @@
 {% block content %}
 <div class="container-fluid py-4">
 
+    <!-- PAGE HEADER -->
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4 gap-2">
         <div>
             <h1 class="h3 mb-1">Product Knowledge</h1>
@@ -18,20 +19,27 @@
         </div>
     </div>
 
+    <!-- MESSAGES -->
     {% if messages %}
         {% for message in messages %}
-            <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags|default:'info' }}{% endif %} alert-dismissible fade show" role="alert">
+            <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags|default:'info' }}{% endif %} alert-dismissible fade show"
+                 role="alert">
                 {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="alert"
+                        aria-label="Close"></button>
             </div>
         {% endfor %}
     {% endif %}
 
+    <!-- UPLOAD KNOWLEDGE DOCUMENT -->
     {% if can_manage %}
     <div class="card shadow-sm mb-4">
         <div class="card-header bg-white">
             <h2 class="h5 mb-0">Upload Knowledge Document</h2>
         </div>
+
         <div class="card-body">
             <form method="post"
                   action="{% url 'product_knowledge:document_upload' %}"
@@ -40,7 +48,9 @@
 
                 <div class="row g-3">
                     <div class="col-12 col-md-6">
-                        <label for="title" class="form-label">Document title *</label>
+                        <label for="title" class="form-label">
+                            Document title *
+                        </label>
                         <input type="text"
                                class="form-control"
                                id="title"
@@ -51,8 +61,13 @@
                     </div>
 
                     <div class="col-12 col-md-6">
-                        <label for="document_type" class="form-label">Document type *</label>
-                        <select class="form-select" id="document_type" name="document_type" required>
+                        <label for="document_type" class="form-label">
+                            Document type *
+                        </label>
+                        <select class="form-select"
+                                id="document_type"
+                                name="document_type"
+                                required>
                             <option value="">Select document type</option>
                             {% for value, label in document_type_choices %}
                                 <option value="{{ value }}">{{ label }}</option>
@@ -61,7 +76,9 @@
                     </div>
 
                     <div class="col-12">
-                        <label for="description" class="form-label">Description</label>
+                        <label for="description" class="form-label">
+                            Description
+                        </label>
                         <textarea class="form-control"
                                   id="description"
                                   name="description"
@@ -70,14 +87,26 @@
                                   placeholder="Briefly describe what this document contains"></textarea>
                     </div>
 
+                    <div class="col-12 col-md-6">
+                        <label for="access_level" class="form-label">AI STAFF access</label>
+                        <select class="form-select" id="access_level" name="access_level">
+                            <option value="admin_only" selected>Admin Only</option>
+                            <option value="employee">Employee Access</option>
+                        </select>
+                        <div class="form-text">New documents are private by default. Choose Employee Access only for information all staff may use.</div>
+                    </div>
+
                     <div class="col-12">
-                        <label for="file" class="form-label">Select file *</label>
+                        <label for="file" class="form-label">
+                            Select file *
+                        </label>
                         <input type="file"
                                class="form-control"
                                id="file"
                                name="file"
                                accept=".pdf,.docx,.xlsx,.csv,.txt,.md"
                                required>
+
                         <div class="form-text">
                             Allowed formats: {{ allowed_extensions|join:", " }}.
                             Maximum size: {{ max_document_size_mb }} MB.
@@ -96,10 +125,13 @@
     </div>
     {% endif %}
 
+    <!-- KNOWLEDGE DOCUMENTS -->
     <div class="card shadow-sm">
         <div class="card-header bg-white d-flex justify-content-between align-items-center">
             <h2 class="h5 mb-0">Knowledge Documents</h2>
-            <span class="badge bg-secondary">{{ documents|length }} document{{ documents|length|pluralize }}</span>
+            <span class="badge bg-secondary">
+                {{ documents|length }} document{{ documents|length|pluralize }}
+            </span>
         </div>
 
         <div class="card-body p-0">
@@ -112,31 +144,51 @@
                                 <th>Type</th>
                                 <th>File</th>
                                 <th>Processing status</th>
+                                <th>Knowledge retrieval</th>
+                                <th>AI STAFF access</th>
                                 <th>Last updated</th>
                                 {% if can_manage %}
                                     <th>Action</th>
                                 {% endif %}
                             </tr>
                         </thead>
+
                         <tbody>
                             {% for document in documents %}
                             <tr>
+                                <!-- DOCUMENT DETAILS -->
                                 <td>
                                     <strong>{{ document.title }}</strong>
+
                                     {% if document.description %}
-                                        <div class="small text-muted">{{ document.description|truncatechars:100 }}</div>
+                                        <div class="small text-muted">
+                                            {{ document.description|truncatechars:100 }}
+                                        </div>
                                     {% endif %}
+
                                     {% if document.processing_error %}
-                                        <div class="small text-danger">{{ document.processing_error|truncatechars:160 }}</div>
+                                        <div class="small text-danger">
+                                            {{ document.processing_error|truncatechars:160 }}
+                                        </div>
                                     {% endif %}
                                 </td>
-                                <td>{{ document.get_document_type_display }}</td>
+
+                                <!-- DOCUMENT TYPE -->
                                 <td>
-                                    <div>{{ document.original_filename|default:document.file.name }}</div>
+                                    {{ document.get_document_type_display }}
+                                </td>
+
+                                <!-- FILE DETAILS -->
+                                <td>
+                                    <div>
+                                        {{ document.original_filename|default:document.file.name }}
+                                    </div>
                                     <small class="text-muted">
                                         {{ document.file_size_bytes|filesizeformat }}
                                     </small>
                                 </td>
+
+                                <!-- PROCESSING STATUS -->
                                 <td>
                                     {% if document.status == "ready" %}
                                         <span class="badge bg-success">Ready</span>
@@ -156,23 +208,67 @@
                                         </div>
                                     {% endif %}
                                 </td>
-                                <td>{{ document.updated_at|date:"d M Y, H:i" }}</td>
+
+                                <!-- KNOWLEDGE RETRIEVAL STATUS -->
+                                <td>
+                                    {% if document.status == "ready" and document.is_active and not document.deleted_at %}
+                                        <span class="badge bg-success">Available</span>
+                                        <div class="small text-muted mt-1">
+                                            Local keyword retrieval
+                                        </div>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Unavailable</span>
+                                        <div class="small text-muted mt-1">
+                                            Document must be ready and active
+                                        </div>
+                                    {% endif %}
+                                </td>
+
+                                <!-- AI STAFF ACCESS -->
+                                <td>
+                                    {% if document.access_level == "employee" %}
+                                        <span class="badge bg-success">Employee Access</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Admin Only</span>
+                                    {% endif %}
+                                    {% if can_manage %}
+                                        <form method="post" action="{% url 'product_knowledge:document_update_access' document.id %}" class="mt-2">
+                                            {% csrf_token %}
+                                            <select name="access_level" class="form-select form-select-sm" aria-label="Change AI STAFF access">
+                                                <option value="admin_only" {% if document.access_level == "admin_only" %}selected{% endif %}>Admin Only</option>
+                                                <option value="employee" {% if document.access_level == "employee" %}selected{% endif %}>Employee Access</option>
+                                            </select>
+                                            <button type="submit" class="btn btn-sm btn-outline-secondary mt-1">Save access</button>
+                                        </form>
+                                    {% endif %}
+                                </td>
+
+                                <!-- LAST UPDATED -->
+                                <td>
+                                    {{ document.updated_at|date:"d M Y, H:i" }}
+                                </td>
+
+                                <!-- ACTIONS -->
                                 {% if can_manage %}
                                 <td>
                                     {% if document.status != "archived" and document.is_active %}
                                         <form method="post"
                                               action="{% url 'product_knowledge:document_process' document.id %}">
                                             {% csrf_token %}
-                                            <button type="submit" class="btn btn-sm btn-outline-primary">
+
+                                            <button type="submit"
+                                                    class="btn btn-sm btn-outline-primary">
                                                 {% if document.status == "ready" %}
-                                                    Reprocess
+                                                    Reprocess Document
                                                 {% else %}
                                                     Process Document
                                                 {% endif %}
                                             </button>
                                         </form>
                                     {% else %}
-                                        <span class="text-muted small">No action available</span>
+                                        <span class="text-muted small">
+                                            No action available
+                                        </span>
                                     {% endif %}
                                 </td>
                                 {% endif %}
@@ -181,6 +277,7 @@
                         </tbody>
                     </table>
                 </div>
+
             {% else %}
                 <div class="text-center py-5 px-3">
                     <h3 class="h5">No knowledge documents yet</h3>
@@ -196,11 +293,17 @@
         </div>
     </div>
 
+    <!-- INFORMATION -->
     <div class="alert alert-info mt-4 mb-0">
         <strong>Important:</strong>
         Processing extracts readable text and prepares it for knowledge retrieval.
-        Scanned documents may require OCR. Processing does not send WhatsApp messages
+        Scanned documents may require OCR. Admin Only documents are available to owners and administrators in AI STAFF; Employee Access documents are available to all active organization employees. Processing does not send WhatsApp messages
         or call a paid AI API.
+        <hr>
+        <strong>Knowledge retrieval:</strong>
+        Available means the document is ready for local keyword retrieval.
+        It does not indicate that an external vector index or embeddings have been created.
     </div>
+
 </div>
 {% endblock %}

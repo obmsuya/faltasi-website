@@ -1,4 +1,3 @@
-
 from django.urls import path
 from . import views
 
@@ -11,8 +10,8 @@ urlpatterns = [
     path("<int:product_id>/toggle/", views.product_toggle_status, name="product_toggle_status"),
     path("<int:product_id>/share-whatsapp/", views.product_share_whatsapp, name="product_share_whatsapp"),
     path(
-        "<int:product_id>/share-whatsapp/",
-        views.product_share_whatsapp,
-        name="product_share_whatsapp",
+        "public/<slug:organization_slug>/<int:product_id>/",
+        views.public_product_detail,
+        name="public_product_detail",
     ),
-]
+    ]
