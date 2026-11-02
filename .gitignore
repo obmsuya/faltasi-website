@@ -14,4 +14,19 @@ staticfiles/
 *.backup
 *.bak
 *.backup_before_signature
+# Backup files and directories
+**/*backup*/
+**/*backup*
+*.backup
+*.bak
+*.old
+*.orig
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Temporary local test scripts
+/test_ai_staff_live.py
 
