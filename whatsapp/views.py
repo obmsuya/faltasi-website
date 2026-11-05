@@ -168,6 +168,99 @@ def normalize_phone_number(phone_number):
 
 
 
+def _get_whatsapp_sender_credentials(whatsapp_phone):
+    """
+    Resolve credentials for the selected WhatsApp sender.
+
+    Tenant isolation:
+    - A tenant phone can only use its own organization's connection.
+    - Faltasi global credentials are never substituted for another tenant.
+    - Development fallback is allowed only when no phone record is supplied.
+    """
+    from django.conf import settings
+    from whatsapp.models import WhatsAppConnection
+
+    # Explicit local development fallback for legacy calls without a
+    # database phone record. Never use this for a supplied tenant phone.
+    if whatsapp_phone is None:
+        if not settings.DEBUG:
+            return None, None
+
+        token = getattr(settings, "WHATSAPP_ACCESS_TOKEN", None)
+        phone_number_id = getattr(
+            settings, "WHATSAPP_PHONE_NUMBER_ID", None
+        )
+
+        if token and phone_number_id:
+            return token, phone_number_id
+
+        return None, None
+
+    organization = getattr(whatsapp_phone, "organization", None)
+    business_account = getattr(
+        whatsapp_phone, "whatsapp_business_account", None
+    )
+
+    if not organization or not business_account:
+        return None, None
+
+    # Validate ownership relationships.
+    if (
+        whatsapp_phone.organization_id
+        != business_account.organization_id
+    ):
+        return None, None
+
+    if organization.status != "active":
+        return None, None
+
+    if (
+        not whatsapp_phone.is_active
+        or whatsapp_phone.status != "connected"
+        or not whatsapp_phone.phone_number_id
+    ):
+        return None, None
+
+    if (
+        not business_account.is_active
+        or business_account.status != "connected"
+    ):
+        return None, None
+
+    connection = (
+        WhatsAppConnection.objects
+        .filter(
+            organization=organization,
+            whatsapp_business_account=business_account,
+            status="connected",
+        )
+        .first()
+    )
+
+    access_token = (
+        connection.access_token
+        if connection and connection.access_token
+        else None
+    )
+
+    # Global credentials are reserved exclusively for Faltasi.
+    is_platform_owner = (
+        organization.organization_type == "platform_owner"
+    )
+
+    if not access_token and is_platform_owner:
+        access_token = getattr(
+            settings,
+            "WHATSAPP_ACCESS_TOKEN",
+            None,
+        )
+
+    if not access_token:
+        return None, None
+
+    return access_token, whatsapp_phone.phone_number_id
+
+
 def send_whatsapp_template(
     whatsapp_phone,
     phone_number,
@@ -175,81 +268,22 @@ def send_whatsapp_template(
     language_code="en_US",
     components=None,
 ):
-    """
-    Send an approved WhatsApp template through the selected
-    organization's own connected WhatsApp account.
-    """
+    """Send an approved WhatsApp template using the authorized sender."""
     import requests
 
-    from django.conf import settings
-    from whatsapp.models import WhatsAppConnection
+    if not phone_number or not template_name:
+        print("WHATSAPP TEMPLATE ERROR: Missing required parameters.")
+        return None
+
+    access_token, phone_number_id = (
+        _get_whatsapp_sender_credentials(whatsapp_phone)
+    )
+
+    if not access_token or not phone_number_id:
+        print("WHATSAPP TEMPLATE ERROR: Sender validation failed.")
+        return None
 
     try:
-        if not whatsapp_phone or not phone_number or not template_name:
-            print("WHATSAPP TEMPLATE ERROR: Missing required parameters.")
-            return None
-
-        organization = whatsapp_phone.organization
-        business_account = whatsapp_phone.whatsapp_business_account
-
-        # Confirm that the phone, WABA and organization belong together.
-        if business_account.organization_id != organization.id:
-            print("WHATSAPP TEMPLATE ERROR: Organization mismatch.")
-            return None
-
-        if organization.status != "active":
-            print("WHATSAPP TEMPLATE ERROR: Organization is inactive.")
-            return None
-
-        if (
-            whatsapp_phone.status != "connected"
-            or not whatsapp_phone.is_active
-            or not whatsapp_phone.phone_number_id
-        ):
-            print("WHATSAPP TEMPLATE ERROR: Phone number is not connected.")
-            return None
-
-        if (
-            business_account.status != "connected"
-            or not business_account.is_active
-        ):
-            print("WHATSAPP TEMPLATE ERROR: Business account is not connected.")
-            return None
-
-        connection = (
-            WhatsAppConnection.objects
-            .filter(
-                whatsapp_business_account=business_account,
-                organization=organization,
-                status="connected",
-            )
-            .first()
-        )
-
-        is_platform_owner = (
-            organization.organization_type == "platform_owner"
-        )
-
-        access_token = None
-
-        if connection and connection.access_token:
-            access_token = connection.access_token
-
-        # Global credentials are permitted only for Faltasi itself.
-        if not access_token and is_platform_owner:
-            access_token = getattr(
-                settings,
-                "WHATSAPP_ACCESS_TOKEN",
-                None,
-            )
-
-        # Never substitute Faltasi credentials for a tenant.
-        if not access_token:
-            print("WHATSAPP TEMPLATE ERROR: No valid organization token.")
-            return None
-
-        phone_number_id = whatsapp_phone.phone_number_id
-
         url = (
             f"https://graph.facebook.com/v26.0/"
             f"{phone_number_id}/messages"
@@ -284,20 +318,155 @@ def send_whatsapp_template(
             timeout=30,
         )
 
-        print("WHATSAPP TEMPLATE STATUS:", response.status_code)
-
-        # Do not print tokens or authorization headers.
-        print("WHATSAPP TEMPLATE RESPONSE:", response.text[:1000])
+        print(
+            "WHATSAPP TEMPLATE STATUS:",
+            response.status_code,
+        )
 
         return response
 
     except requests.RequestException as exc:
-        print("WHATSAPP TEMPLATE REQUEST ERROR:", str(exc))
+        print(
+            "WHATSAPP TEMPLATE REQUEST ERROR:",
+            exc.__class__.__name__,
+        )
         return None
 
     except Exception as exc:
-        print("WHATSAPP TEMPLATE GENERAL ERROR:", str(exc))
+        print(
+            "WHATSAPP TEMPLATE GENERAL ERROR:",
+            exc.__class__.__name__,
+        )
         return None
+
+
+def send_whatsapp_message(whatsapp_phone, phone_number, message):
+    """Send a WhatsApp text message using the authorized sender."""
+    import requests
+
+    if not phone_number or not message:
+        print("WHATSAPP SEND ERROR: Recipient or message is empty.")
+        return None
+
+    access_token, phone_number_id = (
+        _get_whatsapp_sender_credentials(whatsapp_phone)
+    )
+
+    if not access_token or not phone_number_id:
+        print("WHATSAPP SEND ERROR: Sender validation failed.")
+        return None
+
+    try:
+        url = (
+            f"https://graph.facebook.com/v26.0/"
+            f"{phone_number_id}/messages"
+        )
+
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": str(phone_number).strip().lstrip("+"),
+            "type": "text",
+            "text": {"body": message},
+        }
+
+        response = requests.post(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=30,
+        )
+
+        print("WHATSAPP SEND STATUS:", response.status_code)
+
+        return response
+
+    except requests.RequestException as exc:
+        print(
+            "WHATSAPP SEND REQUEST ERROR:",
+            exc.__class__.__name__,
+        )
+        return None
+
+    except Exception as exc:
+        print(
+            "WHATSAPP SEND GENERAL ERROR:",
+            exc.__class__.__name__,
+        )
+        return None
+
+
+def send_whatsapp_image(
+    whatsapp_phone,
+    phone_number,
+    image_url,
+    caption="",
+):
+    """Send a product image using the authorized WhatsApp sender."""
+    import requests
+
+    if not image_url or not phone_number:
+        print("WHATSAPP IMAGE ERROR: Missing image or recipient.")
+        return None
+
+    access_token, phone_number_id = (
+        _get_whatsapp_sender_credentials(whatsapp_phone)
+    )
+
+    if not access_token or not phone_number_id:
+        print("WHATSAPP IMAGE ERROR: Sender validation failed.")
+        return None
+
+    try:
+        url = (
+            f"https://graph.facebook.com/v26.0/"
+            f"{phone_number_id}/messages"
+        )
+
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": str(phone_number).strip().lstrip("+"),
+            "type": "image",
+            "image": {"link": image_url},
+        }
+
+        if caption:
+            payload["image"]["caption"] = caption[:1024]
+
+        response = requests.post(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=30,
+        )
+
+        print("WHATSAPP IMAGE STATUS:", response.status_code)
+
+        return response
+
+    except requests.RequestException as exc:
+        print(
+            "WHATSAPP IMAGE REQUEST ERROR:",
+            exc.__class__.__name__,
+        )
+        return None
+
+    except Exception as exc:
+        print(
+            "WHATSAPP IMAGE GENERAL ERROR:",
+            exc.__class__.__name__,
+        )
+        return None
+
 
 def send_product_marketing_template(
     customer,
@@ -392,218 +561,6 @@ def send_product_marketing_template(
 
     print("PRODUCT MARKETING TEMPLATE SENT AND LOGGED.")
     return True
-
-def send_whatsapp_message(whatsapp_phone, phone_number, message):
-    """
-    Send a WhatsApp text message.
-
-    Production:
-        Uses the selected organization's connected WhatsApp account.
-
-    Local development:
-        If DEBUG=True and database connection records are missing,
-        uses the verified WhatsApp settings from .env.
-    """
-    import requests
-    from django.conf import settings
-    from whatsapp.models import WhatsAppConnection
-
-    try:
-        print("========== WHATSAPP SEND ==========")
-
-        connection = None
-
-        # Use a database connection when a phone record is available.
-        if whatsapp_phone:
-            connection = (
-                WhatsAppConnection.objects
-                .select_related(
-                    "whatsapp_business_account",
-                    "organization",
-                )
-                .filter(
-                    whatsapp_business_account=(
-                        whatsapp_phone.whatsapp_business_account
-                    ),
-                    organization=whatsapp_phone.organization,
-                    status="connected",
-                )
-                .first()
-            )
-
-        # Prefer the organization's own connection token.
-        access_token = (
-            connection.access_token
-            if connection and connection.access_token
-            else None
-        )
-
-        phone_number_id = (
-            getattr(whatsapp_phone, "phone_number_id", None)
-            if whatsapp_phone
-            else None
-        )
-
-        # Production fallback: only Faltasi's platform-owner
-        # connection may use the platform environment access token.
-        is_platform_owner = (
-            whatsapp_phone is not None
-            and whatsapp_phone.organization.organization_type
-            == "platform_owner"
-        )
-
-        if not access_token and is_platform_owner:
-            access_token = getattr(
-                settings, "WHATSAPP_ACCESS_TOKEN", None
-            )
-
-        # Preserve the historical local-development fallback.
-        if settings.DEBUG:
-            if not access_token:
-                access_token = getattr(
-                    settings, "WHATSAPP_ACCESS_TOKEN", None
-                )
-
-            if not phone_number_id:
-                phone_number_id = getattr(
-                    settings, "WHATSAPP_PHONE_NUMBER_ID", None
-                )
-
-        if not access_token:
-            print("WHATSAPP SEND ERROR: No access token available.")
-            return None
-
-        if not phone_number_id:
-            print("WHATSAPP SEND ERROR: No phone number ID available.")
-            return None
-
-        if not phone_number or not message:
-            print("WHATSAPP SEND ERROR: Recipient or message is empty.")
-            return None
-
-        url = (
-            f"https://graph.facebook.com/v26.0/"
-            f"{phone_number_id}/messages"
-        )
-
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
-        }
-
-        payload = {
-            "messaging_product": "whatsapp",
-            "to": str(phone_number).strip().lstrip("+"),
-            "type": "text",
-            "text": {"body": message},
-        }
-
-        response = requests.post(
-            url,
-            headers=headers,
-            json=payload,
-            timeout=30,
-        )
-
-        print("WHATSAPP SEND STATUS:", response.status_code)
-
-        # Do not print the access token or request headers.
-        print("WHATSAPP SEND RESPONSE:", response.text)
-
-        return response
-
-    except requests.RequestException as exc:
-        print("WHATSAPP SEND REQUEST ERROR:", str(exc))
-        return None
-
-    except Exception as exc:
-        print("WHATSAPP SEND GENERAL ERROR:", str(exc))
-        return None
-
-
-def send_whatsapp_image(whatsapp_phone, phone_number, image_url, caption=""):
-    """Send a product image through the existing WhatsApp connection."""
-    import requests
-
-    if not image_url:
-        return None
-
-    # Reuse the existing sender's connection and authentication setup.
-    # The image URL must be publicly accessible by Meta.
-    try:
-        import json
-        from django.conf import settings
-        from whatsapp.models import WhatsAppConnection
-
-        connection = None
-        if whatsapp_phone:
-            connection = (
-                WhatsAppConnection.objects
-                .select_related("whatsapp_business_account", "organization")
-                .filter(
-                    whatsapp_business_account=whatsapp_phone.whatsapp_business_account,
-                    organization=whatsapp_phone.organization,
-                    status="connected",
-                )
-                .first()
-            )
-
-        access_token = (
-            connection.access_token
-            if connection and connection.access_token
-            else None
-        )
-        phone_number_id = (
-            getattr(whatsapp_phone, "phone_number_id", None)
-            if whatsapp_phone else None
-        )
-
-        is_platform_owner = (
-            whatsapp_phone is not None
-            and whatsapp_phone.organization.organization_type == "platform_owner"
-        )
-
-        if not access_token and is_platform_owner:
-            access_token = getattr(settings, "WHATSAPP_ACCESS_TOKEN", None)
-
-        if settings.DEBUG:
-            if not access_token:
-                access_token = getattr(settings, "WHATSAPP_ACCESS_TOKEN", None)
-            if not phone_number_id:
-                phone_number_id = getattr(settings, "WHATSAPP_PHONE_NUMBER_ID", None)
-
-        if not access_token or not phone_number_id or not phone_number:
-            print("WHATSAPP IMAGE ERROR: Missing connection details.")
-            return None
-
-        url = f"https://graph.facebook.com/v26.0/{phone_number_id}/messages"
-        headers = {"Authorization": f"Bearer {access_token}"}
-
-        payload = {
-            "messaging_product": "whatsapp",
-            "to": str(phone_number).strip().lstrip("+"),
-            "type": "image",
-            "image": {"link": image_url},
-        }
-        if caption:
-            payload["image"]["caption"] = caption[:1024]
-
-        response = requests.post(
-            url,
-            headers=headers,
-            json=payload,
-            timeout=30,
-        )
-        print("WHATSAPP IMAGE STATUS:", response.status_code)
-        print("WHATSAPP IMAGE RESPONSE:", response.text)
-        return response
-
-    except requests.RequestException as exc:
-        print("WHATSAPP IMAGE REQUEST ERROR:", str(exc))
-        return None
-    except Exception as exc:
-        print("WHATSAPP IMAGE GENERAL ERROR:", str(exc))
-        return None
 
 
 def get_public_product_image_url(product, request=None):
@@ -2006,9 +1963,6 @@ def webhook(request):
                 .get(
 
                     phone_number_id=phone_number_id,
-
-                    is_active=True,
-
                 )
 
             )
@@ -2242,15 +2196,6 @@ def webhook(request):
 
 
 
-
-
-
-
-
-
-
-
-
         # =================================================
 
         # GET MESSAGES
@@ -2260,6 +2205,30 @@ def webhook(request):
 
 
         messages = value.get("messages", [])
+        # =================================================
+        # VALIDATE INCOMING WHATSAPP CONNECTION
+        # =================================================
+
+        if messages:
+
+            connection_is_valid = (
+                organization.status == "active"
+                and whatsapp_phone.is_active
+                and whatsapp_phone.status == "connected"
+                and whatsapp_business_account.is_active
+                and whatsapp_business_account.status == "connected"
+            )
+
+            if not connection_is_valid:
+                print(
+                    "INCOMING MESSAGE REJECTED: "
+                    "WHATSAPP CONNECTION INACTIVE"
+                )
+
+                return JsonResponse({
+                    "status": "ok",
+                    "message": "WhatsApp connection is inactive",
+                })
 
 
 

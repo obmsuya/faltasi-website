@@ -1,0 +1,71 @@
+{% extends "main/base_business.html" %}
+
+{% block title %}Channel Management | Faltasi{% endblock %}
+{% block content %}
+<div class="container py-4">
+    <div class="mb-4">
+        <h2>Channel Management</h2>
+        <p class="text-muted mb-1">Manage where {{ organization.name }} products are presented.</p>
+        <p class="small text-muted">These settings record channel preferences. Actual social publishing requires an authorized account connection and will be enabled in the relevant integration phase.</p>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-4"><div class="card h-100"><div class="card-body"><h5>Instagram</h5><span class="badge bg-secondary">{{ connection_status.instagram }}</span><p class="small text-muted mt-2 mb-0">Account authorization is not configured yet.</p></div></div></div>
+        <div class="col-md-4"><div class="card h-100"><div class="card-body"><h5>Facebook</h5><span class="badge bg-secondary">{{ connection_status.facebook }}</span><p class="small text-muted mt-2 mb-0">Account authorization is not configured yet.</p></div></div></div>
+        <div class="col-md-4"><div class="card h-100"><div class="card-body"><h5>TikTok</h5><span class="badge bg-secondary">{{ connection_status.tiktok }}</span><p class="small text-muted mt-2 mb-0">Account authorization is not configured yet.</p></div></div></div>
+        <div class="col-md-4"><div class="card h-100"><div class="card-body"><h5>Google Business Profile</h5><span class="badge bg-secondary">{{ connection_status.google_business_profile }}</span></div></div></div>
+        <div class="col-md-4"><div class="card h-100"><div class="card-body"><h5>Google Merchant Center</h5><span class="badge bg-secondary">{{ connection_status.google_merchant_center }}</span></div></div></div>
+    </div>
+
+    <h4 class="mb-3">Product channel settings</h4>
+    {% if product_rows %}
+    <div class="table-responsive">
+        <table class="table table-striped table-hover align-middle">
+            <thead><tr><th>Product</th><th>Website presentation</th><th>Public catalogue</th><th>WhatsApp</th><th>Instagram</th><th>Facebook</th><th>TikTok</th><th>Google</th></tr></thead>
+            <tbody>
+            {% for row in product_rows %}
+            <tr>
+                <td>
+                    <div class="d-flex align-items-center gap-2">
+                        {% if row.product.image %}
+                        <img src="{{ row.product.image.url }}"
+                             alt="{{ row.product.name }}"
+                             loading="lazy"
+                             class="rounded"
+                             style="width: 60px; height: 60px; object-fit: cover; flex-shrink: 0;">
+                        {% endif %}
+                        <div>
+                            <strong>{{ row.product.name }}</strong>
+                            {% if row.product.sku %}<br><small class="text-muted">{{ row.product.sku }}</small>{% endif %}
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    {% if can_manage_channels %}<form method="post" action="{% url 'channels:toggle_product_channel' row.product.id 'website' %}">{% csrf_token %}<input type="hidden" name="enabled" value="{% if row.website_enabled %}0{% else %}1{% endif %}"><button class="btn btn-sm {% if row.website_enabled %}btn-success{% else %}btn-outline-secondary{% endif %}" type="submit">{% if row.website_enabled %}Enabled{% else %}Disabled{% endif %}</button></form>{% else %}{% if row.website_enabled %}Enabled{% else %}Disabled{% endif %}{% endif %}
+                </td>
+                <td>{% if row.public_visible %}<span class="badge bg-success">Public</span>{% elif row.public_visibility_locked %}<span class="badge bg-secondary">Internal only</span>{% else %}<span class="badge bg-secondary">Not public</span>{% endif %}</td>
+                <td>
+                    {% if can_manage_channels %}<form method="post" action="{% url 'channels:toggle_product_channel' row.product.id 'whatsapp' %}">{% csrf_token %}<input type="hidden" name="enabled" value="{% if row.whatsapp_enabled %}0{% else %}1{% endif %}"><button class="btn btn-sm {% if row.whatsapp_enabled %}btn-success{% else %}btn-outline-secondary{% endif %}" type="submit">{% if row.whatsapp_enabled %}Enabled{% else %}Disabled{% endif %}</button></form>{% else %}{% if row.whatsapp_enabled %}Enabled{% else %}Disabled{% endif %}{% endif %}
+                </td>
+                <td>
+                    {% if can_manage_channels %}<form method="post" action="{% url 'channels:toggle_product_channel' row.product.id 'instagram' %}">{% csrf_token %}<input type="hidden" name="enabled" value="{% if row.publications.instagram.is_enabled %}0{% else %}1{% endif %}"><button class="btn btn-sm btn-outline-primary" type="submit">{% if row.publications.instagram.is_enabled %}On{% else %}Off{% endif %}</button></form>{% else %}{% if row.publications.instagram.is_enabled %}On{% else %}Off{% endif %}{% endif %}
+                </td>
+                <td>
+                    {% if can_manage_channels %}<form method="post" action="{% url 'channels:toggle_product_channel' row.product.id 'facebook' %}">{% csrf_token %}<input type="hidden" name="enabled" value="{% if row.publications.facebook.is_enabled %}0{% else %}1{% endif %}"><button class="btn btn-sm btn-outline-primary" type="submit">{% if row.publications.facebook.is_enabled %}On{% else %}Off{% endif %}</button></form>{% else %}{% if row.publications.facebook.is_enabled %}On{% else %}Off{% endif %}{% endif %}
+                </td>
+                <td>
+                    {% if can_manage_channels %}<form method="post" action="{% url 'channels:toggle_product_channel' row.product.id 'tiktok' %}">{% csrf_token %}<input type="hidden" name="enabled" value="{% if row.publications.tiktok.is_enabled %}0{% else %}1{% endif %}"><button class="btn btn-sm btn-outline-primary" type="submit">{% if row.publications.tiktok.is_enabled %}On{% else %}Off{% endif %}</button></form>{% else %}{% if row.publications.tiktok.is_enabled %}On{% else %}Off{% endif %}{% endif %}
+                </td>
+                <td>
+                    {% if can_manage_channels %}<form method="post" action="{% url 'channels:toggle_product_channel' row.product.id 'google_business_profile' %}">{% csrf_token %}<input type="hidden" name="enabled" value="{% if row.publications.google_business_profile.is_enabled %}0{% else %}1{% endif %}"><button class="btn btn-sm btn-outline-primary" type="submit">GBP {% if row.publications.google_business_profile.is_enabled %}On{% else %}Off{% endif %}</button></form><form method="post" action="{% url 'channels:toggle_product_channel' row.product.id 'google_merchant_center' %}">{% csrf_token %}<input type="hidden" name="enabled" value="{% if row.publications.google_merchant_center.is_enabled %}0{% else %}1{% endif %}"><button class="btn btn-sm btn-outline-primary mt-1" type="submit">Merchant {% if row.publications.google_merchant_center.is_enabled %}On{% else %}Off{% endif %}</button></form>{% else %}Google settings are read-only{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="alert alert-info">No products found for this organization.</div>
+    {% endif %}
+</div>
+{% endblock %}

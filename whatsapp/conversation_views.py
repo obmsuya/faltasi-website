@@ -5,38 +5,10 @@ from django.shortcuts import get_object_or_404, redirect, render
 from organizations.models import Organization
 from .models import Conversation, Message
 from .views import send_whatsapp_message
+from organizations.utils import get_user_organization
 
 
-def get_user_organization(user):
-    """
-    Return the active organization for the logged-in user.
-    """
 
-    if user.is_superuser:
-        return (
-            Organization.objects
-            .filter(
-                organization_type="platform_owner",
-                status="active",
-            )
-            .order_by("id")
-            .first()
-        )
-
-    membership = (
-        user.organization_memberships
-        .filter(
-            is_active=True,
-            organization__status="active",
-        )
-        .select_related("organization")
-        .first()
-    )
-
-    if membership:
-        return membership.organization
-
-    return None
 
 
 @login_required

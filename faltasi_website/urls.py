@@ -17,11 +17,8 @@ urlpatterns = [
     path("accounts/", include("accounts.urls"),),
     path("customers/", include("customers.urls"),),
     path("business-requests/knowledge/", include("product_knowledge.urls"),),
-
-
-
+    path("channels/", include("channels.urls")),
 ]
-
 
 if settings.DEBUG:
     urlpatterns += static(

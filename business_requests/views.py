@@ -1,4 +1,4 @@
-﻿from django.http import HttpResponseForbidden
+﻿from django.http import HttpResponseForbidden, HttpResponseNotAllowed
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404, redirect, render
@@ -44,37 +44,13 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from business_requests.models import Department, DepartmentMember
 from products.models import Product, ProductCategory, OrganizationCategoryAssignment
+from organizations.utils import (
+    get_user_organization,
+    is_platform_administrator,
+)
 
 User = get_user_model()
 
-def is_platform_administrator(user):
-    """
-    Return True when the logged-in user is authorized
-    as a Platform Administrator.
-
-    A Platform Administrator belongs to the platform_owner
-    organization and has an owner or admin role.
-    """
-
-    if not user.is_authenticated:
-        return False
-
-    if user.is_superuser:
-        return True
-
-    membership = (
-        OrganizationMember.objects
-        .select_related("organization")
-        .filter(
-            user=user,
-            is_active=True,
-            organization__organization_type="platform_owner",
-            role__in=["owner", "admin"],
-        )
-        .first()
-    )
-
-    return membership is not None
 
 @login_required
 def platform_dashboard(request):
@@ -243,136 +219,81 @@ def platform_product_management(request):
     )
 
 
-def get_user_organization(user, request=None):
-    """
-    Return the organization that should be used for the current user.
 
-    Platform administrators:
-        Use the organization selected in the session.
-        If none is selected, use the first active platform-owner
-        organization.
-
-    Normal users:
-        Use their active organization membership.
-    """
-
-    # ---------------------------------------------------------
-    # PLATFORM ADMINISTRATORS
-    # ---------------------------------------------------------
-
-    if user.is_superuser:
-
-        # Check whether the administrator selected an organization
-        if request:
-
-            active_organization_id = request.session.get(
-                "active_organization_id"
-            )
-
-            if active_organization_id:
-
-                organization = (
-                    Organization.objects
-                    .filter(
-                        id=active_organization_id,
-                        status="active",
-                    )
-                    .first()
-                )
-
-                if organization:
-                    return organization
-
-                # Selected organization no longer exists/is inactive
-                request.session.pop(
-                    "active_organization_id",
-                    None,
-                )
-
-        # Default organization
-        return (
-            Organization.objects
-            .filter(
-                organization_type="platform_owner",
-                status="active",
-            )
-            .order_by("id")
-            .first()
-        )
-
-    # ---------------------------------------------------------
-    # NORMAL ORGANIZATION USERS
-    # ---------------------------------------------------------
-
-    membership = (
-        user.organization_memberships
-        .filter(
-            is_active=True,
-            organization__status="active",
-        )
-        .select_related("organization")
-        .first()
-    )
-
-    if membership:
-        return membership.organization
-
-    return None
 
 @login_required
 def switch_organization(request):
     """
-    Allow Platform Administrators to select which organization
-    they are currently administering.
+    Allow platform administrators and ordinary organization
+    members to switch between organizations they are authorized
+    to access.
     """
 
-    if not is_platform_administrator(request.user):
+    is_admin = is_platform_administrator(request.user)
 
+    # 1. Get organizations available to the current user.
+    if is_admin:
+        organizations = Organization.objects.filter(
+            status="active"
+        ).order_by("name")
+
+    else:
+        organization_ids = OrganizationMember.objects.filter(
+            user=request.user,
+            is_active=True,
+            organization__status="active",
+        ).values_list("organization_id", flat=True)
+
+        organizations = Organization.objects.filter(
+            id__in=organization_ids,
+            status="active",
+        ).order_by("name")
+
+    # 2. Ensure ordinary users have an active membership.
+    if not is_admin and not organizations.exists():
         messages.error(
             request,
-            "You are not authorized to switch organizations.",
+            "You have no active organization membership."
         )
+        return redirect("business_requests:dashboard")
 
-        return redirect(
-            "business_requests:dashboard"
-        )
-
-    organizations = (
-        Organization.objects
-        .filter(status="active")
-        .order_by("name")
-    )
-
+    # 3. Process organization selection.
     if request.method == "POST":
+        organization_id = request.POST.get("organization_id")
 
-        organization_id = request.POST.get(
-            "organization_id"
-        )
+        if not organization_id:
+            messages.error(
+                request,
+                "Please select an organization."
+            )
+            return redirect(
+                "business_requests:switch_organization"
+            )
 
         organization = get_object_or_404(
-            Organization,
+            organizations,
             id=organization_id,
-            status="active",
         )
 
-        request.session[
-            "active_organization_id"
-        ] = organization.id
+        # Save the authorized selection in the session.
+        request.session["active_organization_id"] = (
+            organization.id
+        )
 
         messages.success(
             request,
-            f"Active organization changed to {organization.name}.",
+            f"Active organization changed to {organization.name}."
         )
 
-        return redirect(
-            "business_requests:dashboard"
-        )
+        return redirect("business_requests:dashboard")
 
+    # 4. Resolve the currently active organization.
     current_organization = get_user_organization(
         request.user,
         request=request,
     )
 
+    # 5. Display the organization switcher.
     return render(
         request,
         "business_requests/switch_organization.html",
@@ -381,6 +302,7 @@ def switch_organization(request):
             "current_organization": current_organization,
         },
     )
+
 
 
 @login_required
@@ -406,6 +328,25 @@ def business_dashboard(request):
             "You are not assigned to an organization.",
         )
         return redirect("accounts:login")
+
+    is_platform_admin = is_platform_administrator(request.user)
+
+    active_organization_count = (
+        OrganizationMember.objects
+        .filter(
+            user=request.user,
+            is_active=True,
+            organization__status="active",
+        )
+        .values("organization_id")
+        .distinct()
+        .count()
+    )
+    can_switch_organization = (
+        is_platform_admin or active_organization_count > 1
+    )
+
+
 
     current_membership = (
         OrganizationMember.objects
@@ -473,6 +414,9 @@ def business_dashboard(request):
         "department_count": department_count,
         "current_membership": current_membership,
         "department_membership": department_membership,
+        "is_platform_admin": is_platform_admin,
+        "can_switch_organization": can_switch_organization,
+        "active_organization_count": active_organization_count,
     }
 
     return render(
@@ -488,7 +432,9 @@ def request_dashboard(request):
     Users see requests belonging to their organization.
     """
 
-    organization = get_user_organization(request.user)
+    organization = get_user_organization(
+        request.user, request=request,
+    )
 
     if not organization:
         messages.error(
@@ -2677,7 +2623,8 @@ def toggle_user_status(request, user_id):
     Owners and Admins can manage user status.
     Organization Owners cannot be deactivated from this page.
     """
-
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
     organization = get_user_organization(
         request.user,
         request=request,
@@ -3035,7 +2982,10 @@ def business_profile(request):
     Display and update the logged-in user's organization profile.
     """
 
-    organization = get_user_organization(request.user, request=request,)
+    organization = get_user_organization(
+        request.user,
+        request=request,
+    )
 
     if not organization:
         messages.error(
@@ -3043,6 +2993,39 @@ def business_profile(request):
             "Your account is not connected to a business organization."
         )
         return redirect("business_requests:business_dashboard")
+
+    # ---------------------------------------------------------
+    # CHECK BUSINESS PROFILE EDIT PERMISSION
+    # ---------------------------------------------------------
+
+    membership = (
+        OrganizationMember.objects
+        .filter(
+            organization=organization,
+            user=request.user,
+            is_active=True,
+        )
+        .first()
+    )
+
+    can_edit_profile = (
+        is_platform_administrator(request.user)
+        or (
+            membership
+            and membership.role in ["owner", "admin"]
+        )
+    )
+
+    if not can_edit_profile:
+        messages.error(
+            request,
+            "Only organization Owners and Admins can edit the business profile."
+        )
+        return redirect("business_requests:business_dashboard")
+
+    # ---------------------------------------------------------
+    # UPDATE BUSINESS PROFILE
+    # ---------------------------------------------------------
 
     if request.method == "POST":
         organization.name = request.POST.get("name", "").strip()
@@ -3103,6 +3086,10 @@ def business_profile(request):
 
         return redirect("business_requests:business_profile")
 
+    # ---------------------------------------------------------
+    # DISPLAY BUSINESS PROFILE
+    # ---------------------------------------------------------
+
     countries = Country.objects.filter(
         is_active=True
     ).order_by("name")
@@ -3117,7 +3104,6 @@ def business_profile(request):
         "business_requests/business_profile.html",
         context,
     )
-
 @login_required
 def department_management(request):
     organization = get_user_organization(request.user, request=request,)
@@ -3489,6 +3475,9 @@ def department_edit(request, department_id):
 def department_toggle(request, department_id):
     """Activate or deactivate a department."""
 
+
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
     organization = get_user_organization(request.user, request=request,)
 
     if not organization:

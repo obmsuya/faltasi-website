@@ -1,5 +1,10 @@
 from django.test import TestCase
 from .forms import OrganizationForm
+from django.contrib.auth.models import User
+from django.test import RequestFactory
+
+from .models import Organization, OrganizationMember
+from .utils import get_user_organization, is_platform_administrator
 
 
 class OrganizationOwnerFormTests(TestCase):
@@ -31,3 +36,163 @@ class OrganizationOwnerFormTests(TestCase):
         form = OrganizationForm(data=data)
         self.assertFalse(form.is_valid())
         self.assertIn("organization_type", form.errors)
+
+class OrganizationResolverTests(TestCase):
+
+    def setUp(self):
+        self.factory = RequestFactory()
+
+        self.faltasi = Organization.objects.create(
+            name="Faltasi Innovations Limited",
+            organization_type="platform_owner",
+            status="active",
+            slug="faltasi",
+        )
+
+        self.merrylight = Organization.objects.create(
+            name="Merrylight Tophair",
+            organization_type="business",
+            status="active",
+            slug="merrylight",
+        )
+
+        self.admin = User.objects.create_user(
+            username="platformadmin",
+            password="test-password",
+        )
+
+        OrganizationMember.objects.create(
+            organization=self.faltasi,
+            user=self.admin,
+            role="admin",
+            is_active=True,
+        )
+
+        self.staff = User.objects.create_user(
+            username="merrylightstaff",
+            password="test-password",
+        )
+
+        OrganizationMember.objects.create(
+            organization=self.merrylight,
+            user=self.staff,
+            role="staff",
+            is_active=True,
+        )
+
+    def test_platform_admin_can_select_merrylight(self):
+        request = self.factory.get("/")
+        request.session = {
+            "active_organization_id": self.merrylight.id
+        }
+
+        organization = get_user_organization(
+            self.admin,
+            request=request,
+        )
+
+        self.assertEqual(organization, self.merrylight)
+
+    def test_platform_admin_defaults_to_faltasi(self):
+        request = self.factory.get("/")
+        request.session = {}
+
+        organization = get_user_organization(
+            self.admin,
+            request=request,
+        )
+
+        self.assertEqual(organization, self.faltasi)
+
+    def test_inactive_selected_organization_is_rejected(self):
+        self.merrylight.status = "inactive"
+        self.merrylight.save()
+
+        request = self.factory.get("/")
+        request.session = {
+            "active_organization_id": self.merrylight.id
+        }
+
+        organization = get_user_organization(
+            self.admin,
+            request=request,
+        )
+
+        self.assertEqual(organization, self.faltasi)
+        self.assertNotIn(
+            "active_organization_id",
+            request.session,
+        )
+
+    def test_normal_user_gets_active_membership_organization(self):
+        organization = get_user_organization(self.staff)
+
+        self.assertEqual(organization, self.merrylight)
+
+    def test_normal_user_without_active_membership_gets_none(self):
+        self.staff.organization_memberships.update(
+            is_active=False
+        )
+
+        organization = get_user_organization(self.staff)
+
+        self.assertIsNone(organization)
+
+    def test_platform_admin_authorization(self):
+        self.assertTrue(
+            is_platform_administrator(self.admin)
+        )
+
+    def test_ordinary_user_is_not_platform_admin(self):
+        self.assertFalse(
+            is_platform_administrator(self.staff)
+        )
+
+
+
+    def test_normal_user_can_select_second_authorized_organization(self):
+        second_org = Organization.objects.create(
+            name="Second Business",
+            organization_type="business",
+            status="active",
+            slug="second-business",
+        )
+
+        OrganizationMember.objects.create(
+            organization=second_org,
+            user=self.staff,
+            role="staff",
+            is_active=True,
+        )
+
+        request = self.factory.get("/")
+        request.session = {
+            "active_organization_id": second_org.id
+        }
+
+        organization = get_user_organization(
+            self.staff,
+            request=request,
+        )
+
+        self.assertEqual(organization, second_org)
+
+    def test_normal_user_cannot_select_unauthorized_organization(self):
+        unauthorized_org = Organization.objects.create(
+            name="Unauthorized Business",
+            organization_type="business",
+            status="active",
+            slug="unauthorized-business",
+        )
+
+        request = self.factory.get("/")
+        request.session = {
+            "active_organization_id": unauthorized_org.id
+        }
+
+        organization = get_user_organization(
+            self.staff,
+            request=request,
+        )
+
+        self.assertEqual(organization, self.merrylight)

@@ -125,17 +125,22 @@
                                             </a>
 
                                             {% if row.membership.role != "owner" %}
-                                                {% if row.membership.is_active %}
-                                                    <a href="{% url 'business_requests:toggle_user_status' row.user.id %}"
-                                                       class="pa-button pa-button-secondary">
-                                                        Deactivate
-                                                    </a>
-                                                {% else %}
-                                                    <a href="{% url 'business_requests:toggle_user_status' row.user.id %}"
-                                                       class="pa-button">
-                                                        Reactivate
-                                                    </a>
-                                                {% endif %}
+                                                <form method="post"
+                                                      action="{% url 'business_requests:toggle_user_status' row.user.id %}"
+                                                      style="display: inline;">
+                                                    {% csrf_token %}
+
+                                                    {% if row.membership.is_active %}
+                                                        <button type="submit"
+                                                                class="pa-button pa-button-secondary">
+                                                            Deactivate
+                                                        </button>
+                                                    {% else %}
+                                                        <button type="submit" class="pa-button">
+                                                            Reactivate
+                                                        </button>
+                                                    {% endif %}
+                                                </form>
                                             {% endif %}
                                         </div>
                                     </td>

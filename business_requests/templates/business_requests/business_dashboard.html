@@ -172,6 +172,18 @@
                 </div>
             </section>
         {% endif %}
+        {% if can_switch_organization and not is_platform_admin %}
+            <section class="bd-admin-strip">
+                <div>
+                    <strong>Switch Organization</strong>
+                    <p>Choose another organization where you have active membership.</p>
+                </div>
+                <a href="{% url 'business_requests:switch_organization' %}"
+                   class="bd-button bd-button-secondary">
+                    Switch Organization
+                </a>
+            </section>
+        {% endif %}
     </div>
 </section>
 {% endblock %}

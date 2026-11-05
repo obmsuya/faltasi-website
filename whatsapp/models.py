@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from organizations.models import Organization
@@ -193,6 +194,25 @@ class WhatsAppPhoneNumber(models.Model):
             ),
         ]
 
+    def clean(self):
+        super().clean()
+
+        if (
+            self.organization_id
+            and self.whatsapp_business_account_id
+        ):
+            waba_organization_id = (
+                self.whatsapp_business_account.organization_id
+            )
+
+            if waba_organization_id != self.organization_id:
+                raise ValidationError({
+                    "whatsapp_business_account": (
+                        "The WhatsApp Business Account must belong "
+                        "to the same organization as this phone number."
+                    )
+                })
+
     def __str__(self):
         return (
             f"{self.organization.name} - "
@@ -263,11 +283,32 @@ class WhatsAppConnection(models.Model):
     class Meta:
         ordering = ["organization__name"]
 
+    def clean(self):
+        super().clean()
+
+        if (
+            self.organization_id
+            and self.whatsapp_business_account_id
+        ):
+            waba_organization_id = (
+                self.whatsapp_business_account.organization_id
+            )
+
+            if waba_organization_id != self.organization_id:
+                raise ValidationError({
+                    "whatsapp_business_account": (
+                        "The WhatsApp Business Account must belong "
+                        "to the same organization as this connection."
+                    )
+                })
+
     def __str__(self):
         return (
             f"{self.organization.name} - "
             f"{self.whatsapp_business_account.business_name or 'WhatsApp Connection'}"
         )
+
+
 class Conversation(models.Model):
 
     STATUS_CHOICES = [
@@ -339,6 +380,86 @@ class Conversation(models.Model):
 
     class Meta:
         ordering = ["-last_message_at"]
+
+    def clean(self):
+        super().clean()
+
+        if not self.organization_id:
+            return
+
+        # Customer must belong to the conversation organization.
+        if self.customer_id:
+            customer_organization_id = self.customer.organization_id
+
+            if (
+                customer_organization_id
+                and customer_organization_id != self.organization_id
+            ):
+                raise ValidationError({
+                    "customer": (
+                        "The customer must belong to the same "
+                        "organization as the conversation."
+                    )
+                })
+
+        # WhatsApp phone must belong to the conversation organization.
+        if self.whatsapp_phone_number_id:
+            phone_organization_id = (
+                self.whatsapp_phone_number.organization_id
+            )
+
+            if phone_organization_id != self.organization_id:
+                raise ValidationError({
+                    "whatsapp_phone_number": (
+                        "The WhatsApp phone number must belong "
+                        "to the same organization as the conversation."
+                    )
+                })
+
+        # Linked business request must belong to the same organization.
+        if self.business_request_id:
+            business_request = self.business_request
+
+            request_customer_organization_id = (
+                business_request.customer.organization_id
+            )
+
+            if (
+                request_customer_organization_id
+                and request_customer_organization_id != self.organization_id
+            ):
+                raise ValidationError({
+                    "business_request": (
+                        "The business request customer must belong "
+                        "to the conversation organization."
+                    )
+                })
+
+            if business_request.category_id:
+                category_organization_id = (
+                    business_request.category.organization_id
+                )
+
+                if category_organization_id != self.organization_id:
+                    raise ValidationError({
+                        "business_request": (
+                            "The business request category must belong "
+                            "to the conversation organization."
+                        )
+                    })
+
+            if business_request.department_id:
+                department_organization_id = (
+                    business_request.department.organization_id
+                )
+
+                if department_organization_id != self.organization_id:
+                    raise ValidationError({
+                        "business_request": (
+                            "The business request department must belong "
+                            "to the conversation organization."
+                        )
+                    })
 
     def __str__(self):
         return (
@@ -476,6 +597,28 @@ class Message(models.Model):
 
     class Meta:
         ordering = ["created_at"]
+
+    def clean(self):
+        super().clean()
+
+        if (
+            self.organization_id
+            and self.conversation_id
+        ):
+            conversation_organization_id = (
+                self.conversation.organization_id
+            )
+
+            if (
+                conversation_organization_id
+                and conversation_organization_id != self.organization_id
+            ):
+                raise ValidationError({
+                    "organization": (
+                        "The message must belong to the same "
+                        "organization as its conversation."
+                    )
+                })
 
     def __str__(self):
         return (

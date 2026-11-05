@@ -136,3 +136,19 @@ class ProductFormCategoryAssignmentTests(TestCase):
 
         self.assertEqual(product.organization, self.organization)
         self.assertEqual(product.category, self.assigned_category)
+
+
+class ProductPublicVisibilityTests(TestCase):
+    def test_business_product_form_does_not_expose_public_visibility(self):
+        organization = Organization.objects.create(
+            name="Tenant Business", organization_type="business", status="active"
+        )
+        form = ProductForm(organization=organization)
+        self.assertNotIn("is_publicly_visible", form.fields)
+
+    def test_platform_owner_product_form_exposes_public_visibility(self):
+        organization = Organization.objects.create(
+            name="Faltasi Innovations Limited", organization_type="platform_owner", status="active"
+        )
+        form = ProductForm(organization=organization)
+        self.assertIn("is_publicly_visible", form.fields)

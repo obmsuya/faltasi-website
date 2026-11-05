@@ -349,6 +349,9 @@ def request_quote(request):
             organization=organization,
             is_active=True,
             allow_quote_request=True,
+            is_publicly_visible=True,
+            show_on_website=True,
+            deleted_at__isnull=True,
         ).select_related(
             "request_category",
         ).first()
@@ -476,13 +479,14 @@ def products(request):
         is_active=True,
     ).order_by("name")
 
-    # Public website: only Faltasi's active, non-deleted,
-    # explicitly website-visible products.
+    # Public website: only Faltasi's active, non-deleted products
+    # with explicit public-catalogue permission and website visibility.
     products = Product.objects.filter(
         organization=organization,
         is_active=True,
         deleted_at__isnull=True,
         show_on_website=True,
+        is_publicly_visible=True,
         category_id__in=assigned_category_ids,
     ).select_related("category").order_by(
         "display_order",

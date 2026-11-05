@@ -313,3 +313,135 @@ class WhatsAppProductMarketingTemplateTests(TestCase):
                 ),
             ).exists()
         )
+
+
+
+from django.test import override_settings
+from unittest.mock import patch
+
+
+class WhatsAppSenderSecurityTests(TestCase):
+
+    def setUp(self):
+        self.org_a = Organization.objects.create(
+            name="Faltasi Test",
+            organization_type="platform_owner",
+            status="active",
+        )
+
+        self.org_b = Organization.objects.create(
+            name="Merrylight Test",
+            organization_type="business",
+            status="active",
+        )
+
+        self.waba_b = WhatsAppBusinessAccount.objects.create(
+            organization=self.org_b,
+            waba_id="SECURITY_TEST_WABA_B",
+            business_name="Merrylight WABA",
+            status="connected",
+            is_active=True,
+        )
+
+        self.phone_b = WhatsAppPhoneNumber.objects.create(
+            organization=self.org_b,
+            whatsapp_business_account=self.waba_b,
+            phone_number_id="SECURITY_TEST_PHONE_B",
+            phone_number="255700000099",
+            status="connected",
+            is_active=True,
+        )
+
+    @override_settings(
+        DEBUG=True,
+        WHATSAPP_ACCESS_TOKEN="FALTASI_GLOBAL_TEST_TOKEN",
+        WHATSAPP_PHONE_NUMBER_ID="FALTASI_GLOBAL_TEST_PHONE",
+    )
+    @patch("requests.post")
+    def test_tenant_cannot_use_faltasi_global_credentials(
+        self, mock_post
+    ):
+        from whatsapp.views import send_whatsapp_message
+
+        result = send_whatsapp_message(
+            whatsapp_phone=self.phone_b,
+            phone_number="255700000001",
+            message="Security test",
+        )
+
+        self.assertIsNone(result)
+        mock_post.assert_not_called()
+
+    @override_settings(
+        DEBUG=True,
+        WHATSAPP_ACCESS_TOKEN="FALTASI_GLOBAL_TEST_TOKEN",
+    )
+    @patch("requests.post")
+    def test_phone_with_mismatched_waba_is_blocked(
+        self, mock_post
+    ):
+        from whatsapp.views import send_whatsapp_message
+
+        self.phone_b.whatsapp_business_account = (
+            WhatsAppBusinessAccount.objects.create(
+                organization=self.org_a,
+                waba_id="SECURITY_TEST_WABA_A",
+                business_name="Faltasi WABA",
+                status="connected",
+                is_active=True,
+            )
+        )
+        self.phone_b.save()
+
+        result = send_whatsapp_message(
+            whatsapp_phone=self.phone_b,
+            phone_number="255700000001",
+            message="Security test",
+        )
+
+        self.assertIsNone(result)
+        mock_post.assert_not_called()
+
+    @override_settings(
+        DEBUG=True,
+        WHATSAPP_ACCESS_TOKEN="FALTASI_GLOBAL_TEST_TOKEN",
+    )
+    @patch("requests.post")
+    def test_disconnected_waba_cannot_send(
+        self, mock_post
+    ):
+        from whatsapp.views import send_whatsapp_message
+
+        self.waba_b.status = "disconnected"
+        self.waba_b.save(update_fields=["status"])
+
+        result = send_whatsapp_message(
+            whatsapp_phone=self.phone_b,
+            phone_number="255700000001",
+            message="Security test",
+        )
+
+        self.assertIsNone(result)
+        mock_post.assert_not_called()
+
+    @override_settings(
+        DEBUG=True,
+        WHATSAPP_ACCESS_TOKEN="FALTASI_GLOBAL_TEST_TOKEN",
+    )
+    @patch("requests.post")
+    def test_inactive_phone_cannot_send(
+        self, mock_post
+    ):
+        from whatsapp.views import send_whatsapp_message
+
+        self.phone_b.is_active = False
+        self.phone_b.save(update_fields=["is_active"])
+
+        result = send_whatsapp_message(
+            whatsapp_phone=self.phone_b,
+            phone_number="255700000001",
+            message="Security test",
+        )
+
+        self.assertIsNone(result)
+        mock_post.assert_not_called()

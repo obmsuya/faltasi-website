@@ -24,6 +24,7 @@ from .models import (
     ProductKnowledgeDocument,
 )
 from .processing import process_document
+from organizations.utils import get_user_organization
 
 
 logger = logging.getLogger(__name__)
@@ -33,47 +34,34 @@ logger = logging.getLogger(__name__)
 DOCUMENT_MANAGER_ROLES = {"owner", "admin"}
 
 
+
 def _get_document_access(request):
     """
     Return the organization and document-management permissions.
 
-    Normal users must have an active membership in an active organization.
-
-    Superusers use the existing active_organization_id session selection,
-    with the existing platform-owner fallback.
+    Organization selection uses the shared platform resolver.
+    Document management remains restricted to owners and administrators.
+    AI Assistant access remains separate.
     """
-    user = request.user
+    organization = get_user_organization(
+        request.user,
+        request=request,
+    )
 
-    if user.is_superuser:
-        organization = None
-        selected_id = request.session.get("active_organization_id")
+    if organization is None:
+        return None, False
 
-        if selected_id:
-            organization = Organization.objects.filter(
-                pk=selected_id,
-                status="active",
-            ).first()
-
-            if organization is None:
-                request.session.pop("active_organization_id", None)
-
-        if organization is None:
-            organization = Organization.objects.filter(
-                organization_type="platform_owner",
-                status="active",
-            ).order_by("id").first()
-
+    if request.user.is_superuser:
         return organization, True
 
     membership = (
         OrganizationMember.objects
-        .select_related("organization")
         .filter(
-            user=user,
+            user=request.user,
+            organization=organization,
             is_active=True,
             organization__status="active",
         )
-        .order_by("id")
         .first()
     )
 
@@ -82,8 +70,7 @@ def _get_document_access(request):
 
     can_manage = membership.role in DOCUMENT_MANAGER_ROLES
 
-    return membership.organization, can_manage
-
+    return organization, can_manage
 
 def _can_access_admin_documents(request, organization):
     """Use the verified membership for this exact organization."""

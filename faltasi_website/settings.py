@@ -98,6 +98,8 @@ INSTALLED_APPS = [
     "billing",
     "accounts",
     "product_knowledge",
+    'channels.apps.ChannelsConfig',
+
 ]
 
 MIDDLEWARE = [

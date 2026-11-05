@@ -290,6 +290,12 @@ class Product(models.Model):
 
     show_on_website = models.BooleanField(
         default=True,
+        help_text="Allow this product to be used in website presentations or demonstrations.",
+    )
+
+    is_publicly_visible = models.BooleanField(
+        default=False,
+        help_text="Explicit permission for public listing on Faltasi's public product catalogue. This is separate from website presentation visibility.",
     )
 
     show_on_whatsapp = models.BooleanField(

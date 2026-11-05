@@ -77,6 +77,12 @@
                 <span>Products</span>
             </a>
 
+            <a class="pa-nav-link {% if request.resolver_match.app_name == 'channels' %}is-active{% endif %}"
+               href="{% url 'channels:dashboard' %}">
+                <span class="pa-nav-icon">⇧</span>
+                <span>Channel Management</span>
+            </a>
+
         </nav>
 
         <!-- OPERATIONS NAVIGATION -->
@@ -180,6 +186,9 @@
 
                         {% elif request.resolver_match.url_name == 'department_management' or request.resolver_match.url_name == 'department_add' or request.resolver_match.url_name == 'department_edit' %}
                             Departments
+
+                        {% elif request.resolver_match.app_name == 'channels' %}
+                            Channel Management
 
                         {% elif request.resolver_match.app_name == 'products' %}
                             Products

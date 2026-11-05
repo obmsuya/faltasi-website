@@ -11,57 +11,14 @@ from business_requests.models import BusinessRequest
 
 from .forms import CustomerForm
 from .models import Customer
+from organizations.utils import (
+    get_user_organization,
+    is_platform_administrator,
+)
 
 
 
 
-def get_user_organization(user):
-    """
-    Return the active organization belonging to the current user.
-
-    Superusers use the active platform-owner organization.
-    Normal users use their active organization membership.
-    """
-
-    if user.is_superuser:
-        return (
-            Organization.objects
-            .filter(
-                organization_type="platform_owner",
-                status="active",
-            )
-            .order_by("id")
-            .first()
-        )
-
-    membership = (
-        user.organization_memberships
-        .filter(
-            is_active=True,
-            organization__status="active",
-        )
-        .select_related("organization")
-        .first()
-    )
-
-    if membership:
-        return membership.organization
-
-    return None
-
-
-def is_platform_administrator(user):
-    """Use the project's platform-owner membership rule."""
-    if not user.is_authenticated:
-        return False
-    if user.is_superuser:
-        return True
-    return OrganizationMember.objects.filter(
-        user=user,
-        is_active=True,
-        organization__organization_type="platform_owner",
-        role__in=["owner", "admin"],
-    ).exists()
 
 
 def customers_visible_to(user):

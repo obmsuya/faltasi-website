@@ -12,12 +12,12 @@
             </p>
         </div>
 
-        {% if can_manage_products %}
-        <a href="{% url 'products:product_create' %}"
-           class="btn btn-primary">
-            Add Product
-        </a>
-        {% endif %}
+        <div class="d-flex gap-2">
+            <a href="{% url 'channels:dashboard' %}" class="btn btn-outline-primary">Channel Management</a>
+            {% if can_manage_products %}
+            <a href="{% url 'products:product_create' %}" class="btn btn-primary">Add Product</a>
+            {% endif %}
+        </div>
     </div>
 
     {% if messages %}
@@ -47,10 +47,21 @@
                 {% for product in products %}
                 <tr>
                     <td>
-                        <strong>{{ product.name }}</strong>
-                        {% if product.sku %}
-                        <br><small class="text-muted">SKU: {{ product.sku }}</small>
-                        {% endif %}
+                        <div class="d-flex align-items-center gap-2">
+                            {% if product.image %}
+                            <img src="{{ product.image.url }}"
+                                 alt="{{ product.name }}"
+                                 loading="lazy"
+                                 class="rounded"
+                                 style="width: 60px; height: 60px; object-fit: cover; flex-shrink: 0;">
+                            {% endif %}
+                            <div>
+                                <strong>{{ product.name }}</strong>
+                                {% if product.sku %}
+                                <br><small class="text-muted">SKU: {{ product.sku }}</small>
+                                {% endif %}
+                            </div>
+                        </div>
                     </td>
                     <td>{{ product.category|default:"—" }}</td>
                     <td>
