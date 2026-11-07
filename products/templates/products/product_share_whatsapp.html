@@ -117,6 +117,77 @@
 
                 <div class="card-body">
 
+                    <!-- SUBSCRIPTION LINK -->
+                    {% if subscription_link %}
+                        <div class="alert alert-warning mb-4">
+
+                            <h5 class="alert-heading">
+                                <i class="bi bi-whatsapp me-1"></i>
+                                WhatsApp Subscription Required
+                            </h5>
+
+                            <p>
+                                {% if subscription_recipient_name %}
+                                    <strong>{{ subscription_recipient_name }}</strong>
+                                {% elif subscription_recipient_phone %}
+                                    <strong>{{ subscription_recipient_phone }}</strong>
+                                {% else %}
+                                    This customer
+                                {% endif %}
+                                has not subscribed to WhatsApp marketing
+                                messages from {{ organization.name }}.
+                            </p>
+
+                            <p>
+                                Copy the subscription link below and send
+                                it to the customer. When they open it,
+                                WhatsApp will prepare a message containing
+                                <strong>YES</strong> to your business number.
+                            </p>
+
+                            <div class="input-group mb-3">
+                                <input
+                                    type="text"
+                                    class="form-control"
+                                    id="subscriptionLink"
+                                    value="{{ subscription_link }}"
+                                    readonly
+                                >
+
+                                <button
+                                    class="btn btn-outline-primary"
+                                    type="button"
+                                    onclick="copySubscriptionLink()"
+                                >
+                                    <i class="bi bi-clipboard me-1"></i>
+                                    Copy Link
+                                </button>
+                            </div>
+
+                            <a
+                                href="{{ subscription_link }}"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="btn btn-success"
+                            >
+                                <i class="bi bi-whatsapp me-1"></i>
+                                Open WhatsApp
+                            </a>
+
+                            <hr>
+
+                            <small class="text-muted">
+                                <strong>Important:</strong>
+                                The customer becomes subscribed only after
+                                actually sending YES. Opening the link or
+                                copying it does not grant consent.
+                                Product marketing messages remain blocked
+                                until consent is recorded.
+                            </small>
+
+                        </div>
+                    {% endif %}
+
                     <form method="post">
                         {% csrf_token %}
 
@@ -129,6 +200,7 @@
                             <select name="customer_id"
                                     id="customer_id"
                                     class="form-select">
+
                                 <option value="">
                                     -- Select a customer --
                                 </option>
@@ -143,15 +215,15 @@
                                         {% endif %}
                                     </option>
                                 {% endfor %}
+
                             </select>
 
                             <div class="form-text">
                                 All active customers with saved WhatsApp numbers
                                 are listed. Each customer is labelled as
-                                Subscribed or Not subscribed. Customers who have
-                                not subscribed can be contacted separately and
-                                asked to reply YES to your business WhatsApp
-                                number before receiving marketing messages.
+                                Subscribed or Not subscribed. Customers who
+                                have not subscribed must first give explicit
+                                consent before receiving marketing messages.
                             </div>
                         </div>
 
@@ -208,6 +280,7 @@
 
                         <!-- WHATSAPP CONSENT INFORMATION -->
                         <div class="alert alert-info">
+
                             <strong>
                                 <i class="bi bi-info-circle me-1"></i>
                                 WhatsApp Marketing Information
@@ -218,25 +291,30 @@
                                     Messages are sent using your organization's
                                     own connected WhatsApp account.
                                 </li>
+
                                 <li>
                                     Only customers who have explicitly
                                     subscribed can receive product-sharing
                                     marketing messages.
                                 </li>
+
                                 <li>
                                     Customers can subscribe by replying
                                     <strong>YES</strong> to your business
                                     WhatsApp number.
                                 </li>
+
                                 <li>
                                     Saving a customer does not automatically
                                     subscribe them.
                                 </li>
+
                                 <li>
                                     Customers can unsubscribe at any time
                                     by replying <strong>STOP</strong>.
                                 </li>
                             </ul>
+
                         </div>
 
                         <!-- ACTION BUTTONS -->
@@ -266,4 +344,40 @@
 
 </div>
 
+
+<!-- SUBSCRIPTION LINK COPY FUNCTION -->
+<script>
+function copySubscriptionLink() {
+    const linkInput = document.getElementById("subscriptionLink");
+
+    if (!linkInput) {
+        return;
+    }
+
+    function fallbackCopy() {
+        linkInput.select();
+        linkInput.setSelectionRange(0, 99999);
+
+        const copied = document.execCommand("copy");
+
+        if (copied) {
+            alert("Subscription link copied successfully.");
+        } else {
+            alert("Unable to copy automatically. Please copy the link manually.");
+        }
+    }
+
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(linkInput.value)
+            .then(function () {
+                alert("Subscription link copied successfully.");
+            })
+            .catch(fallbackCopy);
+    } else {
+        fallbackCopy();
+    }
+}
+</script>
+
 {% endblock %}
+

@@ -320,9 +320,11 @@ def product_share_whatsapp(request, product_id):
             recipient_name = customer.name
 
     # Marketing messages require recorded, explicit customer consent.
+    # Non-subscribed customers receive a link to initiate consent themselves.
+
     if not customer:
         if request.POST.get("save_customer") == "on" and recipient_name:
-            Customer.objects.get_or_create(
+            customer, _ = Customer.objects.get_or_create(
                 organization=organization,
                 phone=recipient_phone,
                 defaults={
@@ -332,29 +334,65 @@ def product_share_whatsapp(request, product_id):
                 },
             )
 
-        messages.error(
+    if not customer or not customer.whatsapp_marketing_opt_in:
+        # Use only this organization's connected WhatsApp sender.
+        subscription_phone = WhatsAppPhoneNumber.objects.filter(
+            organization=organization,
+            is_active=True,
+            status="connected",
+            phone_number_id__isnull=False,
+            whatsapp_business_account__organization=organization,
+            whatsapp_business_account__is_active=True,
+            whatsapp_business_account__status="connected",
+        ).select_related(
+            "whatsapp_business_account",
+        ).order_by(
+            "-is_default",
+            "-created_at",
+        ).first()
+
+        subscription_link = ""
+
+        if subscription_phone and subscription_phone.phone_number:
+            business_number = re.sub(
+                r"\D",
+                "",
+                subscription_phone.phone_number,
+            )
+
+            if business_number:
+                subscription_link = (
+                    f"https://wa.me/{business_number}?text={quote('YES')}"
+                )
+
+        if not subscription_link:
+            messages.error(
+                request,
+                "A connected WhatsApp business number is required "
+                "to generate the subscription link.",
+            )
+            return redirect(
+                "products:product_share_whatsapp",
+                product_id=product.id,
+            )
+
+        return render(
             request,
-            "This customer must first be saved and explicitly opt in "
-            "to WhatsApp marketing by replying YES. Saving a customer "
-            "does not subscribe them.",
-        )
-        return redirect(
-            "products:product_share_whatsapp",
-            product_id=product.id,
+            "products/product_share_whatsapp.html",
+            {
+                "organization": organization,
+                "product": product,
+                "customers": customers,
+                "subscription_link": subscription_link,
+                "subscription_recipient_name": (
+                    recipient_name or (
+                        customer.name if customer else ""
+                    )
+                ),
+                "subscription_recipient_phone": recipient_phone,
+            },
         )
 
-    if (
-        customer.organization_id != organization.id
-        or not customer.whatsapp_marketing_opt_in
-    ):
-        messages.error(
-            request,
-            "This customer has not opted in to WhatsApp marketing."
-        )
-        return redirect(
-            "products:product_share_whatsapp",
-            product_id=product.id,
-        )
 
     # Fail closed unless product-sharing template sending is enabled.
     if not getattr(
