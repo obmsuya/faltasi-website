@@ -905,8 +905,8 @@ def process_whatsapp_marketing_consent(customer, text):
         ])
 
         return (
-            "Thank you. You have successfully subscribed to "
-            "WhatsApp marketing updates from this business."
+            "Asante kwa ku subscribe na account yetu. Faltasi Tunauza bidhaa zenye ubora wa juu na zilizoadimu. "
+            "tutakutaarifu pindi zitakapo wasili."
         )
 
     if command == "NO":
