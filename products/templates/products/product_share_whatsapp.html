@@ -136,14 +136,22 @@
                                 {% for customer in customers %}
                                     <option value="{{ customer.id }}">
                                         {{ customer.name }} — {{ customer.phone }}
+                                        {% if customer.whatsapp_marketing_opt_in %}
+                                            (Subscribed)
+                                        {% else %}
+                                            (Not subscribed)
+                                        {% endif %}
                                     </option>
                                 {% endfor %}
                             </select>
 
                             <div class="form-text">
-                                Selecting a customer uses their saved phone number.
-                                Only customers who have opted in can receive
-                                marketing messages.
+                                All active customers with saved WhatsApp numbers
+                                are listed. Each customer is labelled as
+                                Subscribed or Not subscribed. Customers who have
+                                not subscribed can be contacted separately and
+                                asked to reply YES to your business WhatsApp
+                                number before receiving marketing messages.
                             </div>
                         </div>
 

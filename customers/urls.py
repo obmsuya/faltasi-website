@@ -37,4 +37,10 @@ urlpatterns = [
         views.customer_delete,
         name="delete",
     ),
+
+    path(
+        "<int:customer_id>/phone/",
+        views.customer_phone_action,
+        name="phone_action",
+    ),
 ]

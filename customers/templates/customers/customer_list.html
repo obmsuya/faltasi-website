@@ -81,6 +81,26 @@
                 </select>
             </div>
 
+            <div class="pa-form-row">
+                <label for="relationship_stage">Relationship stage</label>
+                <select id="relationship_stage" name="relationship_stage">
+                    <option value="">All stages</option>
+                    {% for value, label in relationship_stage_choices %}
+                    <option value="{{ value }}" {% if selected_relationship_stage == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="pa-form-row">
+                <label for="phone_status">Phone status</label>
+                <select id="phone_status" name="phone_status">
+                    <option value="">All phone statuses</option>
+                    {% for value, label in phone_status_choices %}
+                    <option value="{{ value }}" {% if selected_phone_status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
             <div class="pa-actions" style="margin-bottom:16px;">
                 <button type="submit">Search</button>
                 <a href="{% url 'customers:list' %}" class="pa-button pa-button-secondary">Clear</a>
@@ -106,8 +126,9 @@
                     <th>Phone</th>
                     {% if platform_admin %}<th>Organization</th>{% endif %}
                     <th>Email</th>
-                    <th>Type</th>
-                    <th>Status</th>
+                    <th>Relationship</th>
+                    <th>Phone status</th>
+                    <th>Record status</th>
                     <th>Date added</th>
                     <th>Actions</th>
                 </tr>
@@ -124,7 +145,8 @@
                     <td>{% if customer.organization %}{{ customer.organization.name }}{% else %}Unassigned{% endif %}</td>
                     {% endif %}
                     <td>{{ customer.email|default:"—" }}</td>
-                    <td>{{ customer.get_customer_type_display }}</td>
+                    <td>{{ customer.get_relationship_stage_display }}</td>
+                    <td>{{ customer.get_phone_status_display }}</td>
                     <td>{{ customer.get_status_display }}</td>
                     <td>{{ customer.created_at|date:"d M Y" }}</td>
                     <td>
@@ -143,13 +165,13 @@
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:18px;">
         <div>
             {% if page_obj.has_previous %}
-                <a class="pa-button pa-button-secondary" href="?page={{ page_obj.previous_page_number }}&search={{ search|urlencode }}&organization={{ selected_organization|urlencode }}&customer_type={{ selected_customer_type|urlencode }}&status={{ selected_status|urlencode }}">&larr; Previous</a>
+                <a class="pa-button pa-button-secondary" href="?page={{ page_obj.previous_page_number }}&search={{ search|urlencode }}&organization={{ selected_organization|urlencode }}&customer_type={{ selected_customer_type|urlencode }}&status={{ selected_status|urlencode }}&relationship_stage={{ selected_relationship_stage|urlencode }}&phone_status={{ selected_phone_status|urlencode }}">&larr; Previous</a>
             {% endif %}
         </div>
         <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
         <div>
             {% if page_obj.has_next %}
-                <a class="pa-button pa-button-secondary" href="?page={{ page_obj.next_page_number }}&search={{ search|urlencode }}&organization={{ selected_organization|urlencode }}&customer_type={{ selected_customer_type|urlencode }}&status={{ selected_status|urlencode }}">Next &rarr;</a>
+                <a class="pa-button pa-button-secondary" href="?page={{ page_obj.next_page_number }}&search={{ search|urlencode }}&organization={{ selected_organization|urlencode }}&customer_type={{ selected_customer_type|urlencode }}&status={{ selected_status|urlencode }}&relationship_stage={{ selected_relationship_stage|urlencode }}&phone_status={{ selected_phone_status|urlencode }}">Next &rarr;</a>
             {% endif %}
         </div>
     </div>

@@ -9,7 +9,7 @@ from django.urls import reverse
 
 from organizations.models import Organization
 from customers.models import Customer
-
+from whatsapp.views import customer_phone_allows_whatsapp
 from whatsapp.models import (
     WhatsAppBusinessAccount,
     WhatsAppPhoneNumber,

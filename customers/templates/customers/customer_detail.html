@@ -262,6 +262,74 @@ Customer details for {{ customer.name }}.
         </div>
 
 
+        <!-- CRM RELATIONSHIP AND PHONE MANAGEMENT -->
+        <div class="dashboard-card">
+            <h2>CRM & Contact Management</h2>
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">Relationship Stage</span>
+                    <span class="info-value">{{ customer.get_relationship_stage_display }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Phone Status</span>
+                    <span class="info-value">{{ customer.get_phone_status_display }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">WhatsApp Marketing</span>
+                    <span class="info-value">{% if customer.whatsapp_marketing_opt_in %}Subscribed{% else %}Not subscribed{% endif %}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Contact Source</span>
+                    <span class="info-value">{{ customer.get_contact_source_display }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">First Contact</span>
+                    <span class="info-value">{{ customer.first_contact_at|date:"d M Y H:i"|default:"—" }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Last Interaction</span>
+                    <span class="info-value">{{ customer.last_interaction_at|date:"d M Y H:i"|default:"—" }}</span>
+                </div>
+            </div>
+
+            <p>Phone management does not change marketing consent or delete conversation history.</p>
+            <div class="form-actions">
+                {% if customer.phone %}
+                    {% if customer.phone_status == "active" %}
+                        <form method="post" action="{% url 'customers:phone_action' customer.id %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="deactivate">
+                            <button type="submit" class="btn btn-secondary">Deactivate Phone</button>
+                        </form>
+                        <form method="post" action="{% url 'customers:phone_action' customer.id %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="block">
+                            <button type="submit" class="btn btn-danger">Block Phone</button>
+                        </form>
+                    {% elif customer.phone_status == "blocked" %}
+                        <form method="post" action="{% url 'customers:phone_action' customer.id %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="unblock">
+                            <button type="submit" class="btn btn-primary">Unblock Phone</button>
+                        </form>
+                    {% else %}
+                        <form method="post" action="{% url 'customers:phone_action' customer.id %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="reactivate">
+                            <button type="submit" class="btn btn-primary">Reactivate Phone</button>
+                        </form>
+                    {% endif %}
+                    <form method="post" action="{% url 'customers:phone_action' customer.id %}" onsubmit="return confirm('Remove this phone number from the customer record? Conversation history will remain.');">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="remove">
+                        <button type="submit" class="btn btn-danger">Remove Phone Number</button>
+                    </form>
+                {% else %}
+                    <p>No phone number is currently saved. Add one through Edit Customer.</p>
+                {% endif %}
+            </div>
+        </div>
+
         <!-- ================================================= -->
         <!-- CUSTOMER ACTIVITY SUMMARY -->
         <!-- ================================================= -->
@@ -742,7 +810,7 @@ Customer details for {{ customer.name }}.
 
 
         <!-- ================================================= -->
-        <!-- DELETE -->
+        <!-- DEACTIVATE -->
         <!-- ================================================= -->
 
         <div class="dashboard-card danger-card">
@@ -752,14 +820,14 @@ Customer details for {{ customer.name }}.
             </h2>
 
             <p>
-                Deleting this customer is permanent.
+                Deactivate this customer without deleting its history.
             </p>
 
             <a
                 href="{% url 'customers:delete' customer.id %}"
                 class="btn btn-danger"
             >
-                Delete Customer
+                Deactivate Customer
             </a>
 
         </div>

@@ -105,6 +105,17 @@
                     </div>
 
 
+                    <!-- RELATIONSHIP STAGE -->
+                    <div class="form-group">
+                        <label for="{{ form.relationship_stage.id_for_label }}">
+                            Relationship Stage
+                        </label>
+                        {{ form.relationship_stage }}
+                        {% for error in form.relationship_stage.errors %}
+                            <div class="field-error">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+
                     <!-- COMPANY -->
                     <div class="form-group">
 

@@ -1,11 +1,13 @@
 
 from unittest.mock import Mock, patch
 
-from django.test import TestCase
 from django.utils import timezone
 
 from organizations.models import Organization
 from customers.models import Customer
+from whatsapp.views import customer_phone_allows_whatsapp
+from django.test import TestCase, RequestFactory, override_settings
+
 
 from whatsapp.models import (
     Conversation,
@@ -17,6 +19,7 @@ from whatsapp.models import (
 from whatsapp.views import (
     process_whatsapp_marketing_consent,
     send_product_marketing_template,
+    webhook,
 )
 
 class WhatsAppMarketingConsentTests(TestCase):
@@ -37,13 +40,13 @@ class WhatsAppMarketingConsentTests(TestCase):
         self.customer_a = Customer.objects.create(
             organization=self.org_a,
             name="Customer A",
-            phone="255700000001",
+            phone="+255700000001",
         )
 
         self.customer_b = Customer.objects.create(
             organization=self.org_b,
             name="Customer B",
-            phone="255700000001",
+            phone="+255700000001",
         )
 
     def test_yes_activates_marketing_consent(self):
@@ -117,6 +120,66 @@ class WhatsAppMarketingConsentTests(TestCase):
         self.assertFalse(self.customer_a.whatsapp_marketing_opt_in)
         self.assertTrue(self.customer_b.whatsapp_marketing_opt_in)
 
+
+    def test_no_declines_marketing_invitation(self):
+        reply = process_whatsapp_marketing_consent(
+            self.customer_a, "NO"
+        )
+
+        self.customer_a.refresh_from_db()
+
+        self.assertFalse(
+            self.customer_a.whatsapp_marketing_opt_in
+        )
+        self.assertIsNotNone(
+            self.customer_a.whatsapp_marketing_declined_at
+        )
+        self.assertIsNone(
+            self.customer_a.whatsapp_marketing_opt_out_at
+        )
+        self.assertIsNotNone(reply)
+
+    def test_no_does_not_unsubscribe_existing_customer(self):
+        self.customer_a.whatsapp_marketing_opt_in = True
+        self.customer_a.whatsapp_marketing_opt_in_at = timezone.now()
+        self.customer_a.whatsapp_marketing_opt_in_source = "whatsapp_reply"
+        self.customer_a.save()
+
+        reply = process_whatsapp_marketing_consent(
+            self.customer_a, "NO"
+        )
+
+        self.customer_a.refresh_from_db()
+
+        self.assertTrue(
+            self.customer_a.whatsapp_marketing_opt_in
+        )
+        self.assertIsNone(
+            self.customer_a.whatsapp_marketing_opt_out_at
+        )
+        self.assertIsNone(
+            self.customer_a.whatsapp_marketing_declined_at
+        )
+        self.assertIsNotNone(reply)
+
+    def test_yes_clears_previous_decline(self):
+        self.customer_a.whatsapp_marketing_declined_at = timezone.now()
+        self.customer_a.save()
+
+        process_whatsapp_marketing_consent(
+            self.customer_a, "YES"
+        )
+
+        self.customer_a.refresh_from_db()
+
+        self.assertTrue(
+            self.customer_a.whatsapp_marketing_opt_in
+        )
+        self.assertIsNone(
+            self.customer_a.whatsapp_marketing_declined_at
+        )
+
+
     def test_unrecognized_message_does_not_change_consent(self):
         reply = process_whatsapp_marketing_consent(
             self.customer_a, "Hello"
@@ -129,6 +192,8 @@ class WhatsAppMarketingConsentTests(TestCase):
         self.assertIsNone(
             self.customer_a.whatsapp_marketing_opt_in_at
         )
+
+
 
 
 
@@ -316,10 +381,6 @@ class WhatsAppProductMarketingTemplateTests(TestCase):
 
 
 
-from django.test import override_settings
-from unittest.mock import patch
-
-
 class WhatsAppSenderSecurityTests(TestCase):
 
     def setUp(self):
@@ -352,6 +413,14 @@ class WhatsAppSenderSecurityTests(TestCase):
             is_active=True,
         )
 
+        self.customer = Customer.objects.create(
+            organization=self.org_b,
+            name="Merrylight Test Customer",
+            phone="+255700000222",
+            status="active",
+            phone_status="active",
+        )
+
     @override_settings(
         DEBUG=True,
         WHATSAPP_ACCESS_TOKEN="FALTASI_GLOBAL_TEST_TOKEN",
@@ -365,7 +434,7 @@ class WhatsAppSenderSecurityTests(TestCase):
 
         result = send_whatsapp_message(
             whatsapp_phone=self.phone_b,
-            phone_number="255700000001",
+            phone_number="+255700000001",
             message="Security test",
         )
 
@@ -417,7 +486,7 @@ class WhatsAppSenderSecurityTests(TestCase):
 
         result = send_whatsapp_message(
             whatsapp_phone=self.phone_b,
-            phone_number="255700000001",
+            phone_number="+255700000001",
             message="Security test",
         )
 
@@ -439,9 +508,461 @@ class WhatsAppSenderSecurityTests(TestCase):
 
         result = send_whatsapp_message(
             whatsapp_phone=self.phone_b,
-            phone_number="255700000001",
+            phone_number="+255700000001",
             message="Security test",
         )
 
         self.assertIsNone(result)
         mock_post.assert_not_called()
+
+    def test_active_customer_phone_allows_whatsapp(self):
+        self.assertTrue(
+            customer_phone_allows_whatsapp(self.phone_b, self.customer.phone)
+        )
+
+    def test_inactive_phone_blocks_outbound_whatsapp(self):
+        self.customer.phone_status = "inactive"
+        self.customer.save(update_fields=["phone_status"])
+        self.assertFalse(
+            customer_phone_allows_whatsapp(self.phone_b, self.customer.phone)
+        )
+
+    def test_blocked_phone_blocks_outbound_whatsapp(self):
+        self.customer.phone_status = "blocked"
+        self.customer.save(update_fields=["phone_status"])
+        self.assertFalse(
+            customer_phone_allows_whatsapp(self.phone_b, self.customer.phone)
+        )
+
+    def test_inactive_customer_blocks_outbound_whatsapp(self):
+        self.customer.status = "inactive"
+        self.customer.save(update_fields=["status"])
+        self.assertFalse(
+            customer_phone_allows_whatsapp(self.phone_b, self.customer.phone)
+        )
+
+    def test_removed_phone_is_blocked_by_conversation_history(self):
+        old_phone = self.customer.phone
+        Conversation.objects.create(
+            organization=self.org_b,
+            whatsapp_phone_number=self.phone_b,
+            customer=self.customer,
+            phone_number=old_phone,
+            status="active",
+        )
+        self.customer.phone = ""
+        self.customer.phone_status = "removed"
+        self.customer.save(update_fields=["phone", "phone_status"])
+        self.assertFalse(
+            customer_phone_allows_whatsapp(self.phone_b, old_phone)
+        )
+
+    def test_unknown_recipient_retains_existing_behavior(self):
+        self.assertTrue(
+            customer_phone_allows_whatsapp(self.phone_b, "+255700000999")
+        )
+
+    def test_other_organization_phone_status_does_not_block_recipient(self):
+        Customer.objects.create(
+            organization=self.org_a,
+            name="Different Organization Customer",
+            phone=self.customer.phone,
+            status="active",
+            phone_status="blocked",
+        )
+        self.assertTrue(
+            customer_phone_allows_whatsapp(self.phone_b, self.customer.phone)
+        )
+
+
+class WhatsAppMarketingInvitationWebhookTests(TestCase):
+
+    def setUp(self):
+        self.factory = RequestFactory()
+
+        self.organization = Organization.objects.create(
+            name="Invitation Test Business",
+            organization_type="business",
+            status="active",
+        )
+
+        self.waba = WhatsAppBusinessAccount.objects.create(
+            organization=self.organization,
+            waba_id="TEST_INVITATION_WABA",
+            business_name="Invitation Test Business",
+            status="connected",
+            is_active=True,
+        )
+
+        self.whatsapp_phone = WhatsAppPhoneNumber.objects.create(
+            whatsapp_business_account=self.waba,
+            organization=self.organization,
+            phone_number_id="TEST_INVITATION_PHONE_ID",
+            phone_number="+255700000010",
+            status="connected",
+            is_active=True,
+        )
+
+    def create_customer(self, **kwargs):
+        defaults = {
+            "organization": self.organization,
+            "name": "Invitation Test Customer",
+            "phone": "+255700000001",
+            "status": "active",
+            "phone_status": "active",
+            "relationship_stage": "visitor",
+            "contact_source": "whatsapp",
+        }
+        defaults.update(kwargs)
+
+        return Customer.objects.create(**defaults)
+
+    def send_webhook_message(self, message_id, response):
+        payload = {
+            "object": "whatsapp_business_account",
+            "entry": [
+                {
+                    "id": "TEST_INVITATION_WABA",
+                    "changes": [
+                        {
+                            "field": "messages",
+                            "value": {
+                                "messaging_product": "whatsapp",
+                                "metadata": {
+                                    "display_phone_number": "255700000010",
+                                    "phone_number_id": "TEST_INVITATION_PHONE_ID",
+                                },
+                                "messages": [
+                                    {
+                                        "from": "+255700000001",
+                                        "id": message_id,
+                                        "timestamp": "1794000000",
+                                        "type": "text",
+                                        "text": {
+                                            "body": "Hello"
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ],
+                }
+            ],
+        }
+
+        request = self.factory.post(
+            "/whatsapp/webhook/",
+            data=__import__("json").dumps(payload),
+            content_type="application/json",
+        )
+
+        with patch(
+            "whatsapp.views.verify_meta_webhook_signature",
+            return_value=True,
+        ), patch(
+            "whatsapp.views.handle_whatsapp_product_conversation",
+            return_value=None,
+        ), patch(
+            "whatsapp.views.find_request_category",
+            return_value=None,
+        ), patch(
+            "whatsapp.views.search_whatsapp_products",
+            return_value=None,
+        ), patch(
+            "whatsapp.views.process_customer_message",
+            return_value="Thank you for contacting us.",
+        ), patch(
+            "whatsapp.views.send_whatsapp_message",
+            return_value=response,
+        ) as mock_send:
+
+            webhook_response = webhook(request)
+
+        return webhook_response, mock_send
+
+    def successful_meta_response(self):
+        response = Mock()
+        response.status_code = 200
+        response.text = ""
+        response.json.return_value = {
+            "messages": [
+                {"id": "wamid.test_outgoing"}
+            ]
+        }
+        return response
+
+    def failed_meta_response(self):
+        response = Mock()
+        response.status_code = 400
+        response.text = "Test WhatsApp send failure"
+        return response
+
+    def test_first_contact_receives_invitation_and_timestamp_is_recorded(self):
+        response, mock_send = self.send_webhook_message(
+            "wamid.test_incoming_001",
+            self.successful_meta_response(),
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        customer = Customer.objects.get(
+            organization=self.organization,
+            phone="+255700000001",
+        )
+
+        self.assertEqual(customer.relationship_stage, "visitor")
+        self.assertFalse(customer.whatsapp_marketing_opt_in)
+
+        self.assertIsNotNone(
+            customer.whatsapp_marketing_invitation_sent_at
+        )
+
+        self.assertEqual(
+            customer.marketing_consent_status,
+            "pending",
+        )
+
+        mock_send.assert_called_once()
+
+        sent_reply = mock_send.call_args.args[2]
+
+        self.assertIn(
+            "Would you like to receive WhatsApp marketing",
+            sent_reply,
+        )
+
+        self.assertIn("Reply YES to subscribe or NO to decline.", sent_reply)
+
+        self.assertIn(
+            "Thank you for contacting us.",
+            sent_reply,
+        )
+
+        outgoing_message = Message.objects.get(
+            organization=self.organization,
+            whatsapp_message_id="wamid.test_outgoing",
+        )
+
+        self.assertIn(
+            "Reply YES to subscribe or NO to decline.",
+            outgoing_message.content,
+        )
+
+    def test_failed_whatsapp_send_does_not_record_invitation(self):
+        response, mock_send = self.send_webhook_message(
+            "wamid.test_incoming_002",
+            self.failed_meta_response(),
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        customer = Customer.objects.get(
+            organization=self.organization,
+            phone="+255700000001",
+        )
+
+        self.assertIsNone(
+            customer.whatsapp_marketing_invitation_sent_at
+        )
+
+        self.assertEqual(
+            customer.marketing_consent_status,
+            "not_asked",
+        )
+
+        mock_send.assert_called_once()
+
+        self.assertFalse(
+            Message.objects.filter(
+                organization=self.organization,
+                whatsapp_message_id="wamid.test_outgoing",
+            ).exists()
+        )
+
+    def test_existing_invitation_is_not_sent_again(self):
+        customer = self.create_customer(
+            whatsapp_marketing_invitation_sent_at=timezone.now(),
+        )
+
+        response, mock_send = self.send_webhook_message(
+            "wamid.test_incoming_003",
+            self.successful_meta_response(),
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        customer.refresh_from_db()
+
+        self.assertIsNotNone(
+            customer.whatsapp_marketing_invitation_sent_at
+        )
+
+        sent_reply = mock_send.call_args.args[2]
+
+        self.assertNotIn(
+            "Would you like to receive WhatsApp marketing",
+            sent_reply,
+        )
+
+        self.assertEqual(
+            Message.objects.filter(
+                organization=self.organization,
+                direction="outgoing",
+            ).count(),
+            1,
+        )
+
+    def test_declined_customer_does_not_receive_another_invitation(self):
+        customer = self.create_customer(
+            whatsapp_marketing_declined_at=timezone.now(),
+        )
+
+        response, mock_send = self.send_webhook_message(
+            "wamid.test_incoming_004",
+            self.successful_meta_response(),
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        customer.refresh_from_db()
+
+        self.assertIsNotNone(
+            customer.whatsapp_marketing_declined_at
+        )
+
+        sent_reply = mock_send.call_args.args[2]
+
+        self.assertNotIn(
+            "Would you like to receive WhatsApp marketing",
+            sent_reply,
+        )
+
+    def test_unsubscribed_customer_does_not_receive_another_invitation(self):
+        customer = self.create_customer(
+            whatsapp_marketing_opt_out_at=timezone.now(),
+        )
+
+        response, mock_send = self.send_webhook_message(
+            "wamid.test_incoming_005",
+            self.successful_meta_response(),
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        customer.refresh_from_db()
+
+        self.assertIsNotNone(
+            customer.whatsapp_marketing_opt_out_at
+        )
+
+        sent_reply = mock_send.call_args.args[2]
+
+        self.assertNotIn(
+            "Would you like to receive WhatsApp marketing",
+            sent_reply,
+        )
+
+    def test_inactive_customer_does_not_receive_invitation(self):
+        customer = self.create_customer(
+            status="inactive",
+        )
+
+        response, mock_send = self.send_webhook_message(
+            "wamid.test_incoming_006",
+            self.successful_meta_response(),
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        sent_reply = mock_send.call_args.args[2]
+
+        self.assertNotIn(
+            "Would you like to receive WhatsApp marketing",
+            sent_reply,
+        )
+
+        customer.refresh_from_db()
+
+        self.assertIsNone(
+            customer.whatsapp_marketing_invitation_sent_at
+        )
+
+    def test_blocked_phone_does_not_receive_invitation(self):
+        customer = self.create_customer(
+            phone_status="blocked",
+        )
+
+        response, mock_send = self.send_webhook_message(
+            "wamid.test_incoming_007",
+            self.successful_meta_response(),
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        sent_reply = mock_send.call_args.args[2]
+
+        self.assertNotIn(
+            "Would you like to receive WhatsApp marketing",
+            sent_reply,
+        )
+
+        customer.refresh_from_db()
+
+        self.assertIsNone(
+            customer.whatsapp_marketing_invitation_sent_at
+        )
+
+    def test_same_phone_in_another_organization_is_isolated(self):
+        other_organization = Organization.objects.create(
+            name="Other Invitation Business",
+            organization_type="business",
+            status="active",
+        )
+
+        other_customer = Customer.objects.create(
+            organization=other_organization,
+            name="Other Organization Customer",
+            phone="+255700000001",
+            status="active",
+            phone_status="active",
+            whatsapp_marketing_opt_in=True,
+            whatsapp_marketing_opt_in_at=timezone.now(),
+        )
+
+        response, mock_send = self.send_webhook_message(
+            "wamid.test_incoming_008",
+            self.successful_meta_response(),
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        local_customer = Customer.objects.get(
+            organization=self.organization,
+            phone="+255700000001",
+        )
+
+        other_customer.refresh_from_db()
+
+        self.assertNotEqual(
+            local_customer.id,
+            other_customer.id,
+        )
+
+        self.assertIsNotNone(
+            local_customer.whatsapp_marketing_invitation_sent_at
+        )
+
+        self.assertTrue(
+            other_customer.whatsapp_marketing_opt_in
+        )
+
+        self.assertIsNotNone(
+            other_customer.whatsapp_marketing_opt_in_at
+        )
+
+        sent_reply = mock_send.call_args.args[2]
+
+        self.assertIn(
+            "Would you like to receive WhatsApp marketing",
+            sent_reply,
+        )

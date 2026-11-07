@@ -60,6 +60,14 @@ def customer_list(request):
     if status:
         customers = customers.filter(status=status)
 
+    relationship_stage = request.GET.get("relationship_stage", "").strip()
+    if relationship_stage in dict(Customer.RELATIONSHIP_STAGE_CHOICES):
+        customers = customers.filter(relationship_stage=relationship_stage)
+
+    phone_status = request.GET.get("phone_status", "").strip()
+    if phone_status in dict(Customer.PHONE_STATUS_CHOICES):
+        customers = customers.filter(phone_status=phone_status)
+
     selected_organization = ""
     if platform_admin:
         selected_organization = request.GET.get("organization", "").strip()
@@ -90,11 +98,15 @@ def customer_list(request):
         "search": search,
         "selected_customer_type": customer_type,
         "selected_status": status,
+        "selected_relationship_stage": relationship_stage,
+        "selected_phone_status": phone_status,
         "selected_organization": selected_organization,
         "organizations": organizations,
         "stats": stats,
         "customer_type_choices": Customer._meta.get_field("customer_type").choices,
         "status_choices": Customer._meta.get_field("status").choices,
+        "relationship_stage_choices": Customer.RELATIONSHIP_STAGE_CHOICES,
+        "phone_status_choices": Customer.PHONE_STATUS_CHOICES,
     }
     return render(request, "customers/customer_list.html", context)
 
@@ -130,6 +142,12 @@ def customer_create(request):
             # IMPORTANT:
             # Never allow the form to decide the organization.
             customer.organization = organization
+            customer.contact_source = "manual"
+            customer.first_contact_at = timezone.now()
+            if customer.phone:
+                customer.phone_status = "active"
+            else:
+                customer.phone_status = "removed"
 
             customer.save()
 
@@ -307,6 +325,10 @@ def customer_edit(request, customer_id):
 
             # Never let a form change the customer's tenant.
             updated_customer.organization = customer.organization
+            if updated_customer.phone and updated_customer.phone != customer.phone:
+                updated_customer.phone_status = "active"
+            elif not updated_customer.phone:
+                updated_customer.phone_status = "removed"
 
             updated_customer.save()
 
@@ -359,11 +381,14 @@ def customer_delete(request, customer_id):
 
     if request.method == "POST":
 
-        customer.delete()
+        customer.status = "inactive"
+        if customer.phone:
+            customer.phone_status = "inactive"
+        customer.save(update_fields=["status", "phone_status", "updated_at"])
 
         messages.success(
             request,
-            "Customer was deleted successfully.",
+            "Customer was deactivated. Conversation and business-request history has been preserved.",
         )
 
         return redirect(
@@ -379,3 +404,49 @@ def customer_delete(request, customer_id):
         },
     )
 
+
+
+@login_required
+def customer_phone_action(request, customer_id):
+    """Manage a customer's phone channel without deleting CRM history."""
+    if request.method != "POST":
+        return redirect("customers:detail", customer_id=customer_id)
+
+    customer = get_object_or_404(
+        customers_visible_to(request.user),
+        id=customer_id,
+    )
+    action = request.POST.get("action", "").strip()
+
+    if action == "deactivate":
+        if customer.phone:
+            customer.phone_status = "inactive"
+        else:
+            messages.error(request, "This customer has no phone number to deactivate.")
+            return redirect("customers:detail", customer_id=customer.id)
+
+    elif action in {"reactivate", "unblock"}:
+        if customer.phone:
+            customer.phone_status = "active"
+        else:
+            messages.error(request, "Add a phone number before reactivating this contact.")
+            return redirect("customers:edit", customer_id=customer.id)
+
+    elif action == "block":
+        if customer.phone:
+            customer.phone_status = "blocked"
+        else:
+            messages.error(request, "This customer has no phone number to block.")
+            return redirect("customers:detail", customer_id=customer.id)
+
+    elif action == "remove":
+        customer.phone = ""
+        customer.phone_status = "removed"
+
+    else:
+        messages.error(request, "Unsupported phone-management action.")
+        return redirect("customers:detail", customer_id=customer.id)
+
+    customer.save(update_fields=["phone", "phone_status", "updated_at"])
+    messages.success(request, "Customer phone settings were updated. Existing history was preserved.")
+    return redirect("customers:detail", customer_id=customer.id)

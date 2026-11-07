@@ -1,7 +1,7 @@
 {% extends "main/base_business.html" %}
 
 {% block title %}
-Delete {{ customer.name }} | Customers
+Deactivate {{ customer.name }} | Customers
 {% endblock %}
 
 {% block content %}
@@ -22,7 +22,7 @@ Delete {{ customer.name }} | Customers
                 </a>
 
                 <h1>
-                    Delete Customer
+                    Deactivate Customer
                 </h1>
 
             </div>
@@ -33,12 +33,12 @@ Delete {{ customer.name }} | Customers
         <div class="dashboard-card danger-card">
 
             <h2>
-                Are you sure?
+                Deactivate this customer?
             </h2>
 
             <p>
 
-                You are about to permanently delete:
+                You are about to deactivate this customer record:
 
                 <strong>
                     {{ customer.name }}
@@ -53,7 +53,7 @@ Delete {{ customer.name }} | Customers
             </p>
 
             <p>
-                This action cannot be undone.
+                The customer record, WhatsApp conversations, messages and business-request history will be retained.
             </p>
 
 
@@ -67,7 +67,7 @@ Delete {{ customer.name }} | Customers
                         type="submit"
                         class="btn btn-danger"
                     >
-                        Yes, Delete Customer
+                        Yes, Deactivate Customer
                     </button>
 
                     <a

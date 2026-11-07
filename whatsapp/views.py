@@ -261,6 +261,84 @@ def _get_whatsapp_sender_credentials(whatsapp_phone):
     return access_token, whatsapp_phone.phone_number_id
 
 
+def customer_phone_allows_whatsapp(whatsapp_phone, phone_number):
+    """
+    Prevent outbound WhatsApp sends to inactive, blocked, or removed
+    customer phone channels.
+
+    Check both current customer records and retained conversation
+    history within the receiving organization.
+
+    Unknown recipients retain existing behavior.
+    """
+    if not whatsapp_phone or not phone_number:
+        return False
+
+    organization = whatsapp_phone.organization
+    raw_phone = str(phone_number).strip()
+
+    if not raw_phone:
+        return False
+
+    normalized = normalize_phone_number(raw_phone)
+
+    candidates = {raw_phone}
+
+    if normalized:
+        candidates.add(str(normalized).strip())
+        candidates.add(str(normalized).strip().lstrip("+"))
+
+    candidates.discard("")
+
+    # Check all customer records associated with this number.
+    customers = Customer.objects.filter(
+        organization=organization,
+        phone__in=candidates,
+    )
+
+    for customer in customers:
+        if (
+            customer.phone_status != "active"
+            or customer.status != "active"
+        ):
+            print(
+                "WHATSAPP SEND BLOCKED:",
+                "Customer ID:", customer.id,
+                "Phone status:", customer.phone_status,
+                "Customer status:", customer.status,
+            )
+            return False
+
+    # Also check retained conversations. This catches removed phone
+    # numbers and older customer records linked to the same number.
+    prior_conversations = (
+        Conversation.objects
+        .filter(
+            organization=organization,
+            phone_number__in=candidates,
+            customer__isnull=False,
+        )
+        .select_related("customer")
+        .order_by("-last_message_at", "-id")
+    )
+
+    for conversation in prior_conversations:
+        customer = conversation.customer
+
+        if (
+            customer.phone_status != "active"
+            or customer.status != "active"
+        ):
+            print(
+                "WHATSAPP SEND BLOCKED BY CONVERSATION HISTORY:",
+                "Customer ID:", customer.id,
+                "Phone status:", customer.phone_status,
+                "Customer status:", customer.status,
+            )
+            return False
+
+    return True
+
 def send_whatsapp_template(
     whatsapp_phone,
     phone_number,
@@ -273,6 +351,13 @@ def send_whatsapp_template(
 
     if not phone_number or not template_name:
         print("WHATSAPP TEMPLATE ERROR: Missing required parameters.")
+        return None
+
+    if not customer_phone_allows_whatsapp(
+        whatsapp_phone,
+        phone_number,
+    ):
+        print("WHATSAPP TEMPLATE BLOCKED: Customer phone is not active.")
         return None
 
     access_token, phone_number_id = (
@@ -339,13 +424,19 @@ def send_whatsapp_template(
         )
         return None
 
-
 def send_whatsapp_message(whatsapp_phone, phone_number, message):
     """Send a WhatsApp text message using the authorized sender."""
     import requests
 
     if not phone_number or not message:
         print("WHATSAPP SEND ERROR: Recipient or message is empty.")
+        return None
+
+    if not customer_phone_allows_whatsapp(
+        whatsapp_phone,
+        phone_number,
+    ):
+        print("WHATSAPP SEND BLOCKED: Customer phone is not active.")
         return None
 
     access_token, phone_number_id = (
@@ -413,6 +504,9 @@ def send_whatsapp_image(
         print("WHATSAPP IMAGE ERROR: Missing image or recipient.")
         return None
 
+    if not customer_phone_allows_whatsapp(whatsapp_phone, phone_number):
+        return None
+
     access_token, phone_number_id = (
         _get_whatsapp_sender_credentials(whatsapp_phone)
     )
@@ -478,32 +572,75 @@ def send_product_marketing_template(
     """
     Send and log the product marketing template.
 
-    Requirements:
-    - Customer must have explicitly opted in.
-    - Incoming WhatsApp message ID is required.
-    - Duplicate template sends for the same incoming message are blocked.
-    - The tenant's own WhatsApp connection is used.
+    Explicit marketing consent and an active customer phone are both
+    required. Duplicate sends and cross-organization sends are blocked.
     """
 
     if (
         not customer
-        or not customer.whatsapp_marketing_opt_in
-        or not incoming_message_id
         or not whatsapp_phone
         or not conversation
+        or not phone_number
+        or not incoming_message_id
     ):
         return False
 
     organization = customer.organization
 
-    if (
-        not organization
-        or conversation.organization_id != organization.id
-        or whatsapp_phone.organization_id != organization.id
-    ):
-        print("MARKETING TEMPLATE BLOCKED: Organization mismatch.")
+    if not organization:
+        print("MARKETING TEMPLATE BLOCKED: Customer has no organization.")
         return False
 
+    # Enforce tenant isolation and conversation ownership.
+    if (
+        customer.organization_id != organization.id
+        or conversation.organization_id != organization.id
+        or whatsapp_phone.organization_id != organization.id
+        or conversation.customer_id != customer.id
+    ):
+        print("MARKETING TEMPLATE BLOCKED: Organization or customer mismatch.")
+        return False
+
+    # Explicit marketing consent is mandatory.
+    if not customer.whatsapp_marketing_opt_in:
+        print("MARKETING TEMPLATE BLOCKED: No marketing consent.")
+        return False
+
+    # Customer and phone must both be active.
+    if customer.status != "active":
+        print("MARKETING TEMPLATE BLOCKED: Customer is inactive.")
+        return False
+
+    if customer.phone_status != "active":
+        print("MARKETING TEMPLATE BLOCKED: Customer phone is not active.")
+        return False
+
+    # The recipient must match the customer's registered phone.
+    recipient_normalized = normalize_phone_number(phone_number)
+    customer_normalized = normalize_phone_number(customer.phone)
+    conversation_normalized = normalize_phone_number(
+        conversation.phone_number
+    )
+
+    if (
+        not recipient_normalized
+        or not customer_normalized
+        or not conversation_normalized
+        or recipient_normalized != customer_normalized
+        or recipient_normalized != conversation_normalized
+    ):
+        print("MARKETING TEMPLATE BLOCKED: Recipient phone mismatch.")
+        return False
+
+    # Apply the shared phone-status restriction as well.
+    if not customer_phone_allows_whatsapp(
+        whatsapp_phone,
+        phone_number,
+    ):
+        print("MARKETING TEMPLATE BLOCKED: Phone restriction.")
+        return False
+
+    # Prevent duplicate sends for the same incoming message.
     already_sent = Message.objects.filter(
         organization=organization,
         conversation=conversation,
@@ -562,7 +699,6 @@ def send_product_marketing_template(
     print("PRODUCT MARKETING TEMPLATE SENT AND LOGGED.")
     return True
 
-
 def get_public_product_image_url(product, request=None):
     """Return an absolute HTTPS image URL that Meta can attempt to fetch."""
     try:
@@ -600,7 +736,39 @@ def send_and_log_whatsapp_product_image(
     request=None,
 ):
     """Send one verified product image and save the WhatsApp message record."""
-    image_url = get_public_product_image_url(product, request=request)
+
+    if not all([
+        whatsapp_phone,
+        phone_number,
+        product,
+        conversation,
+        organization,
+    ]):
+        print("WHATSAPP PRODUCT IMAGE BLOCKED: Missing required information.")
+        return False
+
+    # Enforce tenant isolation.
+    if (
+        whatsapp_phone.organization_id != organization.id
+        or conversation.organization_id != organization.id
+        or product.organization_id != organization.id
+    ):
+        print("WHATSAPP PRODUCT IMAGE BLOCKED: Organization mismatch.")
+        return False
+
+    # Do not send to inactive, blocked, or removed customer phones.
+    if not customer_phone_allows_whatsapp(
+        whatsapp_phone,
+        phone_number,
+    ):
+        print("WHATSAPP PRODUCT IMAGE BLOCKED: Customer phone is not active.")
+        return False
+
+    image_url = get_public_product_image_url(
+        product,
+        request=request,
+    )
+
     if not image_url:
         return False
 
@@ -622,6 +790,7 @@ def send_and_log_whatsapp_product_image(
     caption_lines.append(
         f"Availability: {product.get_availability_display()}"
     )
+
     caption = "\n".join(caption_lines)[:1024]
 
     response = send_whatsapp_image(
@@ -631,16 +800,24 @@ def send_and_log_whatsapp_product_image(
         caption=caption,
     )
 
-    succeeded = response is not None and response.status_code in (200, 201)
+    succeeded = (
+        response is not None
+        and response.status_code in (200, 201)
+    )
 
     try:
-        response_data = response.json() if response is not None else {
-            "error": "No response received from WhatsApp image endpoint."
-        }
+        response_data = (
+            response.json()
+            if response is not None
+            else {
+                "error": "No response received from WhatsApp image endpoint."
+            }
+        )
     except ValueError:
         response_data = {"raw_response": response.text}
 
     whatsapp_message_id = None
+
     try:
         whatsapp_message_id = (
             response_data.get("messages", [{}])[0].get("id")
@@ -667,6 +844,7 @@ def send_and_log_whatsapp_product_image(
 
     if succeeded:
         from django.utils import timezone
+
         conversation.last_message_at = timezone.now()
         conversation.save(update_fields=["last_message_at"])
     else:
@@ -677,7 +855,6 @@ def send_and_log_whatsapp_product_image(
         )
 
     return succeeded
-
 
 def get_or_create_conversation_state(conversation):
     """
@@ -693,8 +870,14 @@ def get_or_create_conversation_state(conversation):
 
 def process_whatsapp_marketing_consent(customer, text):
     """
-    Process explicit WhatsApp marketing opt-in and opt-out.
-    Consent belongs to the customer's organization-specific record.
+    Process explicit WhatsApp marketing consent commands.
+
+    YES  = subscribe
+    NO   = decline the subscription invitation
+    STOP = unsubscribe
+
+    Marketing consent belongs to the customer's
+    organization-specific record.
     """
 
     if not customer or not text:
@@ -708,19 +891,52 @@ def process_whatsapp_marketing_consent(customer, text):
             customer.whatsapp_marketing_opt_in = True
             customer.whatsapp_marketing_opt_in_at = timezone.now()
             customer.whatsapp_marketing_opt_in_source = "whatsapp_reply"
-            customer.whatsapp_marketing_opt_out_at = None
-            customer.save()
+
+        customer.whatsapp_marketing_opt_out_at = None
+        customer.whatsapp_marketing_declined_at = None
+
+        customer.save(update_fields=[
+            "whatsapp_marketing_opt_in",
+            "whatsapp_marketing_opt_in_at",
+            "whatsapp_marketing_opt_in_source",
+            "whatsapp_marketing_opt_out_at",
+            "whatsapp_marketing_declined_at",
+            "updated_at",
+        ])
 
         return (
             "Thank you. You have successfully subscribed to "
             "WhatsApp marketing updates from this business."
         )
 
+    if command == "NO":
+
+        # NO declines an invitation; it is not an unsubscribe
+        # command and must not revoke existing consent.
+        if not customer.whatsapp_marketing_opt_in:
+            customer.whatsapp_marketing_declined_at = timezone.now()
+
+            customer.save(update_fields=[
+                "whatsapp_marketing_declined_at",
+                "updated_at",
+            ])
+
+        return (
+            "Thank you for your response. You will not receive "
+            "WhatsApp marketing messages from this business. "
+            "You can still contact us for enquiries and support."
+        )
+
     if command == "STOP":
 
         customer.whatsapp_marketing_opt_in = False
         customer.whatsapp_marketing_opt_out_at = timezone.now()
-        customer.save()
+
+        customer.save(update_fields=[
+            "whatsapp_marketing_opt_in",
+            "whatsapp_marketing_opt_out_at",
+            "updated_at",
+        ])
 
         return (
             "You have successfully unsubscribed from marketing "
@@ -2527,6 +2743,16 @@ def webhook(request):
 
                 status="active",
 
+                relationship_stage="visitor",
+
+                phone_status="active",
+
+                contact_source="whatsapp",
+
+                first_contact_at=timezone.now(),
+
+                last_interaction_at=timezone.now(),
+
             )
 
 
@@ -2540,6 +2766,13 @@ def webhook(request):
             )
 
 
+
+        # Record inbound activity without changing relationship stage,
+        # phone status, or WhatsApp marketing consent.
+        customer.last_interaction_at = timezone.now()
+        if not customer.first_contact_at:
+            customer.first_contact_at = timezone.now()
+        customer.save(update_fields=["last_interaction_at", "first_contact_at", "updated_at"])
 
         # =================================================
 
@@ -4106,6 +4339,32 @@ def webhook(request):
                     if product_id in products_by_id
                 ]
 
+        marketing_invitation_included = False
+
+        if (
+            customer
+            and customer.phone_status == "active"
+            and customer.status == "active"
+            and not customer.whatsapp_marketing_opt_in
+            and not customer.whatsapp_marketing_invitation_sent_at
+            and not customer.whatsapp_marketing_declined_at
+            and not customer.whatsapp_marketing_opt_out_at
+        ):
+            marketing_invitation = (
+                "\n\nWould you like to receive WhatsApp marketing "
+                "updates, product information and special offers "
+                "from this business?\n\n"
+                "Reply YES to subscribe or NO to decline."
+            )
+
+            reply = (reply or "") + marketing_invitation
+            marketing_invitation_included = True
+
+            print(
+                "WHATSAPP MARKETING INVITATION INCLUDED:",
+                customer,
+            )
+
 
 
         # =================================================
@@ -4266,6 +4525,29 @@ def webhook(request):
 
             )
 
+
+            # STAGE 4: Record successful invitation
+            if marketing_invitation_included:
+                customer.whatsapp_marketing_invitation_sent_at = timezone.now()
+
+                customer.save(
+                    update_fields=[
+                        "whatsapp_marketing_invitation_sent_at",
+                        "updated_at",
+                    ]
+                )
+
+                print(
+                    "WHATSAPP MARKETING INVITATION RECORDED:",
+                    customer,
+                )
+
+            # Update conversation activity timestamp
+            conversation.save(
+                update_fields=[
+                    "last_message_at",
+                ]
+            )
 
 
             # Update conversation activity timestamp

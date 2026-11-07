@@ -259,10 +259,17 @@ def product_share_whatsapp(request, product_id):
         show_on_whatsapp=True,
     )
 
-    customers = Customer.objects.filter(
-        organization=organization,
-        status="active",
-    ).order_by("name")
+    customers = (
+        Customer.objects.filter(
+            organization=organization,
+            status="active",
+            phone_status="active",
+        )
+        .exclude(phone__isnull=True)
+        .exclude(phone__exact="")
+        .order_by("name")
+    )
+
 
     if request.method == "GET":
         return render(

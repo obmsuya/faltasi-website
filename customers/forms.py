@@ -12,6 +12,7 @@ class CustomerForm(forms.ModelForm):
             "customer_type",
             "company",
             "phone",
+            "relationship_stage",
             "email",
             "preferred_contact_method",
             "country",
@@ -45,7 +46,7 @@ class CustomerForm(forms.ModelForm):
             "phone": forms.TextInput(
                 attrs={
                     "class": "form-control",
-                    "placeholder": "+255...",
+                    "placeholder": "+255... (leave blank if no phone number)",
                 }
             ),
 
@@ -54,6 +55,10 @@ class CustomerForm(forms.ModelForm):
                     "class": "form-control",
                     "placeholder": "customer@example.com",
                 }
+            ),
+
+            "relationship_stage": forms.Select(
+                attrs={"class": "form-control"}
             ),
 
             "preferred_contact_method": forms.Select(
