@@ -905,7 +905,10 @@ def process_whatsapp_marketing_consent(customer, text):
         ])
 
         return (
-            "Asante kwa ku subscribe na account yetu. Faltasi Tunauza bidhaa zenye ubora wa juu na zilizoadimu. "
+            "Asante kwa ku subscribe na account yetu. Faltasi Tunauza bidhaa"
+            ""
+            ""
+            " zenye ubora wa juu na zilizoadimu. "
             "tutakutaarifu pindi zitakapo wasili."
         )
 
@@ -4351,10 +4354,8 @@ def webhook(request):
             and not customer.whatsapp_marketing_opt_out_at
         ):
             marketing_invitation = (
-                "\n\nWould you like to receive WhatsApp marketing "
-                "updates, product information and special offers "
-                "from this business?\n\n"
-                "Reply YES to subscribe or NO to decline."
+                "\n\nPia tuna bidhaa nyingi ambazo nina uhakika utazifurahia\n\n"
+                "Nijibu YES kukubali au NO kukataa."
             )
 
             reply = (reply or "") + marketing_invitation
@@ -4959,7 +4960,7 @@ def process_customer_message(text):
     """Return a simple fallback when no request category is identified."""
     if not text or not text.strip():
         return 'Thank you for contacting Faltasi Innovations Limited. Please tell us what you need and we will be happy to help.'
-    return 'Thank you for contacting Faltasi Innovations Limited. We have received your request.\n\nPlease tell us a little more about what you need so we can assist you properly.'
+    return 'Habari yako.\n\nNikusaidie nini?'
 
 def update_conversation_state(state, current_step=None, waiting_for='__UNCHANGED__', data=None):
     """
