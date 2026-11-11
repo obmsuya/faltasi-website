@@ -4955,6 +4955,7 @@ def webhook(request):
         )
 
 
+
 def handle_whatsapp_product_conversation(text, organization, state):
     """Handle product selection and follow-up questions in Swahili."""
     if not text or not organization or not state:
@@ -4976,6 +4977,7 @@ def handle_whatsapp_product_conversation(text, organization, state):
         current_data = dict(state.data or {})
         if updates:
             current_data.update(updates)
+
         state.current_step = new_step
         state.waiting_for = waiting_for
         state.data = current_data
@@ -4992,7 +4994,7 @@ def handle_whatsapp_product_conversation(text, organization, state):
             if 1 <= choice <= len(product_ids):
                 selected_id = product_ids[choice - 1]
 
-        # Also accept the product name.
+        # Also accept the exact product name.
         if selected_id is None:
             for product in Product.objects.filter(
                 organization=organization,
@@ -5006,11 +5008,17 @@ def handle_whatsapp_product_conversation(text, organization, state):
                     break
 
         if selected_id is None:
-            return (
-                "Samahani 😊 Sijaweza kutambua bidhaa uliyochagua. "
-                "Tafadhali jibu kwa namba ya bidhaa kwenye orodha, "
-                "au andika jina lake."
-            )
+            # Allow new enquiries and general messages to continue
+            # through normal WhatsApp routing.
+            # Invalid numeric selections retain the existing prompt.
+            if normalized.isdigit():
+                return (
+                    "Samahani, Sijaweza kutambua bidhaa uliyochagua. "
+                    "Tafadhali jibu kwa namba ya bidhaa kwenye orodha, "
+                    "au andika jina lake."
+                )
+
+            return None
 
         product = Product.objects.filter(
             organization=organization,
@@ -5024,7 +5032,9 @@ def handle_whatsapp_product_conversation(text, organization, state):
             save_state(None, None, {
                 "whatsapp_product_ids": [],
                 "selected_whatsapp_product_id": None,
+                "selected_whatsapp_product_name": None,
             })
+
             return (
                 "Samahani, bidhaa hiyo haipatikani kwa sasa. "
                 "Tafadhali tuambie bidhaa nyingine unayohitaji."
@@ -5040,7 +5050,7 @@ def handle_whatsapp_product_conversation(text, organization, state):
         )
 
         return (
-            f"Asante! 😊 Umechagua {product.name}.\n\n"
+            f"Asante! Umechagua {product.name}.\n\n"
             "Unahitaji kiasi gani? Tafadhali taja idadi unayohitaji."
         )
 
@@ -5049,6 +5059,7 @@ def handle_whatsapp_product_conversation(text, organization, state):
         import re
 
         quantity_match = re.search(r"\d+", normalized)
+
         if not quantity_match or int(quantity_match.group()) < 1:
             return (
                 "Tafadhali tuambie idadi unayohitaji, "
@@ -5056,6 +5067,7 @@ def handle_whatsapp_product_conversation(text, organization, state):
             )
 
         quantity = int(quantity_match.group())
+
         save_state(
             "whatsapp_product_next_action",
             "product_next_action",
@@ -5063,7 +5075,7 @@ def handle_whatsapp_product_conversation(text, organization, state):
         )
 
         return (
-            f"Sawa, umehitaji kiasi cha {quantity}. 😊\n\n"
+            f"Sawa, umehitaji kiasi cha {quantity}.\n\n"
             "Ungependa nikusaidie kupata nukuu ya bei, "
             "kuulizia upatikanaji na delivery, au kuwasiliana "
             "na timu yetu ya mauzo?\n\n"
@@ -5072,41 +5084,46 @@ def handle_whatsapp_product_conversation(text, organization, state):
 
     # STEP 3: Ask what assistance the customer needs.
     if step == "whatsapp_product_next_action":
+
         if any(word in normalized for word in (
             "bei", "quotation", "quote", "nukuu", "gharama",
         )):
             action = "quotation"
             response = (
-                "Asante! 😊 Tumepokea ombi lako la nukuu ya bei. "
+                "Asante! Tumepokea ombi lako la nukuu ya bei. "
                 "Timu yetu ya mauzo itakusaidia kuthibitisha bei."
             )
+
         elif any(word in normalized for word in (
             "delivery", "usafiri", "kusafirisha", "kuleta",
         )):
             action = "delivery"
             response = (
-                "Sawa! 😊 Tunaweza kukusaidia kuhusu delivery. "
+                "Sawa! Tunaweza kukusaidia kuhusu delivery. "
                 "Tafadhali tueleze eneo unalotaka bidhaa ipelekwe."
             )
+
         elif any(word in normalized for word in (
             "mauzo", "sales", "mtu", "wakala", "ongea",
         )):
             action = "sales"
             response = (
-                "Sawa kabisa! 😊 Tutakusaidia kuwasiliana na "
+                "Sawa kabisa! Tutakusaidia kuwasiliana na "
                 "mwakilishi wetu wa mauzo."
             )
+
         elif any(word in normalized for word in (
             "ufungaji", "installation", "kufunga", "fundi",
         )):
             action = "installation"
             response = (
-                "Sawa! 😊 Tafadhali tueleze eneo la ufungaji "
+                "Sawa! Tafadhali tueleze eneo la ufungaji "
                 "ili timu yetu iweze kukushauri."
             )
+
         else:
             return (
-                "Ungependa nukuu ya bei, delivery, au kuzungumza "
+                "Ungependa kujua bei, delivery, au kuzungumza "
                 "na timu ya mauzo? Unaweza pia kuomba ufungaji "
                 "ikiwa huduma hiyo inahitajika."
             )
@@ -5189,7 +5206,19 @@ def search_whatsapp_products(text, organization, state=None):
     # Remember the exact choices for this conversation.
     if state is not None:
         state_data = dict(state.data or {})
+
+        # Clear information from the previous product workflow.
+        for key in (
+            "selected_whatsapp_product_id",
+            "selected_whatsapp_product_name",
+            "whatsapp_product_quantity",
+            "whatsapp_product_action",
+        ):
+            state_data.pop(key, None)
+
+        # Store the newly displayed products.
         state_data["whatsapp_product_ids"] = [p.id for p in matches]
+
         state.current_step = "whatsapp_product_selection"
         state.waiting_for = "product_selection"
         state.data = state_data
@@ -5216,14 +5245,11 @@ def search_whatsapp_products(text, organization, state=None):
         lines.append(f"   Availability: {product.get_availability_display()}")
         lines.append("")
 
-
-
     # Share only the catalogue belonging to this organization.
     catalogue_url = None
 
     if organization.organization_type == "platform_owner":
         catalogue_url = "https://www.faltasi.com/products/"
-
     else:
         organization_settings = (
             organization.settings
