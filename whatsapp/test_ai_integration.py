@@ -122,6 +122,56 @@ class WhatsAppAIProductIntegrationTests(TestCase):
         mock_ai.assert_not_called()
 
     @patch("whatsapp.ai_service.interpret_product_message")
+    def test_quantity_step_allows_non_numeric_product_question(self, mock_ai):
+        self.state.current_step = "whatsapp_product_quantity"
+        self.state.waiting_for = "product_quantity"
+        mock_ai.return_value = {
+            "action": "answer_product",
+            "product_id": 25,
+            "answer": "Bei ya bidhaa ni TSh 500,000.",
+        }
+
+        result = get_ai_product_reply(
+            "Hii bei gani?",
+            self.organization,
+            self.state,
+            120,
+        )
+
+        self.assertEqual(result, "Bei ya bidhaa ni TSh 500,000.")
+        mock_ai.assert_called_once()
+
+    @patch("whatsapp.ai_service.interpret_product_message")
+    def test_numeric_quantity_reply_does_not_call_ai(self, mock_ai):
+        self.state.current_step = "whatsapp_product_quantity"
+        self.state.waiting_for = "product_quantity"
+
+        result = get_ai_product_reply(
+            "10",
+            self.organization,
+            self.state,
+            121,
+        )
+
+        self.assertIsNone(result)
+        mock_ai.assert_not_called()
+
+    @patch("whatsapp.ai_service.interpret_product_message")
+    def test_other_pending_field_still_blocks_quantity_step_ai(self, mock_ai):
+        self.state.current_step = "whatsapp_product_quantity"
+        self.state.waiting_for = "location"
+
+        result = get_ai_product_reply(
+            "Hii bei gani?",
+            self.organization,
+            self.state,
+            122,
+        )
+
+        self.assertIsNone(result)
+        mock_ai.assert_not_called()
+
+    @patch("whatsapp.ai_service.interpret_product_message")
     def test_active_quantity_step_is_never_intercepted(self, mock_ai):
         self.state.current_step = "whatsapp_product_quantity"
 

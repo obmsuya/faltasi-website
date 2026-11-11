@@ -1373,11 +1373,11 @@ def process_request_fields(category, state, text):
                         collected_data[waiting_for] = cleaned_value
                         update_conversation_state(state, data=collected_data)
                     else:
-                        return f'Iâ€™m sorry, I didnâ€™t quite understand that.\n\n{field.question}'
+                        return f'I’m sorry, I didn’t quite understand that.\n\n{field.question}'
             else:
                 valid, cleaned_value = validate_request_field_value(field, text)
                 if not valid:
-                    return f'Iâ€™m sorry, I didnâ€™t quite understand that answer.\n\n{field.question}'
+                    return f'I’m sorry, I didn’t quite understand that answer.\n\n{field.question}'
                 collected_data[waiting_for] = cleaned_value
                 update_conversation_state(state, data=collected_data)
     next_field = get_next_missing_request_field(category, collected_data)
@@ -1907,9 +1907,19 @@ def get_ai_product_reply(text, organization, state, current_message_id):
     if state_data.get("category") or state_data.get("business_request_id"):
         return None
 
-    # A pending field means the customer is expected to answer the
-    # existing workflow, not receive an AI product response.
-    if getattr(state, "waiting_for", None):
+    current_step = getattr(state, "current_step", None)
+    waiting_for = getattr(state, "waiting_for", None)
+
+    # Allow non-numeric product questions during the quantity step only.
+    is_quantity_question = (
+        isinstance(text, str)
+        and current_step == "whatsapp_product_quantity"
+        and waiting_for == "product_quantity"
+        and not re.search(r"\d+", text)
+    )
+
+    # Other pending workflow fields remain protected.
+    if waiting_for and not is_quantity_question:
         return None
 
     # Also inspect the linked conversation. The database relationship
@@ -1930,7 +1940,7 @@ def get_ai_product_reply(text, organization, state, current_message_id):
         "whatsapp_product_completed",
     }
 
-    if getattr(state, "current_step", None) not in allowed_steps:
+    if current_step not in allowed_steps and not is_quantity_question:
         return None
 
     try:
@@ -3229,11 +3239,29 @@ def webhook(request):
                 )
                 print("HUMAN HANDOVER ACTIVATED:", conversation.id)
             else:
-                product_flow_reply = handle_whatsapp_product_conversation(
-                    text,
-                    organization,
-                    state,
-                )
+                product_flow_reply = None
+
+                # Answer product questions without advancing quantity collection.
+                if (
+                    state.current_step == "whatsapp_product_quantity"
+                    and state.waiting_for == "product_quantity"
+                    and isinstance(text, str)
+                    and not re.search(r"\d+", text)
+                ):
+                    product_flow_reply = get_ai_product_reply(
+                        text,
+                        organization,
+                        state,
+                        incoming_message.id if incoming_message else None,
+                    )
+
+                # Keep the existing deterministic workflow as fallback.
+                if product_flow_reply is None:
+                    product_flow_reply = handle_whatsapp_product_conversation(
+                        text,
+                        organization,
+                        state,
+                    )
 
             product_flow_handled = product_flow_reply is not None
 
@@ -4979,7 +5007,7 @@ def handle_whatsapp_product_conversation(text, organization, state):
 
         if selected_id is None:
             return (
-                "Samahani ðŸ˜Š Sijaweza kutambua bidhaa uliyochagua. "
+                "Samahani 😊 Sijaweza kutambua bidhaa uliyochagua. "
                 "Tafadhali jibu kwa namba ya bidhaa kwenye orodha, "
                 "au andika jina lake."
             )
@@ -5012,7 +5040,7 @@ def handle_whatsapp_product_conversation(text, organization, state):
         )
 
         return (
-            f"Asante! ðŸ˜Š Umechagua {product.name}.\n\n"
+            f"Asante! 😊 Umechagua {product.name}.\n\n"
             "Unahitaji kiasi gani? Tafadhali taja idadi unayohitaji."
         )
 
@@ -5035,7 +5063,7 @@ def handle_whatsapp_product_conversation(text, organization, state):
         )
 
         return (
-            f"Sawa, umehitaji kiasi cha {quantity}. ðŸ˜Š\n\n"
+            f"Sawa, umehitaji kiasi cha {quantity}. 😊\n\n"
             "Ungependa nikusaidie kupata nukuu ya bei, "
             "kuulizia upatikanaji na delivery, au kuwasiliana "
             "na timu yetu ya mauzo?\n\n"
@@ -5049,7 +5077,7 @@ def handle_whatsapp_product_conversation(text, organization, state):
         )):
             action = "quotation"
             response = (
-                "Asante! ðŸ˜Š Tumepokea ombi lako la nukuu ya bei. "
+                "Asante! 😊 Tumepokea ombi lako la nukuu ya bei. "
                 "Timu yetu ya mauzo itakusaidia kuthibitisha bei."
             )
         elif any(word in normalized for word in (
@@ -5057,7 +5085,7 @@ def handle_whatsapp_product_conversation(text, organization, state):
         )):
             action = "delivery"
             response = (
-                "Sawa! ðŸ˜Š Tunaweza kukusaidia kuhusu delivery. "
+                "Sawa! 😊 Tunaweza kukusaidia kuhusu delivery. "
                 "Tafadhali tueleze eneo unalotaka bidhaa ipelekwe."
             )
         elif any(word in normalized for word in (
@@ -5065,7 +5093,7 @@ def handle_whatsapp_product_conversation(text, organization, state):
         )):
             action = "sales"
             response = (
-                "Sawa kabisa! ðŸ˜Š Tutakusaidia kuwasiliana na "
+                "Sawa kabisa! 😊 Tutakusaidia kuwasiliana na "
                 "mwakilishi wetu wa mauzo."
             )
         elif any(word in normalized for word in (
@@ -5073,7 +5101,7 @@ def handle_whatsapp_product_conversation(text, organization, state):
         )):
             action = "installation"
             response = (
-                "Sawa! ðŸ˜Š Tafadhali tueleze eneo la ufungaji "
+                "Sawa! 😊 Tafadhali tueleze eneo la ufungaji "
                 "ili timu yetu iweze kukushauri."
             )
         else:
