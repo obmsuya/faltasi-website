@@ -39,4 +39,14 @@ urlpatterns = [
         conversation_views.close_conversation,
         name="close_conversation",
     ),
+    path(
+        "conversations/<int:conversation_id>/take-over/",
+        conversation_views.take_over_conversation,
+        name="take_over_conversation",
+    ),
+    path(
+        "conversations/<int:conversation_id>/return-to-ai/",
+        conversation_views.return_conversation_to_ai,
+        name="return_conversation_to_ai",
+    ),
 ]

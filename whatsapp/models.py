@@ -365,6 +365,17 @@ class Conversation(models.Model):
         default="active",
     )
 
+    HANDLING_MODE_CHOICES = [
+        ("ai", "AI handled"),
+        ("human", "Human handled"),
+    ]
+
+    handling_mode = models.CharField(
+        max_length=10,
+        choices=HANDLING_MODE_CHOICES,
+        default="ai",
+    )
+
     started_at = models.DateTimeField(
         auto_now_add=True,
     )

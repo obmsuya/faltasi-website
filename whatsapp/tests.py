@@ -663,6 +663,19 @@ class WhatsAppMarketingInvitationWebhookTests(TestCase):
             "whatsapp.views.handle_whatsapp_product_conversation",
             return_value=None,
         ), patch(
+            "whatsapp.views.get_ai_product_reply",
+            return_value=None,
+        ), patch(
+            "whatsapp.views.get_ai_general_interpretation",
+            return_value={
+                "action": "route_existing",
+                "intent": "unclear",
+                "answer": "",
+            },
+        ), patch(
+            "whatsapp.views.get_ai_product_discovery_reply",
+            return_value=None,
+        ), patch(
             "whatsapp.views.find_request_category",
             return_value=None,
         ), patch(
@@ -727,11 +740,11 @@ class WhatsAppMarketingInvitationWebhookTests(TestCase):
         sent_reply = mock_send.call_args.args[2]
 
         self.assertIn(
-            "Would you like to receive WhatsApp marketing",
+            "Pia tuna bidhaa nyingi ambazo nina uhakika utazifurahia",
             sent_reply,
         )
 
-        self.assertIn("Reply YES to subscribe or NO to decline.", sent_reply)
+        self.assertIn("Nijibu YES kukubali au NO kukataa.", sent_reply)
 
         self.assertIn(
             "Thank you for contacting us.",
@@ -744,8 +757,40 @@ class WhatsAppMarketingInvitationWebhookTests(TestCase):
         )
 
         self.assertIn(
-            "Reply YES to subscribe or NO to decline.",
+            "Nijibu YES kukubali au NO kukataa.",
             outgoing_message.content,
+        )
+
+    def test_english_organization_receives_english_invitation(self):
+        self.organization.language = "en"
+        self.organization.save(update_fields=["language"])
+
+        response, mock_send = self.send_webhook_message(
+            "wamid.test_incoming_english",
+            self.successful_meta_response(),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_send.assert_called_once()
+
+        sent_reply = mock_send.call_args.args[2]
+
+        self.assertIn(
+            "Would you like to receive WhatsApp marketing messages?",
+            sent_reply,
+        )
+        self.assertIn(
+            "Reply YES to subscribe or NO to decline.",
+            sent_reply,
+        )
+
+        customer = Customer.objects.get(
+            organization=self.organization,
+            phone="+255700000001",
+        )
+
+        self.assertIsNotNone(
+            customer.whatsapp_marketing_invitation_sent_at
         )
 
     def test_failed_whatsapp_send_does_not_record_invitation(self):
@@ -963,6 +1008,6 @@ class WhatsAppMarketingInvitationWebhookTests(TestCase):
         sent_reply = mock_send.call_args.args[2]
 
         self.assertIn(
-            "Would you like to receive WhatsApp marketing",
+            "Pia tuna bidhaa nyingi ambazo nina uhakika utazifurahia",
             sent_reply,
         )

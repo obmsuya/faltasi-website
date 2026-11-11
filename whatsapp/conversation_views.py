@@ -305,3 +305,67 @@ def close_conversation(request, conversation_id):
         "whatsapp:conversation_detail",
         conversation_id=conversation.id,
     )
+
+
+@login_required
+def take_over_conversation(request, conversation_id):
+    """Pause AI and place an active conversation under human handling."""
+    if request.method != "POST":
+        return redirect(
+            "whatsapp:conversation_detail",
+            conversation_id=conversation_id,
+        )
+
+    organization = get_user_organization(request.user)
+    if not organization:
+        messages.error(
+            request,
+            "Your account is not connected to an active organization.",
+        )
+        return redirect("accounts:login")
+
+    conversation = get_object_or_404(
+        Conversation,
+        id=conversation_id,
+        organization=organization,
+        status="active",
+    )
+    conversation.handling_mode = "human"
+    conversation.save(update_fields=["handling_mode"])
+    messages.success(request, "Conversation is now human-handled.")
+    return redirect(
+        "whatsapp:conversation_detail",
+        conversation_id=conversation.id,
+    )
+
+
+@login_required
+def return_conversation_to_ai(request, conversation_id):
+    """Return an active conversation to AI without resetting its workflow."""
+    if request.method != "POST":
+        return redirect(
+            "whatsapp:conversation_detail",
+            conversation_id=conversation_id,
+        )
+
+    organization = get_user_organization(request.user)
+    if not organization:
+        messages.error(
+            request,
+            "Your account is not connected to an active organization.",
+        )
+        return redirect("accounts:login")
+
+    conversation = get_object_or_404(
+        Conversation,
+        id=conversation_id,
+        organization=organization,
+        status="active",
+    )
+    conversation.handling_mode = "ai"
+    conversation.save(update_fields=["handling_mode"])
+    messages.success(request, "Conversation returned to AI handling.")
+    return redirect(
+        "whatsapp:conversation_detail",
+        conversation_id=conversation.id,
+    )

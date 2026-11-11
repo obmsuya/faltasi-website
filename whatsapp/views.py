@@ -1373,11 +1373,11 @@ def process_request_fields(category, state, text):
                         collected_data[waiting_for] = cleaned_value
                         update_conversation_state(state, data=collected_data)
                     else:
-                        return f'I’m sorry, I didn’t quite understand that.\n\n{field.question}'
+                        return f'Iâ€™m sorry, I didnâ€™t quite understand that.\n\n{field.question}'
             else:
                 valid, cleaned_value = validate_request_field_value(field, text)
                 if not valid:
-                    return f'I’m sorry, I didn’t quite understand that answer.\n\n{field.question}'
+                    return f'Iâ€™m sorry, I didnâ€™t quite understand that answer.\n\n{field.question}'
                 collected_data[waiting_for] = cleaned_value
                 update_conversation_state(state, data=collected_data)
     next_field = get_next_missing_request_field(category, collected_data)
@@ -1886,6 +1886,93 @@ Faltasi WhatsApp Platform
         return False
 
 @csrf_exempt
+
+def get_ai_product_reply(text, organization, state, current_message_id):
+    """
+    Provide optional AI assistance for questions about an already
+    selected WhatsApp product.
+
+    AI is allowed only in an idle or completed product conversation.
+    Django retains control of all business-request and product workflows.
+    """
+    if not text or not organization or not state:
+        return None
+
+    state_data = state.data if isinstance(state.data, dict) else {}
+
+    if not state_data.get("selected_whatsapp_product_id"):
+        return None
+
+    # Never allow product AI to take over a business-request workflow.
+    if state_data.get("category") or state_data.get("business_request_id"):
+        return None
+
+    # A pending field means the customer is expected to answer the
+    # existing workflow, not receive an AI product response.
+    if getattr(state, "waiting_for", None):
+        return None
+
+    # Also inspect the linked conversation. The database relationship
+    # is authoritative even if state JSON is incomplete.
+    conversation = getattr(state, "conversation", None)
+
+    if conversation is not None:
+        if getattr(conversation, "business_request_id", None):
+            return None
+
+        if getattr(conversation, "business_request", None):
+            return None
+
+    # Permit only a genuinely idle state or a completed product flow.
+    # Unknown/future workflow states are blocked by default.
+    allowed_steps = {
+        None,
+        "whatsapp_product_completed",
+    }
+
+    if getattr(state, "current_step", None) not in allowed_steps:
+        return None
+
+    try:
+        from .ai_service import interpret_product_message
+
+        result = interpret_product_message(
+            text,
+            organization,
+            state,
+            current_message_id=current_message_id,
+        )
+
+        if not isinstance(result, dict):
+            return None
+
+        if result.get("action") not in {
+            "answer_product",
+            "clarify_product",
+        }:
+            return None
+
+        answer = result.get("answer")
+
+        if not isinstance(answer, str):
+            return None
+
+        answer = answer.strip()
+
+        if not answer or len(answer) > 2000:
+            return None
+
+        return answer
+
+    except Exception:
+        # AI is optional. Preserve the existing WhatsApp fallback
+        # if configuration, provider, validation or database errors occur.
+        import logging
+        logging.getLogger(__name__).exception(
+            "WhatsApp AI product assistance failed; using normal fallback."
+        )
+        return None
+
 
 def webhook(request):
 
@@ -3096,17 +3183,56 @@ def webhook(request):
 
             print("WHATSAPP MARKETING CONSENT PROCESSED:", customer)
 
+        elif conversation.handling_mode == "human":
+
+            # A human agent owns this conversation. Incoming messages
+            # are already saved; do not run AI or business workflows.
+            reply = None
+            product_flow_handled = True
+            detected_category = None
+
+            print("AUTOMATION PAUSED: CONVERSATION IS HUMAN-HANDLED")
+
         else:
 
             # =================================================
             # NORMAL PRODUCT CONVERSATION
             # =================================================
 
-            product_flow_reply = handle_whatsapp_product_conversation(
-                text,
-                organization,
-                state,
+            state_data_for_handover = (
+                state.data if isinstance(state.data, dict) else {}
             )
+            active_workflow = bool(
+                state.current_step
+                or state.waiting_for
+                or state_data_for_handover.get("category")
+                or state_data_for_handover.get("business_request_id")
+                or state_data_for_handover.get("selected_whatsapp_product_id")
+                or conversation.business_request_id
+            )
+
+            handover_language = None
+            if active_workflow:
+                handover_language = get_ai_human_support_language(
+                    text,
+                    organization,
+                    state,
+                    incoming_message.id if incoming_message else None,
+                )
+
+            if handover_language:
+                conversation.handling_mode = "human"
+                conversation.save(update_fields=["handling_mode"])
+                product_flow_reply = _human_handover_acknowledgement(
+                    handover_language
+                )
+                print("HUMAN HANDOVER ACTIVATED:", conversation.id)
+            else:
+                product_flow_reply = handle_whatsapp_product_conversation(
+                    text,
+                    organization,
+                    state,
+                )
 
             product_flow_handled = product_flow_reply is not None
 
@@ -3118,6 +3244,61 @@ def webhook(request):
                     text,
                     organization=organization,
                 )
+
+                # Existing deterministic category detection remains
+                # the first choice. AI is only a guarded fallback.
+                general_ai_result = None
+                general_ai_attempted = False
+
+                if detected_category is None and not current_category:
+                    # Interpret the idle message once before deciding
+                    # whether it needs category or product handling.
+                    general_ai_attempted = True
+
+                    general_ai_result = get_ai_general_interpretation(
+                        text,
+                        organization,
+                        state,
+                        incoming_message.id if incoming_message else None,
+                    )
+
+                    if general_ai_result:
+                        intent = general_ai_result.get("intent")
+
+                        if intent == "human_support":
+                            conversation.handling_mode = "human"
+                            conversation.save(update_fields=["handling_mode"])
+                            reply = _human_handover_acknowledgement(
+                                general_ai_result.get("language", "sw")
+                            )
+                            detected_category = None
+                            product_flow_handled = True
+
+                        elif general_ai_result.get("action") == "reply":
+                            reply = general_ai_result["answer"]
+                            detected_category = None
+                            product_flow_handled = True
+
+                        elif intent in {
+                            "service_enquiry",
+                            "business_request",
+                        }:
+                            ai_category_result = get_ai_request_category_reply(
+                                text,
+                                organization,
+                                state,
+                                incoming_message.id if incoming_message else None,
+                            )
+
+                            if ai_category_result:
+                                if ai_category_result.get("clarification"):
+                                    reply = ai_category_result["clarification"]
+                                    detected_category = None
+                                    product_flow_handled = True
+                                else:
+                                    detected_category = ai_category_result.get(
+                                        "category"
+                                    )
 
         print("DETECTED CATEGORY:", detected_category)
 
@@ -4314,8 +4495,58 @@ def webhook(request):
 
 
 
-            product_reply = search_whatsapp_products(text, organization, state)
-            reply = product_reply or process_customer_message(text)
+            ai_reply = get_ai_product_reply(
+                text,
+                organization,
+                state,
+                incoming_message.id if incoming_message else None,
+            )
+
+            if ai_reply:
+                reply = ai_reply
+                product_reply = None
+            else:
+                general_ai_reply = None
+
+                # Reuse the earlier interpretation. Only call the
+                # backward-compatible helper if interpretation was
+                # not attempted earlier in this webhook path.
+                if not general_ai_attempted:
+                    general_ai_reply = get_ai_general_reply(
+                        text,
+                        organization,
+                        state,
+                        incoming_message.id if incoming_message else None,
+                    )
+
+                if general_ai_reply:
+                    reply = general_ai_reply
+                    product_reply = None
+                else:
+                    # First preserve the existing literal catalogue search.
+                    product_reply = search_whatsapp_products(
+                        text,
+                        organization,
+                        state,
+                    )
+
+                    if product_reply:
+                        reply = product_reply
+                    else:
+                        # AI discovery is only a fallback when literal
+                        # catalogue search finds no matching products.
+                        discovery = get_ai_product_discovery_reply(
+                            text,
+                            organization,
+                            state,
+                            incoming_message.id if incoming_message else None,
+                        )
+
+                        if discovery:
+                            reply = discovery["reply"]
+                            product_reply = discovery["product_reply"]
+                        else:
+                            reply = process_customer_message(text)
             should_send_product_marketing_template = bool(
                 product_reply
                 and customer
@@ -4353,10 +4584,20 @@ def webhook(request):
             and not customer.whatsapp_marketing_declined_at
             and not customer.whatsapp_marketing_opt_out_at
         ):
-            marketing_invitation = (
-                "\n\nPia tuna bidhaa nyingi ambazo nina uhakika utazifurahia\n\n"
-                "Nijibu YES kukubali au NO kukataa."
-            )
+            organization_language = (
+                getattr(customer.organization, "language", None) or ""
+            ).strip().lower().replace("-", "_")
+
+            if organization_language.startswith("en"):
+                marketing_invitation = (
+                    "\n\nWould you like to receive WhatsApp marketing messages?\n\n"
+                    "Reply YES to subscribe or NO to decline."
+                )
+            else:
+                marketing_invitation = (
+                    "\n\nPia tuna bidhaa nyingi ambazo nina uhakika utazifurahia\n\n"
+                    "Nijibu YES kukubali au NO kukataa."
+                )
 
             reply = (reply or "") + marketing_invitation
             marketing_invitation_included = True
@@ -4404,14 +4645,14 @@ def webhook(request):
 
 
 
-        response = send_whatsapp_message(
-
-            whatsapp_phone,
-
-            sender,
-
-            reply,
-
+        response = (
+            send_whatsapp_message(
+                whatsapp_phone,
+                sender,
+                reply,
+            )
+            if reply
+            else None
         )
 
 
@@ -4737,7 +4978,7 @@ def handle_whatsapp_product_conversation(text, organization, state):
 
         if selected_id is None:
             return (
-                "Samahani 😊 Sijaweza kutambua bidhaa uliyochagua. "
+                "Samahani ðŸ˜Š Sijaweza kutambua bidhaa uliyochagua. "
                 "Tafadhali jibu kwa namba ya bidhaa kwenye orodha, "
                 "au andika jina lake."
             )
@@ -4770,7 +5011,7 @@ def handle_whatsapp_product_conversation(text, organization, state):
         )
 
         return (
-            f"Asante! 😊 Umechagua {product.name}.\n\n"
+            f"Asante! ðŸ˜Š Umechagua {product.name}.\n\n"
             "Unahitaji kiasi gani? Tafadhali taja idadi unayohitaji."
         )
 
@@ -4793,7 +5034,7 @@ def handle_whatsapp_product_conversation(text, organization, state):
         )
 
         return (
-            f"Sawa, umehitaji kiasi cha {quantity}. 😊\n\n"
+            f"Sawa, umehitaji kiasi cha {quantity}. ðŸ˜Š\n\n"
             "Ungependa nikusaidie kupata nukuu ya bei, "
             "kuulizia upatikanaji na delivery, au kuwasiliana "
             "na timu yetu ya mauzo?\n\n"
@@ -4807,7 +5048,7 @@ def handle_whatsapp_product_conversation(text, organization, state):
         )):
             action = "quotation"
             response = (
-                "Asante! 😊 Tumepokea ombi lako la nukuu ya bei. "
+                "Asante! ðŸ˜Š Tumepokea ombi lako la nukuu ya bei. "
                 "Timu yetu ya mauzo itakusaidia kuthibitisha bei."
             )
         elif any(word in normalized for word in (
@@ -4815,7 +5056,7 @@ def handle_whatsapp_product_conversation(text, organization, state):
         )):
             action = "delivery"
             response = (
-                "Sawa! 😊 Tunaweza kukusaidia kuhusu delivery. "
+                "Sawa! ðŸ˜Š Tunaweza kukusaidia kuhusu delivery. "
                 "Tafadhali tueleze eneo unalotaka bidhaa ipelekwe."
             )
         elif any(word in normalized for word in (
@@ -4823,7 +5064,7 @@ def handle_whatsapp_product_conversation(text, organization, state):
         )):
             action = "sales"
             response = (
-                "Sawa kabisa! 😊 Tutakusaidia kuwasiliana na "
+                "Sawa kabisa! ðŸ˜Š Tutakusaidia kuwasiliana na "
                 "mwakilishi wetu wa mauzo."
             )
         elif any(word in normalized for word in (
@@ -4831,7 +5072,7 @@ def handle_whatsapp_product_conversation(text, organization, state):
         )):
             action = "installation"
             response = (
-                "Sawa! 😊 Tafadhali tueleze eneo la ufungaji "
+                "Sawa! ðŸ˜Š Tafadhali tueleze eneo la ufungaji "
                 "ili timu yetu iweze kukushauri."
             )
         else:
@@ -4946,12 +5187,44 @@ def search_whatsapp_products(text, organization, state=None):
         lines.append(f"   Availability: {product.get_availability_display()}")
         lines.append("")
 
-    lines.extend([
-        "View our catalogue:",
-        "https://www.faltasi.com/products/",
-        "",
-        "Reply with the product number (for example, 1) or its name to continue.",
-    ])
+
+
+    # Share only the catalogue belonging to this organization.
+    catalogue_url = None
+
+    if organization.organization_type == "platform_owner":
+        catalogue_url = "https://www.faltasi.com/products/"
+
+    else:
+        organization_settings = (
+            organization.settings
+            if isinstance(organization.settings, dict)
+            else {}
+        )
+
+        if organization_settings.get("public_catalogue_enabled") is True:
+            configured_url = organization_settings.get(
+                "public_catalogue_url"
+            )
+
+            if (
+                isinstance(configured_url, str)
+                and configured_url.startswith("https://")
+                and configured_url.strip() == configured_url
+            ):
+                catalogue_url = configured_url
+
+    if catalogue_url:
+        lines.extend([
+            "View our catalogue:",
+            catalogue_url,
+            "",
+        ])
+
+    lines.append(
+        "Reply with the product number (for example, 1) "
+        "or its name to continue."
+    )
 
     return "\n".join(lines)
 
@@ -5068,3 +5341,460 @@ def get_next_request_question(category, collected_data):
     return None
 
 # FALTASI DEPLOYMENT TEST - 09 OCTOBER 2026
+
+
+def get_ai_general_interpretation(
+    text,
+    organization,
+    state,
+    current_message_id,
+):
+    """
+    Interpret an idle WhatsApp message once.
+
+    Returns the validated intent and action so the webhook can
+    reuse the result without making a second general AI request.
+    """
+    if not text or not organization or not state:
+        return None
+
+    state_data = state.data if isinstance(state.data, dict) else {}
+
+    if (
+        state_data.get("selected_whatsapp_product_id")
+        or state_data.get("category")
+        or state_data.get("business_request_id")
+        or getattr(state, "waiting_for", None)
+    ):
+        return None
+
+    conversation = getattr(state, "conversation", None)
+
+    if conversation is None:
+        return None
+
+    if getattr(conversation, "organization_id", None) != organization.pk:
+        return None
+
+    if (
+        getattr(conversation, "business_request_id", None)
+        or getattr(conversation, "business_request", None)
+    ):
+        return None
+
+    if getattr(state, "current_step", None) not in {
+        None,
+        "whatsapp_product_completed",
+    }:
+        return None
+
+    try:
+        from .ai_service import interpret_general_message
+
+        result = interpret_general_message(
+            text,
+            organization,
+            state,
+            current_message_id=current_message_id,
+        )
+
+        if not isinstance(result, dict):
+            return None
+
+        action = result.get("action")
+        intent = result.get("intent")
+        answer = result.get("answer")
+
+        if action == "reply":
+            if intent not in {
+                "greeting",
+                "general_enquiry",
+                "unclear",
+            }:
+                return None
+
+            if not isinstance(answer, str):
+                return None
+
+            answer = answer.strip()
+
+            if not answer or len(answer) > 1000:
+                return None
+
+        elif action == "route_existing":
+            if intent not in {
+                "product_enquiry",
+                "service_enquiry",
+                "business_request",
+                "human_support",
+                "workflow_input",
+            }:
+                return None
+
+            if answer != "":
+                return None
+
+        else:
+            return None
+
+        return {
+            "action": action,
+            "intent": intent,
+            "answer": answer,
+        }
+
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "General WhatsApp AI interpretation failed."
+        )
+        return None
+
+
+def _human_handover_acknowledgement(language="sw"):
+    """Return a natural acknowledgement without promising staff availability."""
+    if language == "en":
+        return "Thanks for letting us know. We’ll continue helping you here."
+    if language == "mixed":
+        return "Sawa, tumekuelewa. We’ll continue helping you hapa."
+    return "Sawa, tumekuelewa. Tutaendelea kukusaidia hapa."
+
+
+def get_ai_human_support_language(
+    text,
+    organization,
+    state,
+    current_message_id,
+):
+    """Return the customer's language when AI identifies a human-support request."""
+    if not text or not organization or not state:
+        return None
+
+    conversation = getattr(state, "conversation", None)
+    if (
+        conversation is None
+        or getattr(conversation, "organization_id", None) != organization.pk
+    ):
+        return None
+
+    try:
+        from .ai_service import interpret_general_message
+
+        result = interpret_general_message(
+            text,
+            organization,
+            state,
+            current_message_id=current_message_id,
+        )
+
+        if not (
+            isinstance(result, dict)
+            and result.get("action") == "route_existing"
+            and result.get("intent") == "human_support"
+            and result.get("answer") == ""
+        ):
+            return None
+
+        language = result.get("language", "sw")
+        return language if language in {"sw", "en", "mixed"} else "sw"
+
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception(
+            "WhatsApp human-support intent interpretation failed."
+        )
+        return None
+
+
+def get_ai_human_support_intent(
+    text,
+    organization,
+    state,
+    current_message_id,
+):
+    """Keep the existing Boolean helper interface for compatibility."""
+    return get_ai_human_support_language(
+        text,
+        organization,
+        state,
+        current_message_id,
+    ) is not None
+
+
+def get_ai_general_reply(text, organization, state, current_message_id):
+    """Backward-compatible helper for callers expecting a reply only."""
+
+    result = get_ai_general_interpretation(
+        text,
+        organization,
+        state,
+        current_message_id,
+    )
+
+    if result and result.get("action") == "reply":
+        return result["answer"]
+
+    return None
+
+
+def get_ai_product_discovery_reply(
+    text,
+    organization,
+    state,
+    current_message_id,
+):
+    """
+    Use AI to interpret a new product request when literal catalogue
+    search has no result. Django performs and validates the actual search.
+    """
+    if not text or not organization or not state:
+        return None
+
+    state_data = state.data if isinstance(state.data, dict) else {}
+
+    # Do not interrupt an existing product selection or business workflow.
+    if (
+        state_data.get("selected_whatsapp_product_id")
+        or state_data.get("category")
+        or state_data.get("business_request_id")
+        or getattr(state, "waiting_for", None)
+    ):
+        return None
+
+    conversation = getattr(state, "conversation", None)
+
+    if conversation is None:
+        return None
+
+    if (
+        getattr(conversation, "business_request_id", None)
+        or getattr(conversation, "business_request", None)
+    ):
+        return None
+
+    if getattr(state, "current_step", None) not in {
+        None,
+        "whatsapp_product_completed",
+    }:
+        return None
+
+    try:
+        from .ai_service import interpret_product_discovery
+
+        result = interpret_product_discovery(
+            text,
+            organization,
+            state,
+            current_message_id=current_message_id,
+        )
+
+        if not isinstance(result, dict):
+            return None
+
+        action = result.get("action")
+
+        if action == "clarify":
+            clarification = result.get("clarification")
+
+            if (
+                isinstance(clarification, str)
+                and clarification.strip()
+                and len(clarification.strip()) <= 500
+            ):
+                return {
+                    "reply": clarification.strip(),
+                    "product_reply": None,
+                }
+
+            return None
+
+        if action == "search":
+            search_query = result.get("search_query")
+
+            if (
+                not isinstance(search_query, str)
+                or not search_query.strip()
+                or len(search_query.strip()) > 300
+            ):
+                return None
+
+            # Django searches the real organization-owned catalogue.
+            # The AI never supplies or controls product IDs.
+            product_reply = search_whatsapp_products(
+                search_query.strip(),
+                organization,
+                state,
+            )
+
+            if product_reply:
+                return {
+                    "reply": product_reply,
+                    "product_reply": product_reply,
+                }
+
+            return None
+
+        return None
+
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "Product discovery AI failed; using existing fallback."
+        )
+        return None
+
+
+# =========================================================
+# PHASE 3C: SAFE DJANGO REQUEST CATEGORY INTEGRATION
+# =========================================================
+
+def get_ai_request_category_reply(
+    text,
+    organization,
+    state,
+    current_message_id=None,
+):
+    """
+    Ask AI to interpret a new request only when the WhatsApp
+    conversation is genuinely idle.
+
+    Django validates the returned category against the current
+    organization's active RequestCategory records.
+    """
+    if not text or not organization or not state:
+        return None
+
+    state_data = state.data if isinstance(state.data, dict) else {}
+
+    # Never interrupt an existing request or product workflow.
+    if state_data.get("category"):
+        return None
+
+    if state_data.get("business_request_id"):
+        return None
+
+    if state_data.get("selected_whatsapp_product_id"):
+        return None
+
+    if state_data.get("whatsapp_product_ids"):
+        return None
+
+    if getattr(state, "waiting_for", None):
+        return None
+
+    conversation = getattr(state, "conversation", None)
+
+    if conversation is None:
+        return None
+
+    if getattr(conversation, "organization_id", None) != organization.pk:
+        return None
+
+    if getattr(conversation, "business_request_id", None):
+        return None
+
+    if getattr(conversation, "business_request", None):
+        return None
+
+    allowed_steps = {
+        None,
+        "whatsapp_product_completed",
+    }
+
+    if getattr(state, "current_step", None) not in allowed_steps:
+        return None
+
+    try:
+        from .ai_service import interpret_request_category
+
+        # Fetch at most 31 so that an oversized category list is
+        # rejected rather than silently omitting valid categories.
+        category_records = list(
+            RequestCategory.objects.filter(
+                organization=organization,
+                is_active=True,
+            ).order_by("name")[:31]
+        )
+
+        if not category_records or len(category_records) > 30:
+            return None
+
+        candidates = [
+            {
+                "id": item.pk,
+                "name": item.name,
+            }
+            for item in category_records
+        ]
+
+        result = interpret_request_category(
+            text,
+            organization,
+            state,
+            candidates,
+            current_message_id=current_message_id,
+        )
+
+        if not isinstance(result, dict):
+            return None
+
+        action = result.get("action")
+
+        if action == "clarify":
+            clarification = result.get("clarification")
+
+            if (
+                isinstance(clarification, str)
+                and clarification.strip()
+                and len(clarification.strip()) <= 500
+            ):
+                return {
+                    "category": None,
+                    "clarification": clarification.strip(),
+                }
+
+            return None
+
+        if action != "match":
+            return None
+
+        category_id = result.get("category_id")
+
+        if (
+            isinstance(category_id, bool)
+            or not isinstance(category_id, int)
+        ):
+            return None
+
+        # Revalidate against the database. The AI response is never
+        # trusted as proof that a category exists or is authorized.
+        category = RequestCategory.objects.filter(
+            pk=category_id,
+            organization=organization,
+            is_active=True,
+        ).first()
+
+        if not category:
+            return None
+
+        if (
+            category.department_id
+            and category.department.organization_id != organization.pk
+        ):
+            return None
+
+        return {
+            "category": category,
+            "clarification": None,
+        }
+
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "WhatsApp AI category interpretation failed; "
+            "using existing category routing."
+        )
+        return None

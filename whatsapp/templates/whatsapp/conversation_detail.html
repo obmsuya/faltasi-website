@@ -104,6 +104,13 @@ WhatsApp conversation with {{ conversation.customer.name }}.
                     </span>
                 </div>
 
+                <div>
+                    <strong>Handling</strong>
+                    <span>
+                        {{ conversation.get_handling_mode_display }}
+                    </span>
+                </div>
+
 
                 <div>
                     <strong>Started</strong>
@@ -288,6 +295,26 @@ WhatsApp conversation with {{ conversation.customer.name }}.
                 <h2>
                     Conversation Management
                 </h2>
+
+                {% if conversation.handling_mode == "ai" %}
+                    <form method="post"
+                          action="{% url 'whatsapp:take_over_conversation' conversation.id %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-primary">
+                            Take Over Conversation
+                        </button>
+                    </form>
+                {% else %}
+                    <form method="post"
+                          action="{% url 'whatsapp:return_conversation_to_ai' conversation.id %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-secondary">
+                            Return to AI
+                        </button>
+                    </form>
+                {% endif %}
+
+                <br>
 
                 <form
                     method="post"

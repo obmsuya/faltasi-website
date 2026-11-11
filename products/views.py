@@ -392,9 +392,7 @@ def product_share_whatsapp(request, product_id):
                 "subscription_recipient_phone": recipient_phone,
             },
         )
-
-
-    # Fail closed unless product-sharing template sending is enabled.
+# Keep the existing feature gate until the new workflow is tested.
     if not getattr(
         settings,
         "WHATSAPP_PRODUCT_SHARE_TEMPLATE_ENABLED",
@@ -403,18 +401,6 @@ def product_share_whatsapp(request, product_id):
         messages.error(
             request,
             "WhatsApp product sharing is currently disabled."
-        )
-        return redirect(
-            "products:product_share_whatsapp",
-            product_id=product.id,
-        )
-
-    # Require an organization slug for the public product URL.
-    if not organization.slug:
-        messages.error(
-            request,
-            "Your organization needs a public URL slug before "
-            "products can be shared."
         )
         return redirect(
             "products:product_share_whatsapp",
@@ -466,111 +452,205 @@ def product_share_whatsapp(request, product_id):
             status="active",
         )
 
-    # Product pricing.
-    price_text = (
-        f"{product.currency} {product.price:,.2f}"
-        if product.price is not None
-        else "Price available on request"
+    # A marketing opt-in does not replace the 24-hour customer-service
+    # window required for free-form WhatsApp messages.
+    latest_incoming = Message.objects.filter(
+        organization=organization,
+        conversation=conversation,
+        direction="incoming",
+        sender_type="customer",
+    ).order_by("-created_at").first()
+
+    from datetime import timedelta
+    from whatsapp.views import (
+        get_public_product_image_url,
+        send_whatsapp_image,
+        send_whatsapp_message,
     )
 
-    # Generate a signed, organization- and product-bound WhatsApp share URL.
-    # This allows an authorized WhatsApp share without making the product
-    # discoverable through an unrestricted public product URL.
-    share_token = signing.dumps(
-        {
-            "organization_id": organization.id,
-            "product_id": product.id,
-        },
-        salt="products.whatsapp_product_share",
-        compress=True,
-    )
-    product_url = request.build_absolute_uri(
-        reverse(
-            "products:public_product_detail",
-            kwargs={
-                "organization_slug": organization.slug,
-                "product_id": product.id,
-            },
-        )
-        + f"?share={quote(share_token)}"
-    )
-
-    # Six parameters matching the approved Meta template.
-    parameters = [
-        recipient_name or customer.name or "Customer",
-        organization.name,
-        product.name,
-        price_text,
-        product.get_availability_display(),
-        product_url,
-    ]
-
-    components = [
-        {
-            "type": "body",
-            "parameters": [
-                {"type": "text", "text": str(value)}
-                for value in parameters
-            ],
-        }
-    ]
-
-    response = send_whatsapp_template(
-        whatsapp_phone=whatsapp_phone,
-        phone_number=recipient_phone,
-        template_name="product_share_notification",
-        language_code="en",
-        components=components,
-    )
-
-    if response is None or response.status_code not in (200, 201):
+    if (
+        not latest_incoming
+        or timezone.now() - latest_incoming.created_at >= timedelta(hours=24)
+    ):
         messages.error(
             request,
-            "WhatsApp could not accept the product-sharing message. "
-            "Check your organization's WhatsApp connection."
+            "The customer's 24-hour WhatsApp messaging window is closed. "
+            "An approved WhatsApp template is required before product "
+            "sharing can begin. The current template is not yet approved."
         )
         return redirect(
             "products:product_share_whatsapp",
             product_id=product.id,
         )
 
-    try:
-        response_data = response.json()
-        whatsapp_message_id = (
-            response_data.get("messages", [{}])[0].get("id")
-        )
-    except (ValueError, AttributeError, IndexError, TypeError):
-        response_data = {}
-        whatsapp_message_id = None
-
-    # Record the outgoing template message.
-    Message.objects.create(
-        organization=organization,
-        conversation=conversation,
-        direction="outgoing",
-        sender_type="faltasi",
-        message_type="template",
-        content="Marketing template: product_share_notification",
-        whatsapp_message_id=whatsapp_message_id,
-        delivery_status="sent",
-        metadata={
-            "template_name": "product_share_notification",
-            "language_code": "en",
-            "product_id": product.id,
-            "product_url": product_url,
-            "customer_consent": True,
-            "provider_response": response_data,
-            "sent_at": timezone.now().isoformat(),
-        },
+    # Validate the image before sending any part of the sequence.
+    image_url = get_public_product_image_url(
+        product,
+        request=request,
     )
 
-    conversation.last_message_at = timezone.now()
-    conversation.save(update_fields=["last_message_at"])
+    if not image_url:
+        messages.error(
+            request,
+            "This product does not have a publicly accessible HTTPS image. "
+            "No WhatsApp messages were sent."
+        )
+        return redirect(
+            "products:product_share_whatsapp",
+            product_id=product.id,
+        )
+
+    # Prepare customer-facing content. Never expose cost or wholesale prices.
+    first_name = (
+        (customer.name or recipient_name or "").strip().split() or [""]
+    )[0]
+
+    greeting = (
+        f"Habari yako {first_name}, mzigo mpya!"
+        if first_name
+        else "Habari yako, mzigo mpya!"
+    )
+
+    price_text = (
+        f"{product.currency} {product.price:,.2f}"
+        if product.price is not None
+        else "Bei inaombwa"
+    )
+
+    details_lines = [
+        f"Bidhaa: {product.name}",
+        f"Bei: {price_text}",
+    ]
+
+    if product.short_description:
+        details_lines.append(
+            f"Maelezo: {product.short_description}"
+        )
+
+    details_message = "\n".join(details_lines)
+
+    # Send and independently record each message.
+    def send_and_record(response, message_type, content, stage):
+        succeeded = (
+            response is not None
+            and response.status_code in (200, 201)
+        )
+
+        try:
+            response_data = (
+                response.json() if response is not None else {}
+            )
+        except (ValueError, AttributeError):
+            response_data = {
+                "raw_response": getattr(response, "text", "")
+            }
+
+        whatsapp_message_id = None
+
+        try:
+            whatsapp_message_id = (
+                response_data.get("messages", [{}])[0].get("id")
+            )
+        except (AttributeError, IndexError, TypeError):
+            pass
+
+        Message.objects.create(
+            organization=organization,
+            conversation=conversation,
+            direction="outgoing",
+            sender_type="faltasi",
+            message_type=message_type,
+            content=content,
+            whatsapp_message_id=whatsapp_message_id,
+            delivery_status="sent" if succeeded else "failed",
+            metadata={
+                "product_id": product.id,
+                "product_share_stage": stage,
+                "customer_consent": True,
+                "provider_response": response_data,
+                "sent_at": timezone.now().isoformat(),
+            },
+        )
+
+        if succeeded:
+            conversation.last_message_at = timezone.now()
+            conversation.save(update_fields=["last_message_at"])
+
+        return succeeded
+
+    # STAGE 1: Greeting.
+    greeting_response = send_whatsapp_message(
+        whatsapp_phone,
+        recipient_phone,
+        greeting,
+    )
+
+    if not send_and_record(
+        greeting_response,
+        "text",
+        greeting,
+        "greeting",
+    ):
+        messages.error(
+            request,
+            "WhatsApp could not send the greeting. "
+            "The product image and details were not sent."
+        )
+        return redirect(
+            "products:product_share_whatsapp",
+            product_id=product.id,
+        )
+
+    # STAGE 2: Product image, without an availability caption.
+    image_response = send_whatsapp_image(
+        whatsapp_phone,
+        recipient_phone,
+        image_url,
+        caption="",
+    )
+
+    if not send_and_record(
+        image_response,
+        "image",
+        product.name,
+        "product_image",
+    ):
+        messages.error(
+            request,
+            "The greeting was sent, but the product image failed. "
+            "The product details were not sent."
+        )
+        return redirect(
+            "products:product_share_whatsapp",
+            product_id=product.id,
+        )
+
+    # STAGE 3: Product name, price and short description.
+    details_response = send_whatsapp_message(
+        whatsapp_phone,
+        recipient_phone,
+        details_message,
+    )
+
+    if not send_and_record(
+        details_response,
+        "text",
+        details_message,
+        "product_details",
+    ):
+        messages.error(
+            request,
+            "The greeting and product image were sent, "
+            "but the product details message failed."
+        )
+        return redirect(
+            "products:product_share_whatsapp",
+            product_id=product.id,
+        )
 
     messages.success(
         request,
-        f"Product-sharing message accepted by WhatsApp for "
-        f"{recipient_name or customer.name or recipient_phone}."
+        f"Product shared successfully with {first_name or recipient_phone}."
     )
 
     return redirect("products:product_list")
