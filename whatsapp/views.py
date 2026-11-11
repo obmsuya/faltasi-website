@@ -1974,6 +1974,7 @@ def get_ai_product_reply(text, organization, state, current_message_id):
         return None
 
 
+@csrf_exempt
 def webhook(request):
 
     """
