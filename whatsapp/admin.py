@@ -53,6 +53,7 @@ class WhatsAppPhoneNumberAdmin(admin.ModelAdmin):
         "organization",
         "whatsapp_business_account",
         "phone_number",
+        "country_code",
         "display_name",
         "verified_name",
         "status",
@@ -72,6 +73,7 @@ class WhatsAppPhoneNumberAdmin(admin.ModelAdmin):
         "organization__name",
         "phone_number",
         "phone_number_id",
+        "country_code",
         "display_name",
         "verified_name",
     )
@@ -95,6 +97,7 @@ class WhatsAppConnectionAdmin(admin.ModelAdmin):
         "whatsapp_business_account",
         "status",
         "last_connected_at",
+        "token_expires_at",
         "created_at",
     )
 
@@ -112,6 +115,8 @@ class WhatsAppConnectionAdmin(admin.ModelAdmin):
 
     readonly_fields = (
         "last_connected_at",
+        "token_expires_at",
+        "last_error",
         "created_at",
         "updated_at",
     )
@@ -134,6 +139,8 @@ class ConversationAdmin(admin.ModelAdmin):
         "customer",
         "phone_number",
         "status",
+        "handling_mode",
+        "business_request",
         "started_at",
         "last_message_at",
         "closed_at",
@@ -141,6 +148,7 @@ class ConversationAdmin(admin.ModelAdmin):
 
     list_filter = (
         "status",
+        "handling_mode",
         "started_at",
         "last_message_at",
         "closed_at",
@@ -152,6 +160,7 @@ class ConversationAdmin(admin.ModelAdmin):
         "customer__phone",
         "phone_number",
         "whatsapp_user_id",
+        "=business_request__id",
     )
 
     readonly_fields = (
@@ -181,13 +190,16 @@ class ConversationStateAdmin(admin.ModelAdmin):
     )
 
     search_fields = (
+        "conversation__organization__name",
         "conversation__phone_number",
         "conversation__customer__name",
+        "conversation__customer__phone",
         "current_step",
         "waiting_for",
     )
 
     readonly_fields = (
+        "data",
         "updated_at",
     )
 
@@ -227,6 +239,15 @@ class MessageAdmin(admin.ModelAdmin):
     )
 
     readonly_fields = (
+        "organization",
+        "conversation",
+        "direction",
+        "sender_type",
+        "message_type",
+        "content",
+        "whatsapp_message_id",
+        "delivery_status",
+        "metadata",
         "created_at",
     )
 

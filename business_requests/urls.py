@@ -36,7 +36,6 @@ urlpatterns = [
     # Dashboards and platform administration
     path("dashboard/", views.business_dashboard, name="business_dashboard"),
     path("platform-dashboard/", views.platform_dashboard, name="platform_dashboard"),
-    path("platform-products/", views.platform_product_management, name="platform_product_management"),
     path("switch-organization/", views.switch_organization, name="switch_organization"),
     path("organizations/", views.organization_management, name="organization_management"),
     path("organization-owners/", views.organization_owners, name="organization_owners"),

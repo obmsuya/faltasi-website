@@ -1,3 +1,6 @@
+from django.http import HttpResponseForbidden
+
+
 class RequireOwnerPasswordChangeMiddleware:
     """Force provisioned organization owners to change their temporary password."""
 
@@ -13,6 +16,16 @@ class RequireOwnerPasswordChangeMiddleware:
 
     def __call__(self, request):
         user = getattr(request, "user", None)
+        if (
+            user is not None
+            and user.is_authenticated
+            and request.path.startswith("/admin/")
+            and not user.is_superuser
+        ):
+            return HttpResponseForbidden(
+                "Django Admin access is restricted to superusers."
+            )
+
         if user is not None and user.is_authenticated and not user.is_superuser:
             if not request.path.startswith(self.EXEMPT_PREFIXES):
                 # Import lazily to avoid loading models before Django is ready.

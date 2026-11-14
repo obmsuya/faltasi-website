@@ -168,7 +168,7 @@
                 <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                     <a href="{% url 'business_requests:organization_management' %}" class="bd-button bd-button-primary">Manage Organizations</a>
                     <a href="{% url 'business_requests:switch_organization' %}" class="bd-button bd-button-secondary">Switch Organization</a>
-                    <a href="/business-requests/platform-dashboard/" class="bd-button bd-button-secondary">Platform Dashboard</a>
+                    <a href="{% url 'business_requests:platform_dashboard' %}" class="bd-button bd-button-secondary">Platform Dashboard</a>
                 </div>
             </section>
         {% endif %}

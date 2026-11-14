@@ -2,7 +2,6 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
 
-from organizations.models import Organization
 from .models import Conversation, Message
 from .views import send_whatsapp_message
 from organizations.utils import get_user_organization

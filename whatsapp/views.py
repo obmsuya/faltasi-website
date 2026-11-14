@@ -1,21 +1,16 @@
-from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 from django.utils import timezone
-from django.shortcuts import render, redirect, get_object_or_404
-from django.db import transaction
 
 import json
 import logging
-import requests
 import re
 import hmac
 import hashlib
 from urllib.parse import urlsplit
 
 from .models import (
-    WhatsAppBusinessAccount,
     WhatsAppPhoneNumber,
     WhatsAppConnection,
     Conversation,
@@ -33,9 +28,6 @@ from business_requests.models import (
     DepartmentMember,
 )
 
-from django.contrib.auth.models import User
-from django.db.models import Count, Q
-from django.utils import timezone
 from django.core.mail import send_mail
 
 

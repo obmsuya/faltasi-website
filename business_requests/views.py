@@ -195,31 +195,6 @@ def platform_dashboard(request):
     )
 
 
-@login_required
-def platform_product_management(request):
-    """Manage product categories at the platform level."""
-
-    if not is_platform_administrator(request.user):
-        return HttpResponseForbidden(
-            "You are not authorized to manage product categories."
-        )
-
-    categories = ProductCategory.objects.filter(
-        organization__isnull=True
-    ).order_by("name")
-
-    context = {
-        "categories": categories,
-    }
-
-    return render(
-        request,
-        "business_requests/platform_product_management.html",
-        context,
-    )
-
-
-
 
 @login_required
 def switch_organization(request):
@@ -668,30 +643,24 @@ def request_detail(request, request_id):
     """
 
     # ---------------------------------------------------------
-    # GET BUSINESS REQUEST
+    # GET BUSINESS REQUEST WITH ORGANIZATION SECURITY
     # ---------------------------------------------------------
 
-    if request.user.is_superuser:
-
-        # Platform administrators can view all requests.
-        business_request = get_object_or_404(
-            BusinessRequest.objects
-            .select_related(
-                "customer",
-                "customer__organization",
-                "category",
-                "department",
-            )
-            .prefetch_related(
-                "assignments__assigned_to",
-                "workflow_steps__assigned_to",
-            ),
-            id=request_id,
+    request_queryset = (
+        BusinessRequest.objects
+        .select_related(
+            "customer",
+            "customer__organization",
+            "category",
+            "department",
         )
+        .prefetch_related(
+            "assignments__assigned_to",
+            "workflow_steps__assigned_to",
+        )
+    )
 
-    else:
-
-        # Normal users must belong to an organization.
+    if not request.user.is_superuser:
         organization = get_user_organization(
             request.user,
             request=request,
@@ -702,28 +671,16 @@ def request_detail(request, request_id):
                 request,
                 "You are not assigned to an organization.",
             )
+            return redirect("business_requests:dashboard")
 
-            return redirect(
-                "business_requests:dashboard"
-            )
-
-        # Only allow access to requests belonging
-        # to the user's organization.
-        business_request = get_object_or_404(
-            BusinessRequest.objects
-            .select_related(
-                "customer",
-                "customer__organization",
-                "category",
-                "department",
-            )
-            .prefetch_related(
-                "assignments__assigned_to",
-                "workflow_steps__assigned_to",
-            ),
-            id=request_id,
+        request_queryset = request_queryset.filter(
             customer__organization=organization,
         )
+
+    business_request = get_object_or_404(
+        request_queryset,
+        id=request_id,
+    )
 
     # ---------------------------------------------------------
     # ACTIVE DEPARTMENTS FOR THIS REQUEST'S ORGANIZATION
@@ -771,9 +728,7 @@ def request_detail(request, request_id):
 
     current_assignment = (
         business_request.assignments
-        .filter(
-            is_current=True
-        )
+        .filter(is_current=True)
         .select_related(
             "assigned_to",
             "department",
@@ -809,7 +764,6 @@ def request_detail(request, request_id):
         "business_requests/request_detail.html",
         context,
     )
-
 
 @login_required
 @transaction.atomic
@@ -949,32 +903,29 @@ def update_request(request, request_id):
     # GET BUSINESS REQUEST WITH ORGANIZATION SECURITY
     # ---------------------------------------------------------
 
-    if request.user.is_superuser:
+    request_queryset = BusinessRequest.objects.all()
 
-        business_request = get_object_or_404(
-            BusinessRequest,
-            id=request_id,
+    if not request.user.is_superuser:
+        organization = get_user_organization(
+            request.user,
+            request=request,
         )
-
-    else:
-
-        organization = get_user_organization(request.user, request=request)
 
         if not organization:
             messages.error(
                 request,
                 "You are not assigned to an organization.",
             )
+            return redirect("business_requests:dashboard")
 
-            return redirect(
-                "business_requests:dashboard"
-            )
-
-        business_request = get_object_or_404(
-            BusinessRequest,
-            id=request_id,
+        request_queryset = request_queryset.filter(
             customer__organization=organization,
         )
+
+    business_request = get_object_or_404(
+        request_queryset,
+        id=request_id,
+    )
 
     # ---------------------------------------------------------
     # STATUS
@@ -988,14 +939,11 @@ def update_request(request, request_id):
     }
 
     if status:
-
         if status not in valid_statuses:
-
             messages.error(
                 request,
                 "Invalid request status.",
             )
-
             return redirect(
                 "business_requests:request_detail",
                 request_id=request_id,
@@ -1007,9 +955,7 @@ def update_request(request, request_id):
     # INTERNAL NOTES
     # ---------------------------------------------------------
 
-    internal_notes = request.POST.get(
-        "internal_notes"
-    )
+    internal_notes = request.POST.get("internal_notes")
 
     if internal_notes is not None:
         business_request.internal_notes = internal_notes.strip()
@@ -1019,12 +965,9 @@ def update_request(request, request_id):
     # ---------------------------------------------------------
 
     if status == "completed":
-
         if not business_request.completed_at:
             business_request.completed_at = timezone.now()
-
     else:
-
         business_request.completed_at = None
 
     # ---------------------------------------------------------
@@ -1053,8 +996,6 @@ def update_request(request, request_id):
         "business_requests:request_detail",
         request_id=request_id,
     )
-
-
 @login_required
 def send_request_whatsapp_message(request, request_id):
     """
@@ -1064,7 +1005,7 @@ def send_request_whatsapp_message(request, request_id):
     when no WhatsAppPhoneNumber record exists in the local database.
     """
     from django.conf import settings
-    from django.utils import timezone
+
 
     print("====================================================")
     print("SEND REQUEST WHATSAPP VIEW STARTED")
@@ -1080,18 +1021,19 @@ def send_request_whatsapp_message(request, request_id):
         )
 
     # ---------------------------------------------------------
-    # GET REQUEST WITH ORGANIZATION SECURITY
+    # GET BUSINESS REQUEST WITH ORGANIZATION SECURITY
     # ---------------------------------------------------------
-    if request.user.is_superuser:
-        business_request = get_object_or_404(
-            BusinessRequest.objects.select_related(
-                "customer",
-                "customer__organization",
-                "department",
-            ),
-            id=request_id,
+
+    request_queryset = (
+        BusinessRequest.objects
+        .select_related(
+            "customer",
+            "customer__organization",
+            "department",
         )
-    else:
+    )
+
+    if not request.user.is_superuser:
         organization = get_user_organization(
             request.user,
             request=request,
@@ -1104,19 +1046,19 @@ def send_request_whatsapp_message(request, request_id):
             )
             return redirect("business_requests:business_dashboard")
 
-        business_request = get_object_or_404(
-            BusinessRequest.objects.select_related(
-                "customer",
-                "customer__organization",
-                "department",
-            ),
-            id=request_id,
+        request_queryset = request_queryset.filter(
             customer__organization=organization,
         )
+
+    business_request = get_object_or_404(
+        request_queryset,
+        id=request_id,
+    )
 
     # ---------------------------------------------------------
     # VALIDATE MESSAGE AND CUSTOMER
     # ---------------------------------------------------------
+
     message_text = request.POST.get("message", "").strip()
 
     if not message_text:
@@ -1148,6 +1090,7 @@ def send_request_whatsapp_message(request, request_id):
     # ---------------------------------------------------------
     # FIND EXISTING CONVERSATION
     # ---------------------------------------------------------
+
     conversation = (
         Conversation.objects
         .select_related(
@@ -1180,6 +1123,7 @@ def send_request_whatsapp_message(request, request_id):
         # -----------------------------------------------------
         # FIND THE ORGANIZATION'S CONNECTED WHATSAPP PHONE
         # -----------------------------------------------------
+
         whatsapp_phone = (
             WhatsAppPhoneNumber.objects
             .select_related(
@@ -1230,6 +1174,7 @@ def send_request_whatsapp_message(request, request_id):
     # ---------------------------------------------------------
     # SEND WHATSAPP MESSAGE
     # ---------------------------------------------------------
+
     try:
         response = send_whatsapp_message(
             conversation.whatsapp_phone_number,
@@ -1273,6 +1218,7 @@ def send_request_whatsapp_message(request, request_id):
     # ---------------------------------------------------------
     # READ META RESPONSE
     # ---------------------------------------------------------
+
     try:
         response_data = response.json()
     except ValueError:
@@ -1288,6 +1234,7 @@ def send_request_whatsapp_message(request, request_id):
     # ---------------------------------------------------------
     # SAVE OUTGOING MESSAGE
     # ---------------------------------------------------------
+
     try:
         outgoing_message = Message.objects.create(
             organization=customer.organization,
@@ -1331,11 +1278,11 @@ def send_request_whatsapp_message(request, request_id):
         request,
         "WhatsApp accepted the message for sending.",
     )
+
     return redirect(
         "business_requests:request_detail",
         request_id=request_id,
     )
-
 
 @login_required
 @transaction.atomic
@@ -1353,14 +1300,19 @@ def assign_request(request, request_id):
         )
 
     # ---------------------------------------------------------
-    # GET REQUEST WITH ORGANIZATION SECURITY
+    # GET BUSINESS REQUEST WITH ORGANIZATION SECURITY
     # ---------------------------------------------------------
-    if request.user.is_superuser:
-        business_request = get_object_or_404(
-            BusinessRequest,
-            id=request_id,
+
+    request_queryset = (
+        BusinessRequest.objects
+        .select_related(
+            "customer",
+            "customer__organization",
+            "department",
         )
-    else:
+    )
+
+    if not request.user.is_superuser:
         organization = get_user_organization(
             request.user,
             request=request,
@@ -1373,11 +1325,18 @@ def assign_request(request, request_id):
             )
             return redirect("business_requests:dashboard")
 
-        business_request = get_object_or_404(
-            BusinessRequest,
-            id=request_id,
+        request_queryset = request_queryset.filter(
             customer__organization=organization,
         )
+
+    business_request = get_object_or_404(
+        request_queryset,
+        id=request_id,
+    )
+
+    # ---------------------------------------------------------
+    # CHECK DEPARTMENT
+    # ---------------------------------------------------------
 
     if not business_request.department:
         messages.error(
@@ -1388,6 +1347,10 @@ def assign_request(request, request_id):
             "business_requests:request_detail",
             request_id=request_id,
         )
+
+    # ---------------------------------------------------------
+    # VALIDATE STAFF SELECTION
+    # ---------------------------------------------------------
 
     staff_id = request.POST.get("staff_id")
 
@@ -1409,6 +1372,7 @@ def assign_request(request, request_id):
     # ---------------------------------------------------------
     # UPDATE ASSIGNMENT
     # ---------------------------------------------------------
+
     RequestAssignment.objects.filter(
         request=business_request,
         is_current=True,
@@ -1430,6 +1394,7 @@ def assign_request(request, request_id):
     # ---------------------------------------------------------
     # UPDATE OR CREATE WORKFLOW STEP
     # ---------------------------------------------------------
+
     workflow_step = (
         WorkflowStep.objects
         .filter(
@@ -1463,6 +1428,7 @@ def assign_request(request, request_id):
     # ---------------------------------------------------------
     # NOTIFY ASSIGNED STAFF ON WHATSAPP
     # ---------------------------------------------------------
+
     staff_contact = StaffContact.objects.filter(
         user=staff_user
     ).first()
@@ -1506,10 +1472,12 @@ def assign_request(request, request_id):
             staff_name = (
                 staff_user.get_full_name() or staff_user.username
             )
+
             request_subject = (
                 getattr(business_request, "subject", "")
                 or f"Request #{business_request.id}"
             )
+
             customer = business_request.customer
 
             notification_text = (
@@ -1547,16 +1515,19 @@ def assign_request(request, request_id):
                         "status_code",
                         "no response",
                     )
+
                     response_text = getattr(
                         whatsapp_response,
                         "text",
                         "",
                     )
+
                     print(
                         "STAFF WHATSAPP NOTIFICATION FAILED:",
                         response_status,
                         response_text,
                     )
+
                     messages.warning(
                         request,
                         (
@@ -1565,6 +1536,7 @@ def assign_request(request, request_id):
                             "Check the server console for details."
                         ),
                     )
+
             except Exception:
                 import logging
 
@@ -1573,6 +1545,7 @@ def assign_request(request, request_id):
                     business_request.id,
                     staff_user.id,
                 )
+
                 messages.warning(
                     request,
                     (
@@ -1584,6 +1557,7 @@ def assign_request(request, request_id):
     # ---------------------------------------------------------
     # SUCCESS
     # ---------------------------------------------------------
+
     staff_name = (
         staff_user.get_full_name() or staff_user.username
     )
@@ -1600,7 +1574,6 @@ def assign_request(request, request_id):
         "business_requests:request_detail",
         request_id=request_id,
     )
-
 
 @login_required
 def staff_management(request):
@@ -3895,7 +3868,7 @@ def organization_create_owner(request, organization_id):
                 from django.utils.encoding import force_bytes
                 from django.utils.http import urlsafe_base64_encode
                 from django.contrib.auth.tokens import default_token_generator
-                from django.utils import timezone
+
 
 
 
