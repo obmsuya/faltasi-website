@@ -73,111 +73,6 @@ def _matching_q(fields, tokens):
     return condition
 
 
-def search_products(organization, query, limit=DEFAULT_LIMIT):
-    """
-    Search WhatsApp-visible products for one organization.
-
-    Filtering occurs in the database before results are ranked.
-    No AI API calls are made.
-    """
-    tokens = _tokens(query)
-
-    if not tokens or organization is None:
-        return []
-
-    limit = _safe_limit(limit)
-
-    fields = [
-        "name",
-        "sku",
-        "barcode",
-        "brand",
-        "model",
-        "manufacturer",
-        "short_description",
-        "description",
-    ]
-
-    queryset = Product.objects.filter(
-        organization=organization,
-        is_active=True,
-        deleted_at__isnull=True,
-        show_on_whatsapp=True,
-    ).filter(_matching_q(fields, tokens))
-
-    # JSON specifications are included in ranking after database filtering.
-    candidates = list(queryset[:200])
-    normalized_query = str(query).strip().lower()
-    results = []
-
-    for product in candidates:
-        specifications = product.specifications or {}
-        additional_information = product.additional_information or {}
-
-        searchable_values = {
-            "name": product.name or "",
-            "sku": product.sku or "",
-            "barcode": product.barcode or "",
-            "brand": product.brand or "",
-            "model": product.model or "",
-            "manufacturer": product.manufacturer or "",
-            "short_description": product.short_description or "",
-            "description": product.description or "",
-            "specifications": str(specifications),
-            "additional_information": str(additional_information),
-        }
-
-        searchable_text = " ".join(
-            str(value) for value in searchable_values.values()
-        ).lower()
-
-        matched_tokens = [
-            token for token in tokens if token in searchable_text
-        ]
-
-        if not matched_tokens:
-            continue
-
-        score = len(matched_tokens)
-        name = (product.name or "").lower()
-
-        if normalized_query == name:
-            score += 20
-        elif normalized_query in name:
-            score += 10
-
-        for field in ("sku", "barcode", "model", "brand"):
-            value = str(searchable_values[field]).lower()
-
-            if value and any(token in value for token in tokens):
-                score += 3
-
-        results.append({
-            "source": "product",
-            "id": product.pk,
-            "name": product.name,
-            "sku": product.sku,
-            "brand": product.brand,
-            "model": product.model,
-            "description": (
-                product.short_description or product.description
-            ),
-            "price": (
-                str(product.price)
-                if product.price is not None else None
-            ),
-            "currency": product.currency,
-            "unit": product.unit,
-            "availability": product.availability,
-            "specifications": specifications,
-            "additional_information": additional_information,
-            "score": score,
-        })
-
-    results.sort(
-        key=lambda item: (-item["score"], item["name"].lower())
-    )
-    return results[:limit]
 
 
 def search_document_chunks(
@@ -357,8 +252,8 @@ def retrieve_knowledge(
     Retrieve organization-specific products, document passages, and
     configured request categories for the AI knowledge assistant.
 
-    Sales product retrieval uses its own visibility rules. The existing
-    search_products() function remains unchanged for its other callers.
+    Product retrieval uses the shared canonical organization-scoped
+    product search engine.
     """
     if organization is None or not _tokens(query):
         return {
@@ -370,7 +265,7 @@ def retrieve_knowledge(
 
     return {
         "query": str(query)[:MAX_QUERY_LENGTH],
-        "products": search_sales_products(
+        "products": search_organization_products(
             organization,
             query,
             limit=product_limit,
@@ -408,66 +303,95 @@ def _relevance_tokens(value):
     }
 
 
-def search_sales_products(organization, query, limit=DEFAULT_LIMIT):
-    """
-    Search products for the internal AI sales assistant using relevance
-    thresholds so a single incidental word does not return unrelated items.
 
-    Visibility remains organization-scoped, active, not deleted, and
-    WhatsApp-approved. Returns selling information only.
+
+
+def search_organization_products(organization, query, limit=DEFAULT_LIMIT):
+    """
+    Canonical organization-scoped product search.
+
+    Used by customer-facing WhatsApp product discovery and internal
+    Product Knowledge retrieval.
+
+    Returns selling information only. Never returns cost price or
+    other internal financial fields.
     """
     tokens = _tokens(query)
 
     if not tokens or organization is None:
         return []
 
-    # Remove conversational words that should not influence product matching.
+    # Remove conversational words that should not influence matching.
     ignored_tokens = {
         "a", "an", "and", "are", "available", "can", "do", "for",
         "me", "my", "of", "please", "show", "the", "to", "what",
         "which", "with", "would", "you", "your", "find", "get", "need",
+
+        # Common Swahili conversational words.
+        "nataka", "kununua", "ninataka", "ninahitaji", "nahitaji",
+        "naomba", "tafadhali", "bei", "ya", "za", "na", "ni",
+        "kwa", "yangu", "una", "unazo", "onyesha",
     }
+
     query_tokens = {
         _normalize_relevance_token(token)
         for token in tokens
         if token not in ignored_tokens
     }
+
     if not query_tokens:
-        query_tokens = {_normalize_relevance_token(token) for token in tokens}
+        return []
 
     limit = _safe_limit(limit)
 
     fields = [
-        "name", "sku", "barcode", "brand", "model", "manufacturer",
-        "short_description", "description", "category__name",
-        "_specifications_text", "_additional_information_text",
+        "name",
+        "sku",
+        "barcode",
+        "brand",
+        "model",
+        "manufacturer",
+        "short_description",
+        "description",
+        "category__name",
+        "_specifications_text",
+        "_additional_information_text",
     ]
 
+    # Strict organization and product visibility boundaries.
     queryset = Product.objects.filter(
         organization=organization,
         is_active=True,
         deleted_at__isnull=True,
         show_on_whatsapp=True,
     ).annotate(
-        _specifications_text=Cast("specifications", output_field=CharField()),
+        _specifications_text=Cast(
+            "specifications",
+            output_field=CharField(),
+        ),
         _additional_information_text=Cast(
-            "additional_information", output_field=CharField()
+            "additional_information",
+            output_field=CharField(),
         ),
     ).filter(
         _matching_q(fields, tokens)
-    ).select_related("category").order_by("pk")
+    ).select_related(
+        "category"
+    ).order_by("pk")
 
     candidates = list(queryset[:500])
     results = []
 
-    # A longer, specific query must match at least half its meaningful terms
-    # and at least two terms. Short searches such as "router" remain useful.
     minimum_matches = 2 if len(query_tokens) >= 3 else 1
-    required_coverage = 0.5 if len(query_tokens) >= 3 else 1 / len(query_tokens)
+    required_coverage = (
+        0.5 if len(query_tokens) >= 3
+        else 1 / len(query_tokens)
+    )
 
     for product in candidates:
         specifications = product.specifications or {}
         additional_information = product.additional_information or {}
+
         searchable_values = {
             "name": product.name or "",
             "sku": product.sku or "",
@@ -479,30 +403,29 @@ def search_sales_products(organization, query, limit=DEFAULT_LIMIT):
             "description": product.description or "",
             "specifications": str(specifications),
             "additional_information": str(additional_information),
-            "category": product.category.name if product.category else "",
+            "category": (
+                product.category.name if product.category else ""
+            ),
         }
 
         field_tokens = {
             field: _relevance_tokens(value)
             for field, value in searchable_values.items()
         }
+
         all_product_tokens = set().union(*field_tokens.values())
         matched_tokens = query_tokens.intersection(all_product_tokens)
         coverage = len(matched_tokens) / len(query_tokens)
 
-        if len(matched_tokens) < minimum_matches or coverage < required_coverage:
-            continue
-
-        # If the query contains the product's explicit brand, reward that
-        # match strongly and do not let a competing product win on generic
-        # words such as "network" or "switch".
-        brand_tokens = field_tokens["brand"]
-        name_tokens = field_tokens["name"]
-        matched_brand_tokens = query_tokens.intersection(brand_tokens)
-        if matched_brand_tokens and not matched_brand_tokens.issubset(
-            brand_tokens.union(name_tokens)
+        if (
+            len(matched_tokens) < minimum_matches
+            or coverage < required_coverage
         ):
             continue
+
+
+        brand_tokens = field_tokens["brand"]
+        name_tokens = field_tokens["name"]
 
         score = len(matched_tokens) * 10
         score += len(query_tokens.intersection(name_tokens)) * 5
@@ -518,18 +441,30 @@ def search_sales_products(organization, query, limit=DEFAULT_LIMIT):
             "brand": product.brand,
             "model": product.model,
             "category": searchable_values["category"] or None,
-            "description": product.short_description or product.description,
-            "price": str(product.price) if product.price is not None else None,
+            "description": (
+                product.short_description or product.description
+            ),
+            "price": (
+                str(product.price)
+                if product.price is not None else None
+            ),
             "currency": product.currency,
             "unit": product.unit,
             "availability": product.availability,
+            "availability_display": product.get_availability_display(),
             "specifications": specifications,
             "additional_information": additional_information,
             "image_url": get_public_product_image_url(product),
+            "display_order": product.display_order,
             "score": score,
         })
 
     results.sort(
-        key=lambda item: (-item["score"], (item["name"] or "").lower())
+        key=lambda item: (
+            -item["score"],
+            item["display_order"],
+            (item["name"] or "").lower(),
+        )
     )
+
     return results[:limit]

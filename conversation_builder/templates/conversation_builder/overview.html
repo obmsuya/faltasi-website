@@ -1,0 +1,154 @@
+{% extends "main/base_business.html" %}
+
+{% block title %}WhatsApp Conversation Builder | Faltasi{% endblock %}
+
+{% block page_heading %}WhatsApp Conversation Builder{% endblock %}
+
+{% block content %}
+
+<div style="max-width: 1100px; margin: 0 auto;">
+
+    <div style="margin-bottom: 24px;">
+        <h2>WhatsApp Conversation Builder</h2>
+        <p>
+            Configure how your organization handles customer conversations
+            through WhatsApp.
+        </p>
+        <p>
+            <strong>Organization:</strong> {{ organization.name }}
+        </p>
+        <p>
+            <a href="{% url 'conversation_builder:product_conversations' %}">
+                Manage Product Conversations &rarr;
+            </a>
+        </p>
+    </div>
+
+    {% if not configuration %}
+
+        <div class="pa-card" style="padding: 24px;">
+            <h3>No conversation configuration yet</h3>
+            <p>
+                Create your organization's first configuration to begin
+                preparing its WhatsApp conversation experience.
+            </p>
+
+            {% if can_edit %}
+                <form method="post"
+                      action="{% url 'conversation_builder:create_configuration' %}">
+                    {% csrf_token %}
+                    <button type="submit" class="pa-button">
+                        Create Configuration
+                    </button>
+                </form>
+            {% endif %}
+        </div>
+
+    {% else %}
+
+        <div class="pa-card" style="padding: 24px; margin-bottom: 20px;">
+
+            <h3>Configuration Status</h3>
+
+            <p>
+                <strong>Configuration:</strong>
+                {{ configuration.organization.name }}
+            </p>
+
+            <p>
+                <strong>Enabled:</strong>
+                {{ configuration.is_enabled|yesno:"Yes,No" }}
+            </p>
+
+            <p>
+                <strong>Published version:</strong>
+                {% if configuration.published_version %}
+                    Version {{ configuration.published_version.version_number }}
+                {% else %}
+                    Not published
+                {% endif %}
+            </p>
+
+            <p>
+                <strong>Current draft:</strong>
+                {% if configuration.draft_version %}
+                    Version {{ configuration.draft_version.version_number }}
+                {% else %}
+                    No draft available
+                {% endif %}
+            </p>
+
+            {% if can_edit and not configuration.draft_version %}
+                <form method="post"
+                      action="{% url 'conversation_builder:create_draft' %}">
+                    {% csrf_token %}
+                    <button type="submit" class="pa-button">
+                        Create New Draft
+                    </button>
+                </form>
+            {% endif %}
+
+            {% if can_publish and configuration.draft_version %}
+                <form method="post"
+                      action="{% url 'conversation_builder:publish_draft' %}"
+                      style="margin-top: 12px;"
+                      onsubmit="return confirm('Are you sure you want to publish this configuration?');">
+                    {% csrf_token %}
+                    <button type="submit" class="pa-button">
+                        Publish Draft
+                    </button>
+                </form>
+            {% endif %}
+
+        </div>
+
+        <div class="pa-card" style="padding: 24px;">
+
+            <h3>Configuration Versions</h3>
+
+            {% if versions %}
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr>
+                                <th style="text-align: left; padding: 10px;">Version</th>
+                                <th style="text-align: left; padding: 10px;">Status</th>
+                                <th style="text-align: left; padding: 10px;">Created</th>
+                                <th style="text-align: left; padding: 10px;">Published</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for version in versions %}
+                                <tr>
+                                    <td style="padding: 10px;">
+                                        {{ version.version_number }}
+                                    </td>
+                                    <td style="padding: 10px;">
+                                        {{ version.get_status_display }}
+                                    </td>
+                                    <td style="padding: 10px;">
+                                        {{ version.created_at|date:"d M Y H:i" }}
+                                    </td>
+                                    <td style="padding: 10px;">
+                                        {% if version.published_at %}
+                                            {{ version.published_at|date:"d M Y H:i" }}
+                                        {% else %}
+                                            —
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p>No versions found.</p>
+            {% endif %}
+
+        </div>
+
+    {% endif %}
+
+</div>
+
+{% endblock %}

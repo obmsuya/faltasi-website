@@ -107,6 +107,11 @@
                 <span class="pa-nav-icon">✉</span>
                 <span>WhatsApp Conversations</span>
             </a>
+            <a class="pa-nav-link {% if request.resolver_match.app_name == 'conversation_builder' %}is-active{% endif %}"
+                href="{% url 'conversation_builder:overview' %}">
+                 <span class="pa-nav-icon">⚙</span>
+                 <span>Conversation Builder</span>
+            </a>
 
             <a class="pa-nav-link {% if request.resolver_match.app_name == 'product_knowledge' and request.resolver_match.url_name == 'ai_assistant' %}is-active{% endif %}"
                 href="{% url 'product_knowledge:ai_assistant' %}">
@@ -196,8 +201,12 @@
                         {% elif request.resolver_match.app_name == 'customers' %}
                             Customers
 
+                            
                         {% elif request.resolver_match.app_name == 'whatsapp' %}
                             WhatsApp Conversations
+
+                        {% elif request.resolver_match.app_name == 'conversation_builder' %}
+                            WhatsApp Conversation Builder
 
                         {% elif request.resolver_match.url_name == 'dashboard' or request.resolver_match.url_name == 'request_detail' or request.resolver_match.url_name == 'my_requests' %}
                             Business Requests

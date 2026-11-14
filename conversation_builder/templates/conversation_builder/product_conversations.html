@@ -1,0 +1,152 @@
+
+{% extends "main/base_business.html" %}
+
+{% block title %}Product Conversations | Faltasi{% endblock %}
+
+{% block page_heading %}Product Conversations{% endblock %}
+
+{% block content %}
+
+<div style="max-width: 1100px; margin: 0 auto;">
+
+    <div style="margin-bottom: 24px;">
+        <h2>Product Conversations</h2>
+
+        <p>
+            Manage WhatsApp conversations for individual products.
+            Each product can have its own questions and AI instructions.
+        </p>
+
+        <p>
+            <strong>Organization:</strong> {{ organization.name }}
+        </p>
+
+        <a href="{% url 'conversation_builder:overview' %}">
+            &larr; General Conversation Configuration
+        </a>
+    </div>
+
+    <div class="pa-card" style="padding: 24px;">
+
+        <h3>WhatsApp-Enabled Products</h3>
+
+        {% if product_rows %}
+
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse;">
+
+                    <thead>
+                        <tr>
+                            <th style="text-align:left; padding:10px;">Product</th>
+                            <th style="text-align:left; padding:10px;">Configuration</th>
+                            <th style="text-align:left; padding:10px;">Published</th>
+                            <th style="text-align:left; padding:10px;">Draft</th>
+                            <th style="text-align:left; padding:10px;">Action</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {% for row in product_rows %}
+                            <tr>
+                                <td style="padding:10px;">
+                                    <strong>{{ row.product.name }}</strong>
+                                </td>
+
+                                <td style="padding:10px;">
+                                    {% if row.configuration %}
+                                        {{ row.configuration.is_enabled|yesno:"Enabled,Disabled" }}
+                                    {% else %}
+                                        Not configured
+                                    {% endif %}
+                                </td>
+
+                                <td style="padding:10px;">
+                                    {% if row.configuration and row.configuration.published_version %}
+                                        Version {{ row.configuration.published_version.version_number }}
+                                    {% else %}
+                                        Not published
+                                    {% endif %}
+                                </td>
+
+                                <td style="padding:10px;">
+                                    {% if row.configuration and row.configuration.draft_version %}
+                                        Version {{ row.configuration.draft_version.version_number }}
+                                    {% else %}
+                                        No draft
+                                    {% endif %}
+                                </td>
+
+                                <td style="padding:10px;">
+
+                                    {% if not row.configuration and can_edit %}
+
+                                        <form method="post"
+                                              action="{% url 'conversation_builder:create_product_configuration' %}">
+                                            {% csrf_token %}
+
+                                            <input type="hidden"
+                                                   name="product_id"
+                                                   value="{{ row.product.pk }}">
+
+                                            <button type="submit" class="pa-button">
+                                                Create Configuration
+                                            </button>
+                                        </form>
+
+                                    {% elif row.configuration and can_edit %}
+
+                                        {% if row.configuration.draft_version %}
+
+                                            <a href="{% url 'conversation_builder:edit_product_configuration' row.configuration.pk %}"
+                                               class="pa-button"
+                                               style="display:inline-block; text-decoration:none;">
+                                                Edit Configuration
+                                            </a>
+
+                                        {% else %}
+
+                                            <form method="post"
+                                                  action="{% url 'conversation_builder:create_product_draft' row.configuration.pk %}">
+
+                                                {% csrf_token %}
+
+                                                <button type="submit" class="pa-button">
+                                                    Create Draft
+                                                </button>
+
+                                            </form>
+
+                                        {% endif %}
+
+                                    {% elif row.configuration %}
+
+                                        Configuration created
+
+                                    {% else %}
+
+                                        No access
+
+                                    {% endif %}
+
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+
+                </table>
+            </div>
+
+        {% else %}
+
+            <p>
+                No eligible WhatsApp products were found.
+                Check that your products are active and enabled for WhatsApp.
+            </p>
+
+        {% endif %}
+
+    </div>
+
+</div>
+
+{% endblock %}

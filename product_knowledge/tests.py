@@ -22,8 +22,7 @@ from .processing import (
 )
 
 from .search import (
-    search_products,
-    search_sales_products,
+    search_organization_products,
     search_document_chunks,
     get_request_categories,
     retrieve_knowledge,
@@ -296,7 +295,7 @@ class KnowledgeSearchTests(TestCase):
             is_active=True,
         )
 
-        results = search_products(
+        results = search_organization_products(
             self.organization,
             "Network Router",
         )
@@ -315,7 +314,7 @@ class KnowledgeSearchTests(TestCase):
             is_active=True,
         )
 
-        results = search_products(
+        results = search_organization_products(
             self.organization,
             "Network Router",
         )
@@ -337,7 +336,7 @@ class KnowledgeSearchTests(TestCase):
             show_on_whatsapp=False,
         )
 
-        results = search_products(
+        results = search_organization_products(
             self.organization,
             "Router",
         )
@@ -353,9 +352,104 @@ class KnowledgeSearchTests(TestCase):
         )
 
         self.assertEqual(
-            search_products(self.organization, ""),
+            search_organization_products(self.organization, ""),
             [],
         )
+
+
+    def test_canonical_search_matches_product_name_brand_and_model(self):
+        product = Product.objects.create(
+            organization=self.organization,
+            name="HP EliteBook 840 G8",
+            sku="HP-840-G8",
+            brand="HP",
+            model="EliteBook 840 G8",
+            price="850000.00",
+            currency="TZS",
+            show_on_whatsapp=True,
+            is_active=True,
+        )
+
+        results = search_organization_products(
+            self.organization,
+            "HP EliteBook 840 G8",
+        )
+
+        self.assertTrue(results)
+        self.assertEqual(results[0]["id"], product.pk)
+        self.assertEqual(results[0]["name"], product.name)
+        self.assertEqual(results[0]["sku"], product.sku)
+        self.assertEqual(results[0]["brand"], product.brand)
+        self.assertEqual(results[0]["model"], product.model)
+        self.assertEqual(results[0]["price"], "850000.00")
+        self.assertIn("image_url", results[0])
+        self.assertIn("availability_display", results[0])
+        self.assertNotIn("cost_price", results[0])
+
+    def test_canonical_search_handles_swahili_product_query(self):
+        product = Product.objects.create(
+            organization=self.organization,
+            name="HP Laptop",
+            brand="HP",
+            show_on_whatsapp=True,
+            is_active=True,
+        )
+
+        results = search_organization_products(
+            self.organization,
+            "Nataka kununua HP Laptop",
+        )
+
+        self.assertTrue(results)
+        self.assertEqual(results[0]["id"], product.pk)
+
+    def test_canonical_search_excludes_other_organizations(self):
+        Product.objects.create(
+            organization=self.other_organization,
+            name="Network Router",
+            show_on_whatsapp=True,
+            is_active=True,
+        )
+
+        results = search_organization_products(
+            self.organization,
+            "Network Router",
+        )
+
+        self.assertEqual(results, [])
+
+    def test_canonical_search_excludes_inactive_deleted_and_hidden_products(self):
+        from django.utils import timezone
+
+        Product.objects.create(
+            organization=self.organization,
+            name="Inactive Router",
+            is_active=False,
+            show_on_whatsapp=True,
+        )
+
+        Product.objects.create(
+            organization=self.organization,
+            name="Deleted Router",
+            is_active=True,
+            show_on_whatsapp=True,
+            deleted_at=timezone.now(),
+        )
+
+        Product.objects.create(
+            organization=self.organization,
+            name="Hidden Router",
+            is_active=True,
+            show_on_whatsapp=False,
+        )
+
+        results = search_organization_products(
+            self.organization,
+            "Router",
+        )
+
+        self.assertEqual(results, [])
+
 
     def test_document_search_returns_matching_chunk(self):
         document = ProductKnowledgeDocument.objects.create(
@@ -668,6 +762,8 @@ class KnowledgeSearchTests(TestCase):
             result["context_text"],
         )
 
+
+
 from unittest.mock import Mock, patch
 
 from django.test import TestCase
@@ -830,7 +926,7 @@ class AIStaffServiceTests(TestCase):
             show_on_whatsapp=False,
         )
 
-        results = search_sales_products(self.organization, "Router")
+        results = search_organization_products(self.organization, "Router")
 
         self.assertEqual(results, [])
 
@@ -1019,7 +1115,7 @@ class AISalesProductSearchTests(TestCase):
     def test_returns_matching_active_product(self):
         product = self.create_product("Network Router")
 
-        results = search_sales_products(
+        results = search_organization_products(
             self.organization,
             "Network Router",
         )
@@ -1034,7 +1130,7 @@ class AISalesProductSearchTests(TestCase):
             organization=self.other_organization,
         )
 
-        results = search_sales_products(
+        results = search_organization_products(
             self.organization,
             "Network Router",
         )
@@ -1047,7 +1143,7 @@ class AISalesProductSearchTests(TestCase):
             is_active=False,
         )
 
-        results = search_sales_products(
+        results = search_organization_products(
             self.organization,
             "Router",
         )
@@ -1060,7 +1156,7 @@ class AISalesProductSearchTests(TestCase):
             show_on_whatsapp=False,
         )
 
-        results = search_sales_products(
+        results = search_organization_products(
             self.organization,
             "Router",
         )
@@ -1075,7 +1171,7 @@ class AISalesProductSearchTests(TestCase):
             deleted_at=timezone.now(),
         )
 
-        results = search_sales_products(
+        results = search_organization_products(
             self.organization,
             "Router",
         )
@@ -1085,7 +1181,7 @@ class AISalesProductSearchTests(TestCase):
     def test_never_returns_internal_cost_price(self):
         self.create_product("Network Router")
 
-        results = search_sales_products(
+        results = search_organization_products(
             self.organization,
             "Router",
         )
@@ -1098,7 +1194,7 @@ class AISalesProductSearchTests(TestCase):
     def test_empty_query_returns_no_products(self):
         self.create_product("Network Router")
 
-        results = search_sales_products(
+        results = search_organization_products(
             self.organization,
             "",
         )
@@ -1114,7 +1210,7 @@ class AISalesProductSearchTests(TestCase):
             },
         )
 
-        results = search_sales_products(
+        results = search_organization_products(
             self.organization,
             "Wi-Fi 6",
         )
@@ -1130,7 +1226,7 @@ class AISalesProductSearchTests(TestCase):
             },
         )
 
-        results = search_sales_products(
+        results = search_organization_products(
             self.organization,
             "parental control",
         )
@@ -1151,7 +1247,7 @@ class AISalesProductSearchTests(TestCase):
             description="Wireless internet router for home and office.",
         )
 
-        results = search_sales_products(
+        results = search_organization_products(
             self.organization,
             "Show me available TP-Link network switches",
         )
@@ -1164,7 +1260,7 @@ class AISalesProductSearchTests(TestCase):
             description="Wireless internet router for home and office.",
         )
 
-        results = search_sales_products(self.organization, "Wi-Fi router")
+        results = search_organization_products(self.organization, "Wi-Fi router")
 
         self.assertEqual([item["id"] for item in results], [router.pk])
 
@@ -1239,7 +1335,7 @@ class AISalesProductSearchTests(TestCase):
             wholesale_price="110000.00",
         )
 
-        results = search_sales_products(
+        results = search_organization_products(
             self.organization,
             "Router",
         )

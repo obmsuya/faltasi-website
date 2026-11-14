@@ -11,7 +11,7 @@ from decimal import Decimal
 from .search import (
     MAX_QUERY_LENGTH,
     retrieve_knowledge,
-    search_sales_products,
+    search_organization_products,
 )
 
 
@@ -398,7 +398,7 @@ def _is_product_question(query, organization=None):
     # Recognize ordinary names, brands, models, SKUs, and category terms
     # without maintaining a hard-coded vocabulary of product types.
     if organization is not None:
-        return bool(search_sales_products(organization, query, limit=1))
+        return bool(search_organization_products(organization, query, limit=1))
 
     return False
 

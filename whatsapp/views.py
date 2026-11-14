@@ -7,6 +7,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.db import transaction
 
 import json
+import logging
 import requests
 import re
 import hmac
@@ -23,6 +24,7 @@ from .models import (
 )
 from customers.models import Customer
 from products.models import Product
+from product_knowledge.search import search_organization_products
 from business_requests.models import (
     BusinessRequest,
     RequestCategory,
@@ -35,6 +37,9 @@ from django.contrib.auth.models import User
 from django.db.models import Count, Q
 from django.utils import timezone
 from django.core.mail import send_mail
+
+
+logger = logging.getLogger(__name__)
 
 
 def verify_meta_webhook_signature(request):
@@ -4956,6 +4961,77 @@ def webhook(request):
 
 
 
+def _format_product_builder_question(runtime):
+    """Format the next question using the pinned published configuration."""
+    if not runtime or runtime.get("status") != "in_progress":
+        return None
+
+    snapshot = runtime.get("snapshot") or {}
+    question = runtime.get("question")
+
+    if not isinstance(question, dict):
+        return None
+
+    language = snapshot.get("default_language", "auto")
+    translations = question.get("translations") or {}
+
+    # Explicit configured language takes precedence.
+    # Auto currently uses the question's configured base text.
+    question_text = (
+        translations.get(language)
+        if language in ("en", "sw")
+        else None
+    ) or question.get("question", "")
+
+    if not question_text:
+        return None
+
+    parts = []
+
+    welcome = snapshot.get("welcome_message")
+    if welcome and not runtime["namespace"].get("answers") and not runtime["namespace"].get("skipped"):
+        parts.append(welcome)
+
+    parts.append(question_text)
+
+    help_text = question.get("help_text")
+    if help_text:
+        parts.append(help_text)
+
+    options = [
+        option for option in question.get("options", [])
+        if isinstance(option, dict) and option.get("is_active", True)
+    ]
+
+    if options:
+        option_lines = []
+        for index, option in enumerate(options, start=1):
+            option_translations = option.get("translations") or {}
+            label = (
+                option_translations.get(language)
+                if language in ("en", "sw")
+                else None
+            ) or option.get("label") or option.get("value")
+
+            option_lines.append(f"{index}. {label}")
+
+        parts.extend(option_lines)
+
+    if question.get("allow_skip") and not question.get("is_required"):
+        skip_message = question.get("skip_message")
+        if skip_message:
+            parts.append(skip_message)
+
+    return "\n\n".join(str(part) for part in parts if part)
+
+
+def _product_builder_completion_response(runtime):
+    """Return configured completion text, if supplied."""
+    snapshot = (runtime or {}).get("snapshot") or {}
+    return snapshot.get("closing_message") or ""
+
+
+
 def handle_whatsapp_product_conversation(text, organization, state):
     """Handle product selection and follow-up questions in Swahili."""
     if not text or not organization or not state:
@@ -4968,6 +5044,7 @@ def handle_whatsapp_product_conversation(text, organization, state):
     # Only handle replies belonging to this product conversation.
     if step not in {
         "whatsapp_product_selection",
+        "whatsapp_product_builder",
         "whatsapp_product_quantity",
         "whatsapp_product_next_action",
     }:
@@ -5040,6 +5117,8 @@ def handle_whatsapp_product_conversation(text, organization, state):
                 "Tafadhali tuambie bidhaa nyingine unayohitaji."
             )
 
+
+
         save_state(
             "whatsapp_product_quantity",
             "product_quantity",
@@ -5049,10 +5128,143 @@ def handle_whatsapp_product_conversation(text, organization, state):
             },
         )
 
+        # Check whether this product has an enabled published Builder.
+        from conversation_builder.runtime import start_product_conversation
+
+        runtime = start_product_conversation(
+            state,
+            organization,
+            product,
+        )
+
+        # If a published Builder exists, show its first question.
+        if runtime and runtime.get("status") == "in_progress":
+            question_prompt = _format_product_builder_question(runtime)
+
+            if question_prompt:
+                return question_prompt
+
+            return runtime["snapshot"].get("fallback_message") or None
+
+        # Otherwise, continue with the original quantity workflow.
         return (
             f"Asante! Umechagua {product.name}.\n\n"
             "Unahitaji kiasi gani? Tafadhali taja idadi unayohitaji."
         )
+
+
+
+    # STEP 1B: Handle answers to the published Product Conversation Builder.
+    if step == "whatsapp_product_builder":
+        from conversation_builder.runtime import (
+            get_runtime_status,
+            submit_product_question_answers,
+        )
+
+        product_id = data.get("selected_whatsapp_product_id")
+        product = Product.objects.filter(
+            organization=organization,
+            id=product_id,
+            is_active=True,
+            deleted_at__isnull=True,
+            show_on_whatsapp=True,
+        ).first()
+
+        # Do not continue a Builder against a missing or foreign product.
+        if not product:
+            save_state(None, None, {
+                "selected_whatsapp_product_id": None,
+                "selected_whatsapp_product_name": None,
+            })
+            return (
+                "Samahani, bidhaa hii haipatikani kwa sasa. "
+                "Tafadhali tuambie bidhaa nyingine unayohitaji."
+            )
+
+        runtime = get_runtime_status(state, organization, product)
+        if not runtime:
+            return None
+
+        # A completed Builder hands control back to the existing quantity flow.
+        if runtime.get("status") == "completed":
+            save_state("whatsapp_product_quantity", "product_quantity")
+            closing_message = _product_builder_completion_response(runtime)
+            quantity_prompt = (
+                "Unahitaji kiasi gani? Tafadhali taja idadi unayohitaji."
+            )
+            return "\n\n".join(
+                part for part in (closing_message, quantity_prompt) if part
+            )
+
+        question = runtime.get("question")
+        if not isinstance(question, dict) or not question.get("key"):
+            return (runtime.get("snapshot") or {}).get("fallback_message") or None
+
+        # AI extracts multiple facts from one customer message. The pinned
+        # runtime snapshot is passed through; Django remains the validator.
+        answers = {}
+        corrections = {}
+        try:
+            from whatsapp.ai_service import interpret_product_builder_answers
+
+            extraction = interpret_product_builder_answers(
+                text,
+                organization,
+                state,
+                product,
+                runtime,
+            )
+            answers = extraction.get("answers") or {}
+            corrections = extraction.get("corrections") or {}
+        except Exception:
+            # Preserve the existing direct-answer workflow if AI is unavailable.
+            logger.exception(
+                "Product Builder answer extraction failed; using direct answer."
+            )
+
+        if not answers and not corrections:
+            answers = {question["key"]: text}
+
+        result = submit_product_question_answers(
+            state,
+            organization,
+            product,
+            answers,
+            corrections=corrections,
+        )
+
+        # Refresh the pinned runtime after saving/validating the answer.
+        runtime = get_runtime_status(state, organization, product)
+        if not runtime:
+            return None
+
+        if result.get("status") == "completed" or runtime.get("status") == "completed":
+            save_state("whatsapp_product_quantity", "product_quantity")
+            closing_message = _product_builder_completion_response(runtime)
+            quantity_prompt = (
+                "Unahitaji kiasi gani? Tafadhali taja idadi unayohitaji."
+            )
+            return "\n\n".join(
+                part for part in (closing_message, quantity_prompt) if part
+            )
+
+        rejected = result.get("rejected") or []
+        if rejected:
+            current_question = runtime.get("question") or question
+            retry_message = current_question.get("retry_message") or (
+                (runtime.get("snapshot") or {}).get("fallback_message")
+            )
+            question_prompt = _format_product_builder_question(runtime)
+            return "\n\n".join(
+                part for part in (retry_message, question_prompt) if part
+            ) or None
+
+        question_prompt = _format_product_builder_question(runtime)
+        if question_prompt:
+            return question_prompt
+
+        return (runtime.get("snapshot") or {}).get("fallback_message") or None
+
 
     # STEP 2: Capture quantity.
     if step == "whatsapp_product_quantity":
@@ -5144,61 +5356,36 @@ def search_whatsapp_products(text, organization, state=None):
     if not text or not organization:
         return None
 
-    stop_words = {
-        "i", "me", "my", "we", "you", "a", "an", "the", "am",
-        "is", "are", "need", "want", "looking", "for", "please",
-        "can", "could", "do", "have", "get", "buy", "to", "some",
-        "any", "your", "and", "or", "of", "with", "would", "like",
-        "hello", "hi", "hey", "what", "how", "much", "price", "prices",
-    }
-
-    terms = list(dict.fromkeys(
-        word for word in re.findall(r"[a-zA-Z0-9]+", text.lower())
-        if len(word) > 1 and word not in stop_words
-    ))
-
-    if not terms:
-        return None
-
-    fields = (
-        "name", "brand", "model", "sku",
-        "short_description", "description", "category__name",
+    # Use the shared canonical product search engine.
+    search_results = search_organization_products(
+        organization,
+        text,
+        limit=5,
     )
 
-    query = Q()
-    for term in terms:
-        for field in fields:
-            query |= Q(**{f"{field}__icontains": term})
+    if not search_results:
+        return None
 
-    products = Product.objects.filter(
+    # Hydrate canonical results into Product objects.
+    product_ids = [
+        item["id"]
+        for item in search_results
+        if item.get("id") is not None
+    ]
+
+    products_by_id = Product.objects.filter(
         organization=organization,
+        pk__in=product_ids,
         is_active=True,
         deleted_at__isnull=True,
         show_on_whatsapp=True,
-    ).filter(query).select_related("category").distinct()
+    ).select_related("category").in_bulk()
 
-    def score(product):
-        searchable = " ".join((
-            product.name or "",
-            product.brand or "",
-            product.model or "",
-            product.sku or "",
-            product.short_description or "",
-            product.description or "",
-            product.category.name if product.category else "",
-        )).lower()
-
-        result = sum(term in searchable for term in terms)
-
-        if all(term in (product.name or "").lower() for term in terms):
-            result += 10
-
-        return result
-
-    matches = sorted(
-        products,
-        key=lambda p: (-score(p), p.display_order, p.name.lower()),
-    )[:5]
+    matches = [
+        products_by_id[product_id]
+        for product_id in product_ids
+        if product_id in products_by_id
+    ]
 
     if not matches:
         return None

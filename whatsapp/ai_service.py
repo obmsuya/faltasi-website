@@ -243,6 +243,58 @@ def _get_product_context(organization, state):
     return None, products, False
 
 
+def _get_published_product_conversation(organization, product):
+    """
+    Retrieve the immutable published conversation settings for one
+    product, scoped to its owning organization.
+    """
+    if not product:
+        return None
+
+    from conversation_builder.models import (
+        ProductConversationConfiguration,
+    )
+
+    configuration = (
+        ProductConversationConfiguration.objects
+        .select_related("published_version")
+        .filter(
+            organization_id=organization.pk,
+            product_id=product.pk,
+            is_enabled=True,
+            published_version__status="published",
+        )
+        .first()
+    )
+
+    if not configuration:
+        return None
+
+    version = configuration.published_version
+
+    # Protect against an incorrectly linked version.
+    if (
+        not version
+        or version.configuration_id != configuration.pk
+        or version.status != "published"
+    ):
+        return None
+
+    # Use the immutable published snapshot, not draft/live fields.
+    snapshot = version.snapshot
+
+    if not isinstance(snapshot, dict):
+        return None
+
+    return {
+        "version_number": snapshot.get("version_number"),
+        "default_language": snapshot.get("default_language", "auto"),
+        "ai_instructions": str(
+            snapshot.get("ai_instructions", "")
+        ).strip()[:MAX_PRODUCT_TEXT_CHARS],
+    }
+
+
 def _get_recent_history(
     state,
     current_text=None,
@@ -305,6 +357,7 @@ def _build_context(
     selected_product,
     products,
     current_message_id=None,
+    product_conversation=None,
 ):
     """Build the restricted customer-facing AI context."""
     return {
@@ -332,6 +385,7 @@ def _build_context(
                 for product in products
             ],
         },
+        "product_conversation_configuration": product_conversation,
         "customer_message": text,
     }
 
@@ -521,6 +575,32 @@ other
 Use null for product_id when no product is identified.
 
 Use an empty string for answer when the action is workflow_input or other.
+
+PRODUCT-SPECIFIC CONVERSATION CONFIGURATION
+
+The context may contain product_conversation_configuration.
+
+If present:
+
+- Use default_language as the preferred default language.
+- If it is "sw", prefer natural Tanzanian Kiswahili.
+- If it is "en", prefer English.
+- If it is "auto", follow the customer's language.
+- Always understand English, Kiswahili and mixed-language messages.
+
+Treat ai_instructions as additional product-specific guidance only.
+Follow them when relevant, provided they do not conflict with the
+rules in this instruction set.
+
+These instructions must never override:
+- Product data accuracy.
+- Internal data protection.
+- Existing Django workflow rules.
+- The allowed response actions.
+- Any security or validation requirements.
+
+Do not treat configured questions as active workflow steps.
+Only Django can execute and validate business workflows.
 """
 
 
@@ -732,6 +812,10 @@ def interpret_product_message(
                 "product_id": None,
                 "answer": "",
             }
+        product_conversation = _get_published_product_conversation(
+            organization,
+            selected_product,
+        )
 
         context = _build_context(
             text=text,
@@ -740,6 +824,7 @@ def interpret_product_message(
             selected_product=selected_product,
             products=products,
             current_message_id=current_message_id,
+            product_conversation=product_conversation,
         )
 
     except (DatabaseError, ValidationError):
@@ -806,6 +891,264 @@ def interpret_product_message(
         response,
         products,
         selected_product,
+    )
+
+
+# =========================================================
+# PRODUCT CONVERSATION BUILDER: ANSWER EXTRACTION
+# =========================================================
+
+BUILDER_MAX_ANSWER_CHARS = 1000
+
+
+def _parse_product_builder_answers(
+    response,
+    allowed_question_keys,
+    allowed_correction_keys=None,
+):
+    """Strictly validate newly extracted answers and explicit corrections."""
+    status = getattr(response, "status", None)
+    if status is not None and status != "completed":
+        raise WhatsAppAIInvalidResponseError(
+            "The AI response did not complete successfully."
+        )
+
+    output_text = (getattr(response, "output_text", None) or "").strip()
+    if not output_text:
+        raise WhatsAppAIInvalidResponseError("The AI returned an empty response.")
+
+    try:
+        result = json.loads(output_text)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise WhatsAppAIInvalidResponseError("The AI returned invalid JSON.") from exc
+
+    # Accept the previous one-field shape for compatibility with older callers.
+    if not isinstance(result, dict) or set(result) not in (
+        {"answers"},
+        {"answers", "corrections"},
+    ):
+        raise WhatsAppAIInvalidResponseError(
+            "The AI response has an unexpected Builder answer structure."
+        )
+
+    answers = result.get("answers")
+    corrections = result.get("corrections", {})
+    if not isinstance(answers, dict) or not isinstance(corrections, dict):
+        raise WhatsAppAIInvalidResponseError(
+            "Builder answers and corrections must be objects."
+        )
+
+    def clean_values(values, allowed_keys, label):
+        cleaned = {}
+        allowed = set(allowed_keys or ())
+        for key, value in values.items():
+            if not isinstance(key, str) or key not in allowed:
+                raise WhatsAppAIInvalidResponseError(
+                    f"The AI returned an unknown or unavailable {label} key."
+                )
+            if not isinstance(value, str):
+                raise WhatsAppAIInvalidResponseError(
+                    f"Builder {label} values must be text."
+                )
+            value = value.strip()
+            if not value or len(value) > BUILDER_MAX_ANSWER_CHARS:
+                raise WhatsAppAIInvalidResponseError(
+                    f"A Builder {label} is empty or exceeds the permitted length."
+                )
+            cleaned[key] = value
+        return cleaned
+
+    cleaned_answers = clean_values(answers, allowed_question_keys, "answer")
+    cleaned_corrections = clean_values(
+        corrections, allowed_correction_keys, "correction"
+    )
+    if set(cleaned_answers) & set(cleaned_corrections):
+        raise WhatsAppAIInvalidResponseError(
+            "A Builder question cannot be both a new answer and a correction."
+        )
+
+    return {
+        "answers": cleaned_answers,
+        "corrections": cleaned_corrections,
+    }
+
+
+def interpret_product_builder_answers(
+    text,
+    organization,
+    state,
+    product,
+    runtime,
+    *,
+    client=None,
+    current_message_id=None,
+):
+    """Extract only customer-supplied answers for the pinned Builder snapshot.
+
+    Django's Builder runtime remains responsible for eligibility, validation,
+    dependency progression, persistence, and completion.
+    """
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("A customer message is required.")
+    text = text.strip()
+    if len(text) > MAX_MESSAGE_CHARS:
+        raise ValueError("The customer message is too long.")
+    if not organization or not getattr(organization, "pk", None):
+        raise ValueError("A saved organization is required.")
+    if not state or not getattr(state, "pk", None):
+        raise ValueError("A saved conversation state is required.")
+    if not product or not getattr(product, "pk", None):
+        raise ValueError("A saved product is required.")
+    if (
+        not getattr(state, "conversation", None)
+        or state.conversation.organization_id != organization.pk
+        or getattr(product, "organization_id", None) != organization.pk
+    ):
+        raise ValueError("The product conversation does not belong to this organization.")
+    if state.current_step != "whatsapp_product_builder":
+        raise ValueError("The conversation is not in the Product Builder step.")
+    if current_message_id is not None and (
+        isinstance(current_message_id, bool)
+        or not isinstance(current_message_id, int)
+        or current_message_id <= 0
+    ):
+        raise ValueError("Invalid current message ID.")
+    if not isinstance(runtime, dict) or runtime.get("status") != "in_progress":
+        raise ValueError("An active pinned Product Builder runtime is required.")
+
+    snapshot = runtime.get("snapshot")
+    namespace = runtime.get("namespace")
+    if not isinstance(snapshot, dict) or not isinstance(namespace, dict):
+        raise ValueError("The pinned Product Builder snapshot is unavailable.")
+    if namespace.get("version_id") != getattr(runtime.get("version"), "pk", None):
+        raise ValueError("The Product Builder version is not correctly pinned.")
+
+    state_data = dict(state.data or {})
+    if state_data.get("selected_whatsapp_product_id") != product.pk:
+        raise ValueError("The selected product does not match this conversation.")
+
+    saved_answers = namespace.get("answers") or {}
+    skipped = set(namespace.get("skipped") or [])
+    questions = snapshot.get("questions") or []
+    eligible_questions = []
+    correction_questions = []
+    for question in questions:
+        if not isinstance(question, dict) or not question.get("is_active", True):
+            continue
+        key = question.get("key")
+        if not isinstance(key, str) or not key or key in skipped:
+            continue
+        question_context = {
+            "key": key,
+            "question": str(question.get("question") or "")[:1000],
+            "help_text": str(question.get("help_text") or "")[:500],
+            "field_type": str(question.get("field_type") or "text"),
+            "required": bool(question.get("is_required", question.get("required", True))),
+            "display_conditions": question.get("display_conditions") or {},
+            "options": [
+                {"value": str(option.get("value", "")),
+                 "label": str(option.get("label", ""))}
+                for option in (question.get("options") or [])
+                if isinstance(option, dict) and option.get("is_active", True)
+            ],
+        }
+        if key in saved_answers:
+            correction_questions.append({
+                **question_context,
+                "current_answer": str(saved_answers[key])[:1000],
+            })
+        else:
+            eligible_questions.append(question_context)
+
+    allowed_keys = {question["key"] for question in eligible_questions}
+    allowed_correction_keys = {
+        question["key"] for question in correction_questions
+    }
+    if not allowed_keys and not allowed_correction_keys:
+        return {"answers": {}, "corrections": {}}
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    model = os.getenv("OPENAI_MODEL")
+    if not api_key or not model:
+        raise WhatsAppAIConfigurationError(
+            "OPENAI_API_KEY and OPENAI_MODEL must be configured."
+        )
+
+    context = {
+        "organization": {"id": organization.pk, "name": str(organization)},
+        "product": {"id": product.pk, "name": str(product.name)},
+        "conversation": {
+            "recent_messages": _get_recent_history(
+                state, current_text=text, current_message_id=current_message_id
+            ),
+            "saved_answers": saved_answers,
+            "skipped_questions": sorted(skipped),
+        },
+        "current_question": (runtime.get("question") or {}).get("key"),
+        "available_questions": eligible_questions,
+        "previously_answered_questions": correction_questions,
+        "customer_message": text,
+        "required_response_format": "JSON",
+    }
+    
+    instructions = """You extract customer-provided answers for a WhatsApp product enquiry.
+
+    IMPORTANT: Your response MUST be valid JSON. Return JSON only, with no
+    Markdown, comments, or explanations outside the JSON object.
+
+    The JSON object must have exactly this structure:
+    {"answers": {"question_key": "answer text"},
+     "corrections": {"question_key": "corrected answer text"}}
+
+    Understand English, natural Tanzanian Kiswahili, and mixed Kiswahili-English.
+    Use only question keys listed in available_questions for new answers.
+    Extract multiple new answers when this message clearly supplies them.
+    Previously answered questions are listed separately in
+    previously_answered_questions with their current_answer.
+    Only put a previously answered question in corrections when the customer
+    clearly asks to change, correct, replace, or update that specific detail.
+    A mere mention or repetition of an existing detail is NOT a correction.
+    Never put a key in both answers and corrections.
+    Do not guess, infer missing details, or invent answers. Omit uncertain or absent
+    details. Respect display_conditions for new answers. Preserve the customer's
+    meaning and values as text. Do not validate, ask questions, answer product
+    enquiries, or perform any business operation.
+    If there is no clear new answer or explicit correction, return
+    {"answers": {}, "corrections": {}}."""
+
+    try:
+        if client is None:
+            client = OpenAI(api_key=api_key, timeout=30.0, max_retries=1)
+        response = client.responses.create(
+            model=model,
+            instructions=instructions,
+            input=json.dumps(context, ensure_ascii=False, default=str),
+            text={"format": {"type": "json_object"}},
+            max_output_tokens=MAX_OUTPUT_TOKENS,
+        )
+    except AuthenticationError as exc:
+        logger.exception("WhatsApp Builder AI authentication failed.")
+        raise WhatsAppAIConfigurationError(
+            "The AI provider rejected the configured credentials."
+        ) from exc
+    except RateLimitError as exc:
+        logger.warning("WhatsApp Builder AI rate limit reached.")
+        raise WhatsAppAIUnavailableError("The AI service is temporarily busy.") from exc
+    except (APITimeoutError, APIConnectionError, APIStatusError) as exc:
+        logger.exception("WhatsApp Builder AI provider request failed.")
+        raise WhatsAppAIUnavailableError(
+            "The AI service is temporarily unavailable."
+        ) from exc
+    except Exception as exc:
+        logger.exception("Unexpected WhatsApp Builder AI error.")
+        raise WhatsAppAIUnavailableError(
+            "The AI service could not process this message."
+        ) from exc
+
+    return _parse_product_builder_answers(
+        response,
+        allowed_keys,
+        allowed_correction_keys,
     )
 
 

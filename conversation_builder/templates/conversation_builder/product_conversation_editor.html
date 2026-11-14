@@ -1,0 +1,462 @@
+{% extends "main/base_business.html" %}
+
+{% block title %}Edit Product Conversation | Faltasi{% endblock %}
+
+{% block page_heading %}Edit Product Conversation{% endblock %}
+
+{% block content %}
+
+<div style="max-width: 1100px; margin: 0 auto;">
+
+    <!-- Header -->
+
+    <div style="margin-bottom: 24px;">
+
+        <h2>Product Conversation Configuration</h2>
+
+        <p>
+
+            Configure how the AI assistant communicates with customers
+
+            about this specific product through WhatsApp.
+
+        </p>
+
+        <p>
+
+            <strong>Organization:</strong> {{ organization.name }}
+
+        </p>
+
+        <p>
+
+            <strong>Product:</strong> {{ product.name }}
+
+        </p>
+
+        <p>
+
+            <strong>Draft Version:</strong>
+
+            Version {{ draft.version_number }}
+
+        </p>
+
+        <a href="{% url 'conversation_builder:product_conversations' %}">
+
+            &larr; Back to Product Conversations
+
+        </a>
+
+    </div>
+
+    <!-- Configuration Information -->
+
+    <div class="pa-card" style="padding: 24px; margin-bottom: 24px;">
+
+        <h3>Configuration Details</h3>
+
+        <p>
+
+            <strong>Status:</strong> Draft
+
+        </p>
+
+        <p>
+
+            <strong>Configuration:</strong>
+
+            {{ configuration.is_enabled|yesno:"Enabled,Disabled" }}
+
+        </p>
+
+        <p style="color: #666;">
+
+            Changes made here affect this product's conversation
+
+            configuration only. They do not modify your general
+
+            WhatsApp conversation configuration.
+
+        </p>
+
+    </div>
+
+    {% if can_edit %}
+
+        <form method="post">
+
+            {% csrf_token %}
+
+            <!-- Language Settings -->
+
+            <div class="pa-card" style="padding: 24px; margin-bottom: 24px;">
+
+                <h3>1. Language Settings</h3>
+
+                <p>
+
+                    Select the default language used by the AI
+
+                    when communicating with customers.
+
+                </p>
+
+                <div style="margin-top: 16px;">
+
+                    <label for="default_language">
+
+                        <strong>Default Language</strong>
+
+                    </label>
+
+                    <select
+
+                        name="default_language"
+
+                        id="default_language"
+
+                        required
+
+                        style="display: block; width: 100%; max-width: 500px;
+
+                               padding: 10px; margin-top: 8px;
+
+                               border: 1px solid #ccc; border-radius: 6px;"
+
+                    >
+
+                        {% for value, label in draft.LANGUAGE_CHOICES %}
+
+                            <option
+
+                                value="{{ value }}"
+
+                                {% if draft.default_language == value %}selected{% endif %}
+
+                            >
+
+                                {{ label }}
+
+                            </option>
+
+                        {% endfor %}
+
+                    </select>
+
+                    <small style="color: #666; display: block; margin-top: 8px;">
+
+                        The AI should also respect the language used by the
+
+                        customer when responding.
+
+                    </small>
+
+                </div>
+
+            </div>
+
+            <!-- Customer Messages -->
+
+            <div class="pa-card" style="padding: 24px; margin-bottom: 24px;">
+
+                <h3>2. Customer Conversation Messages</h3>
+
+                <p>
+
+                    Configure the messages used at different stages
+
+                    of the customer conversation.
+
+                </p>
+
+                <!-- Welcome Message -->
+
+                <div style="margin-top: 20px;">
+
+                    <label for="welcome_message">
+
+                        <strong>Welcome Message</strong>
+
+                    </label>
+
+                    <p style="color: #666; font-size: 13px;">
+
+                        The initial message when a customer starts
+
+                        a conversation about this product.
+
+                    </p>
+
+                    <textarea
+
+                        name="welcome_message"
+
+                        id="welcome_message"
+
+                        rows="4"
+
+                        style="width: 100%; padding: 12px;
+
+                               border: 1px solid #ccc; border-radius: 6px;
+
+                               box-sizing: border-box;"
+
+                    >{{ draft.welcome_message }}</textarea>
+
+                </div>
+
+                <!-- Fallback Message -->
+
+                <div style="margin-top: 20px;">
+
+                    <label for="fallback_message">
+
+                        <strong>Fallback Message</strong>
+
+                    </label>
+
+                    <p style="color: #666; font-size: 13px;">
+
+                        The response used when the AI cannot understand
+
+                        a customer's question or does not have enough
+
+                        information.
+
+                    </p>
+
+                    <textarea
+
+                        name="fallback_message"
+
+                        id="fallback_message"
+
+                        rows="4"
+
+                        style="width: 100%; padding: 12px;
+
+                               border: 1px solid #ccc; border-radius: 6px;
+
+                               box-sizing: border-box;"
+
+                    >{{ draft.fallback_message }}</textarea>
+
+                </div>
+
+                <!-- Closing Message -->
+
+                <div style="margin-top: 20px;">
+
+                    <label for="closing_message">
+
+                        <strong>Closing Message</strong>
+
+                    </label>
+
+                    <p style="color: #666; font-size: 13px;">
+
+                        The message used when concluding a customer
+
+                        conversation.
+
+                    </p>
+
+                    <textarea
+
+                        name="closing_message"
+
+                        id="closing_message"
+
+                        rows="4"
+
+                        style="width: 100%; padding: 12px;
+
+                               border: 1px solid #ccc; border-radius: 6px;
+
+                               box-sizing: border-box;"
+
+                    >{{ draft.closing_message }}</textarea>
+
+                </div>
+
+                <!-- Handover Message -->
+
+                <div style="margin-top: 20px;">
+
+                    <label for="handover_message">
+
+                        <strong>Human Handover Message</strong>
+
+                    </label>
+
+                    <p style="color: #666; font-size: 13px;">
+
+                        The message sent when a conversation needs
+
+                        to be transferred to a human staff member.
+
+                    </p>
+
+                    <textarea
+
+                        name="handover_message"
+
+                        id="handover_message"
+
+                        rows="4"
+
+                        style="width: 100%; padding: 12px;
+
+                               border: 1px solid #ccc; border-radius: 6px;
+
+                               box-sizing: border-box;"
+
+                    >{{ draft.handover_message }}</textarea>
+
+                </div>
+
+            </div>
+
+            <!-- AI Instructions -->
+
+            <div class="pa-card" style="padding: 24px; margin-bottom: 24px;">
+
+                <h3>3. Product-Specific AI Instructions</h3>
+
+                <p>
+
+                    Define how the AI assistant should understand,
+
+                    explain and respond to questions about this product.
+
+                </p>
+
+                <p style="color: #666; font-size: 13px;">
+
+                    Include product knowledge, features, specifications,
+
+                    pricing guidance, availability information,
+
+                    customer questions and response guidelines.
+
+                </p>
+
+                <label for="ai_instructions">
+
+                    <strong>AI Instructions</strong>
+
+                </label>
+
+                <textarea
+
+                    name="ai_instructions"
+
+                    id="ai_instructions"
+
+                    rows="14"
+
+                    style="width: 100%; padding: 12px;
+
+                           border: 1px solid #ccc; border-radius: 6px;
+
+                           box-sizing: border-box; margin-top: 8px;"
+
+                >{{ draft.ai_instructions }}</textarea>
+
+            </div>
+
+            <!-- Actions -->
+
+            <div class="pa-card"
+
+                 style="padding: 20px; margin-bottom: 24px;">
+
+                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+
+                    <button type="submit" class="pa-button">
+
+                        Save Draft
+
+                    </button>
+
+                    <a
+
+                        href="{% url 'conversation_builder:product_conversations' %}"
+
+                        class="pa-button"
+
+                        style="display: inline-block; text-decoration: none;
+
+                               background: #666;"
+
+                    >
+
+                        Cancel
+
+                    </a>
+
+                </div>
+
+                <p style="font-size: 13px; color: #666; margin-top: 16px;">
+
+                    Saving updates the current draft. It does not publish
+
+                    the configuration or change the currently published
+
+                    version.
+
+                </p>
+
+            </div>
+
+        </form>
+
+        {% if can_publish %}
+            <div class="pa-card" style="padding: 24px; margin-bottom: 24px;">
+                <h3>4. Publish Product Configuration</h3>
+
+                <p>
+                    Publishing activates this product conversation draft.
+                    If a previous version is published, it will be archived.
+                    This does not change the general WhatsApp conversation configuration.
+                </p>
+
+                <p><strong>Draft:</strong> Version {{ draft.version_number }}</p>
+
+                <form method="post"
+                      action="{% url 'conversation_builder:publish_product_draft' configuration.pk %}">
+                    {% csrf_token %}
+                    <button type="submit" class="pa-button">
+                        Publish Draft
+                    </button>
+                </form>
+
+                <p style="font-size: 13px; color: #666; margin-top: 16px;">
+                    Save any recent edits before publishing. Publishing does not
+                    automatically submit unsaved changes from the editor above.
+                </p>
+            </div>
+        {% endif %}
+
+    {% else %}
+
+        <div class="pa-card" style="padding: 24px;">
+
+            <h3>Read Only Access</h3>
+
+            <p>
+
+                You do not have permission to edit this product
+
+                conversation configuration.
+
+            </p>
+
+        </div>
+
+    {% endif %}
+
+</div>
+
+{% endblock %}

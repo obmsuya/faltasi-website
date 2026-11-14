@@ -1,4 +1,6 @@
 
+import json
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from django.utils import timezone
@@ -1011,3 +1013,546 @@ class WhatsAppMarketingInvitationWebhookTests(TestCase):
             "Pia tuna bidhaa nyingi ambazo nina uhakika utazifurahia",
             sent_reply,
         )
+
+class WhatsAppCanonicalProductSearchTests(TestCase):
+    """Tests for the WhatsApp adapter using canonical product search."""
+
+    def setUp(self):
+        from products.models import Product
+        from whatsapp.models import ConversationState
+
+        self.Product = Product
+        self.ConversationState = ConversationState
+
+        self.organization = Organization.objects.create(
+            name="Canonical Search Business",
+            organization_type="business",
+            status="active",
+        )
+
+        self.other_organization = Organization.objects.create(
+            name="Other Search Business",
+            organization_type="business",
+            status="active",
+        )
+
+        self.customer = Customer.objects.create(
+            organization=self.organization,
+            name="Search Customer",
+            phone="+255700000101",
+        )
+
+        self.conversation = Conversation.objects.create(
+            organization=self.organization,
+            customer=self.customer,
+            phone_number="+255700000101",
+        )
+
+        self.state = ConversationState.objects.create(
+            conversation=self.conversation,
+            current_step="previous_step",
+            waiting_for="previous_input",
+            data={
+                "selected_whatsapp_product_id": 999,
+                "selected_whatsapp_product_name": "Old Product",
+                "whatsapp_product_quantity": 2,
+                "whatsapp_product_action": "buy",
+                "unrelated_value": "preserve_me",
+            },
+        )
+
+    def create_product(self, name, organization=None, **kwargs):
+        return self.Product.objects.create(
+            organization=organization or self.organization,
+            name=name,
+            price=kwargs.pop("price", "25000.00"),
+            **kwargs,
+        )
+
+    def search_result(self, product):
+        return {"id": product.pk}
+
+    def test_uses_canonical_search_with_five_result_limit(self):
+        from unittest.mock import patch
+        from whatsapp.views import search_whatsapp_products
+
+        products = [
+            self.create_product(f"Laptop Model {number}")
+            for number in range(1, 6)
+        ]
+
+        results = [self.search_result(product) for product in products]
+
+        with patch(
+            "whatsapp.views.search_organization_products",
+            return_value=results,
+        ) as canonical_search:
+            reply = search_whatsapp_products(
+                "laptop",
+                self.organization,
+                self.state,
+            )
+
+        canonical_search.assert_called_once_with(
+            self.organization,
+            "laptop",
+            limit=5,
+        )
+
+        self.assertEqual(reply.count("   Price:"), 5)
+
+    def test_preserves_canonical_ranking_and_updates_state(self):
+        from unittest.mock import patch
+        from whatsapp.views import search_whatsapp_products
+
+        first = self.create_product(
+            "Laptop Alpha",
+            display_order=20,
+        )
+        second = self.create_product(
+            "Laptop Beta",
+            display_order=1,
+        )
+
+        with patch(
+            "whatsapp.views.search_organization_products",
+            return_value=[
+                self.search_result(first),
+                self.search_result(second),
+            ],
+        ):
+            reply = search_whatsapp_products(
+                "laptop",
+                self.organization,
+                self.state,
+            )
+
+        self.assertLess(
+            reply.index("Laptop Alpha"),
+            reply.index("Laptop Beta"),
+        )
+
+        self.state.refresh_from_db()
+
+        self.assertEqual(
+            self.state.data["whatsapp_product_ids"],
+            [first.pk, second.pk],
+        )
+        self.assertEqual(
+            self.state.current_step,
+            "whatsapp_product_selection",
+        )
+        self.assertEqual(
+            self.state.waiting_for,
+            "product_selection",
+        )
+
+        self.assertNotIn(
+            "selected_whatsapp_product_id",
+            self.state.data,
+        )
+        self.assertNotIn(
+            "selected_whatsapp_product_name",
+            self.state.data,
+        )
+        self.assertNotIn(
+            "whatsapp_product_quantity",
+            self.state.data,
+        )
+        self.assertNotIn(
+            "whatsapp_product_action",
+            self.state.data,
+        )
+        self.assertEqual(
+            self.state.data["unrelated_value"],
+            "preserve_me",
+        )
+
+    def test_hydration_excludes_other_organizations_and_hidden_products(self):
+        from unittest.mock import patch
+        from whatsapp.views import search_whatsapp_products
+
+        own_product = self.create_product("Laptop Own Business")
+
+        foreign_product = self.create_product(
+            "Laptop Foreign Business",
+            organization=self.other_organization,
+        )
+
+        hidden_product = self.create_product(
+            "Laptop Hidden Product",
+            show_on_whatsapp=False,
+        )
+
+        results = [
+            self.search_result(own_product),
+            self.search_result(foreign_product),
+            self.search_result(hidden_product),
+        ]
+
+        with patch(
+            "whatsapp.views.search_organization_products",
+            return_value=results,
+        ):
+            reply = search_whatsapp_products(
+                "laptop",
+                self.organization,
+                self.state,
+            )
+
+        self.assertIn("Laptop Own Business", reply)
+        self.assertNotIn("Laptop Foreign Business", reply)
+        self.assertNotIn("Laptop Hidden Product", reply)
+
+        self.state.refresh_from_db()
+        self.assertEqual(
+            self.state.data["whatsapp_product_ids"],
+            [own_product.pk],
+        )
+
+    def test_no_results_returns_none_without_changing_state(self):
+        from unittest.mock import patch
+        from whatsapp.views import search_whatsapp_products
+
+        original_data = dict(self.state.data)
+        original_step = self.state.current_step
+        original_waiting_for = self.state.waiting_for
+
+        with patch(
+            "whatsapp.views.search_organization_products",
+            return_value=[],
+        ) as canonical_search:
+            reply = search_whatsapp_products(
+                "unknown product",
+                self.organization,
+                self.state,
+            )
+
+        self.assertIsNone(reply)
+
+        canonical_search.assert_called_once_with(
+            self.organization,
+            "unknown product",
+            limit=5,
+        )
+
+        self.state.refresh_from_db()
+        self.assertEqual(self.state.data, original_data)
+        self.assertEqual(self.state.current_step, original_step)
+        self.assertEqual(self.state.waiting_for, original_waiting_for)
+
+    def test_empty_input_does_not_call_canonical_search(self):
+        from unittest.mock import patch
+        from whatsapp.views import search_whatsapp_products
+
+        with patch(
+            "whatsapp.views.search_organization_products",
+        ) as canonical_search:
+            self.assertIsNone(
+                search_whatsapp_products(
+                    "",
+                    self.organization,
+                    self.state,
+                )
+            )
+
+            self.assertIsNone(
+                search_whatsapp_products(
+                    "laptop",
+                    None,
+                    self.state,
+                )
+            )
+
+        canonical_search.assert_not_called()
+
+
+class WhatsAppProductBuilderIntegrationTests(TestCase):
+    """Integration tests for product-specific Builder in WhatsApp."""
+
+    def setUp(self):
+        from products.models import Product
+        from whatsapp.models import ConversationState
+
+        self.organization = Organization.objects.create(
+            name="Builder Integration Business",
+            organization_type="business",
+            status="active",
+        )
+
+        self.customer = Customer.objects.create(
+            organization=self.organization,
+            name="Builder Test Customer",
+            phone="+255700000201",
+        )
+
+        self.conversation = Conversation.objects.create(
+            organization=self.organization,
+            customer=self.customer,
+            phone_number="+255700000201",
+        )
+
+        self.state = ConversationState.objects.create(
+            conversation=self.conversation,
+            current_step="whatsapp_product_selection",
+            waiting_for="product_selection",
+            data={},
+        )
+
+        self.product = Product.objects.create(
+            organization=self.organization,
+            name="Test Laptop",
+            price="25000.00",
+            is_active=True,
+            show_on_whatsapp=True,
+        )
+
+    def publish_builder(self, questions):
+        from conversation_builder.models import (
+            ProductConversationQuestion,
+        )
+        from conversation_builder.services import (
+            create_product_configuration,
+            publish_product_draft,
+        )
+
+        configuration, draft = create_product_configuration(
+            self.product.pk,
+            self.organization.pk,
+        )
+
+        for question_data in questions:
+            ProductConversationQuestion.objects.create(
+                version=draft,
+                **question_data,
+            )
+
+        publish_product_draft(
+            configuration.pk,
+            self.organization.pk,
+        )
+
+        return configuration
+
+    def select_product(self):
+        self.state.data = {
+            **self.state.data,
+            "whatsapp_product_ids": [self.product.pk],
+        }
+        self.state.current_step = "whatsapp_product_selection"
+        self.state.waiting_for = "product_selection"
+        self.state.save()
+
+        from whatsapp.views import handle_whatsapp_product_conversation
+
+        return handle_whatsapp_product_conversation(
+            "1",
+            self.organization,
+            self.state,
+        )
+
+    def test_without_builder_preserves_legacy_quantity_prompt(self):
+        response = self.select_product()
+
+        self.assertEqual(
+            response,
+            (
+                f"Asante! Umechagua {self.product.name}.\n\n"
+                "Unahitaji kiasi gani? Tafadhali taja idadi unayohitaji."
+            ),
+        )
+
+        self.state.refresh_from_db()
+
+        self.assertEqual(
+            self.state.current_step,
+            "whatsapp_product_quantity",
+        )
+        self.assertEqual(
+            self.state.waiting_for,
+            "product_quantity",
+        )
+
+    def test_published_builder_starts_after_product_selection(self):
+        self.publish_builder([
+            {
+                "key": "customer_name",
+                "question": "What is your name?",
+                "field_type": "text",
+                "order": 1,
+            },
+        ])
+
+        response = self.select_product()
+
+        self.assertIn("What is your name?", response)
+
+        self.state.refresh_from_db()
+
+        self.assertEqual(
+            self.state.current_step,
+            "whatsapp_product_builder",
+        )
+        self.assertEqual(
+            self.state.waiting_for,
+            "product_conversation_question",
+        )
+
+        self.assertEqual(
+            self.state.data["selected_whatsapp_product_id"],
+            self.product.pk,
+        )
+
+        self.assertIn(
+            "product_conversation",
+            self.state.data,
+        )
+
+    def test_builder_answers_advance_and_return_to_quantity(self):
+        self.publish_builder([
+            {
+                "key": "customer_name",
+                "question": "What is your name?",
+                "field_type": "text",
+                "order": 1,
+            },
+            {
+                "key": "delivery_location",
+                "question": "Where should we deliver?",
+                "field_type": "text",
+                "order": 2,
+            },
+        ])
+
+        self.select_product()
+
+        from whatsapp.views import handle_whatsapp_product_conversation
+
+        first_response = handle_whatsapp_product_conversation(
+            "Amina",
+            self.organization,
+            self.state,
+        )
+
+        self.assertIn("Where should we deliver?", first_response)
+
+        self.state.refresh_from_db()
+
+        answers = self.state.data["product_conversation"]["answers"]
+
+        self.assertEqual(answers["customer_name"], "Amina")
+
+        second_response = handle_whatsapp_product_conversation(
+            "Dar es Salaam",
+            self.organization,
+            self.state,
+        )
+
+        self.assertIn("Unahitaji kiasi gani?", second_response)
+
+        self.state.refresh_from_db()
+
+        self.assertEqual(
+            self.state.current_step,
+            "whatsapp_product_quantity",
+        )
+        self.assertEqual(
+            self.state.waiting_for,
+            "product_quantity",
+        )
+
+        answers = self.state.data["product_conversation"]["answers"]
+
+        self.assertEqual(
+            answers["delivery_location"],
+            "Dar es Salaam",
+        )
+
+    @patch.dict(
+        "os.environ",
+        {
+            "OPENAI_API_KEY": "test-api-key",
+            "OPENAI_MODEL": "test-model",
+        },
+    )
+    def test_ai_extracts_and_saves_multiple_builder_answers(self):
+        """A successful mocked AI response is validated and saved by Django."""
+        self.publish_builder([
+            {
+                "key": "customer_name",
+                "question": "What is your name?",
+                "field_type": "text",
+                "order": 1,
+            },
+            {
+                "key": "quantity",
+                "question": "How many pieces do you need?",
+                "field_type": "number",
+                "order": 2,
+            },
+            {
+                "key": "delivery_location",
+                "question": "Where should we deliver?",
+                "field_type": "text",
+                "order": 3,
+            },
+        ])
+
+        self.select_product()
+
+        from whatsapp.views import handle_whatsapp_product_conversation
+
+        ai_response = SimpleNamespace(
+            output_text=json.dumps(
+                {
+                    "answers": {
+                        "customer_name": "Amina",
+                        "quantity": "10",
+                        "delivery_location": "Dar es Salaam",
+                    }
+                },
+                ensure_ascii=False,
+            ),
+            status="completed",
+        )
+
+        with patch("whatsapp.ai_service.OpenAI") as mock_openai:
+            mock_client = mock_openai.return_value
+            mock_client.responses.create.return_value = ai_response
+
+            response = handle_whatsapp_product_conversation(
+                "My name is Amina, I need 10 pieces, and delivery is in Dar es Salaam.",
+                self.organization,
+                self.state,
+            )
+
+        mock_openai.assert_called_once()
+        mock_client.responses.create.assert_called_once()
+
+        request = mock_client.responses.create.call_args.kwargs
+        sent_context = json.loads(request["input"])
+        self.assertEqual(
+            sent_context["required_response_format"],
+            "JSON",
+        )
+
+        self.state.refresh_from_db()
+        namespace = self.state.data["product_conversation"]
+        answers = namespace["answers"]
+
+        self.assertEqual(answers["customer_name"], "Amina")
+        self.assertEqual(answers["quantity"], 10)
+        self.assertEqual(answers["delivery_location"], "Dar es Salaam")
+
+        # All three configured questions were answered, so the existing
+        # workflow must return to its quantity step.
+        self.assertEqual(
+            self.state.current_step,
+            "whatsapp_product_quantity",
+        )
+        self.assertEqual(
+            self.state.waiting_for,
+            "product_quantity",
+        )
+        self.assertIsNotNone(response)
+

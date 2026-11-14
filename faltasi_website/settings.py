@@ -99,6 +99,7 @@ INSTALLED_APPS = [
     "accounts",
     "product_knowledge",
     'channels.apps.ChannelsConfig',
+    'conversation_builder',
 
 ]
 

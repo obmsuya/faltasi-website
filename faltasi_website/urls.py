@@ -18,6 +18,11 @@ urlpatterns = [
     path("customers/", include("customers.urls"),),
     path("business-requests/knowledge/", include("product_knowledge.urls"),),
     path("channels/", include("channels.urls")),
+    path(
+        "conversation-builder/",
+        include("conversation_builder.urls"),
+    ),
+    
 ]
 
 if settings.DEBUG:
