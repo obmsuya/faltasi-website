@@ -7,6 +7,7 @@ from django.test import SimpleTestCase
 from whatsapp.ai_service import (
     WhatsAppAIInvalidResponseError,
     WhatsAppAIConfigurationError,
+    _general_ai_instructions,
     _parse_general_ai_response,
     interpret_general_message,
 )
@@ -111,6 +112,18 @@ class GeneralAIResponseTests(SimpleTestCase):
                 "intent": "greeting",
                 "answer": "Habari!",
             }, status="incomplete")
+
+    def test_prompt_protects_greetings_from_human_handover(self):
+        instructions = _general_ai_instructions()
+
+        self.assertIn(
+            "A greeting, including a greeting sent during an unfinished workflow,",
+            instructions,
+        )
+        self.assertIn(
+            "Do not infer a human-support request solely from previous conversation",
+            instructions,
+        )
 
 
 class GeneralAIServiceTests(SimpleTestCase):

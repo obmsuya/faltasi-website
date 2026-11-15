@@ -1294,6 +1294,19 @@ Use recent conversation context when the current message is short.
 Understand the current message using recent conversation history.
 Do not depend on predefined keyword or phrase lists.
 
+HUMAN SUPPORT HANDOVER:
+Only classify a message as human_support when the customer clearly
+requests to speak with a human, staff member, or customer service agent,
+or explicitly asks for human assistance.
+
+A greeting, including a greeting sent during an unfinished workflow,
+must not be classified as human_support by itself.
+
+Do not infer a human-support request solely from previous conversation
+history or an unfinished product workflow.
+
+When a customer greets you during an active workflow, classify the
+message as greeting and allow Django to continue the existing workflow.
 Allowed intents:
 greeting, general_enquiry, product_enquiry, service_enquiry,
 business_request, human_support, workflow_input, unclear.
@@ -1323,6 +1336,8 @@ Return JSON only, with exactly these four fields:
   "answer": "short reply or empty string",
   "language": "sw, en or mixed"
 }
+
+
 """
 
 

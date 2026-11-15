@@ -4851,6 +4851,13 @@ def webhook(request):
                     conversation=conversation,
                     incoming_message_id=whatsapp_message_id,
                 )
+
+        elif not reply:
+            print(
+                "NO AUTOMATIC REPLY GENERATED. "
+                "WHATSAPP SEND SKIPPED."
+            )
+
         else:
             print(
                 "OUTGOING MESSAGE WAS NOT SAVED "
@@ -4862,7 +4869,6 @@ def webhook(request):
                 print("META RESPONSE:", response.text)
             else:
                 print("META RESPONSE: NO RESPONSE RECEIVED")
-
 
 
         # =================================================
