@@ -10,6 +10,7 @@ urlpatterns = [
 
     # Business profile
     path("profile/", views.business_profile, name="business_profile"),
+    path("whatsapp-ai-settings/", views.whatsapp_ai_settings, name="whatsapp_ai_settings"),
 
     # Departments
     path("departments/", views.department_management, name="department_management"),

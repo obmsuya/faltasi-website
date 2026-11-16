@@ -34,6 +34,17 @@ from django.core.mail import send_mail
 logger = logging.getLogger(__name__)
 
 
+def _whatsapp_ai_is_enabled(organization):
+    """Read the active organization's WhatsApp AI switch safely."""
+    organization_settings = getattr(organization, "settings", None)
+    if not isinstance(organization_settings, dict):
+        return True
+    ai_settings = organization_settings.get("whatsapp_ai", {})
+    if not isinstance(ai_settings, dict):
+        return True
+    return ai_settings.get("enabled", True) is True
+
+
 def verify_meta_webhook_signature(request):
     """Verify that a WhatsApp webhook POST came from Meta."""
 
@@ -902,10 +913,8 @@ def process_whatsapp_marketing_consent(customer, text):
         ])
 
         return (
-            "Asante kwa ku subscribe na account yetu. Faltasi Tunauza bidhaa"
-            ""
-            ""
-            " zenye ubora wa juu na zilizoadimu. "
+            "Asante kwa ku subscribe na account yetu. Faltasi Tunauza bidhaa "
+            "zenye ubora wa juu na zilizoadimu. "
             "tutakutaarifu pindi zitakapo wasili."
         )
 
@@ -1894,6 +1903,8 @@ def get_ai_product_reply(text, organization, state, current_message_id):
     """
     if not text or not organization or not state:
         return None
+    if not _whatsapp_ai_is_enabled(organization):
+        return None
 
     state_data = state.data if isinstance(state.data, dict) else {}
 
@@ -1907,16 +1918,9 @@ def get_ai_product_reply(text, organization, state, current_message_id):
     current_step = getattr(state, "current_step", None)
     waiting_for = getattr(state, "waiting_for", None)
 
-    # Allow non-numeric product questions during the quantity step only.
-    is_quantity_question = (
-        isinstance(text, str)
-        and current_step == "whatsapp_product_quantity"
-        and waiting_for == "product_quantity"
-        and not re.search(r"\d+", text)
-    )
-
-    # Other pending workflow fields remain protected.
-    if waiting_for and not is_quantity_question:
+    # Product AI only handles an idle or completed product conversation.
+    # Pending Builder questions remain under the configured Builder runtime.
+    if waiting_for:
         return None
 
     # Also inspect the linked conversation. The database relationship
@@ -1937,7 +1941,7 @@ def get_ai_product_reply(text, organization, state, current_message_id):
         "whatsapp_product_completed",
     }
 
-    if current_step not in allowed_steps and not is_quantity_question:
+    if current_step not in allowed_steps:
         return None
 
     try:
@@ -3169,8 +3173,6 @@ def webhook(request):
 
         # Product images are sent only when the normal product search
         # produces a list of WhatsApp-enabled products.
-        # Product images are sent only when the normal product search
-        # produces a list of WhatsApp-enabled products.
         product_images_to_send = []
         should_send_product_marketing_template = False
 
@@ -3238,26 +3240,24 @@ def webhook(request):
             else:
                 product_flow_reply = None
 
-                # Answer product questions without advancing quantity collection.
+                # Process a selected product or its configured Builder first.
+                product_flow_reply = handle_whatsapp_product_conversation(
+                    text,
+                    organization,
+                    state,
+                )
+
+                # Products without a published Builder, and completed Builder
+                # conversations, continue through product-aware AI naturally.
                 if (
-                    state.current_step == "whatsapp_product_quantity"
-                    and state.waiting_for == "product_quantity"
-                    and isinstance(text, str)
-                    and not re.search(r"\d+", text)
+                    product_flow_reply is None
+                    and state.current_step in {None, "whatsapp_product_completed"}
                 ):
                     product_flow_reply = get_ai_product_reply(
                         text,
                         organization,
                         state,
                         incoming_message.id if incoming_message else None,
-                    )
-
-                # Keep the existing deterministic workflow as fallback.
-                if product_flow_reply is None:
-                    product_flow_reply = handle_whatsapp_product_conversation(
-                        text,
-                        organization,
-                        state,
                     )
 
             product_flow_handled = product_flow_reply is not None
@@ -5031,20 +5031,16 @@ def _product_builder_completion_response(runtime):
 
 
 def handle_whatsapp_product_conversation(text, organization, state):
-    """Handle product selection and follow-up questions in Swahili."""
+    """Handle product selection and dashboard-configured product questions."""
     if not text or not organization or not state:
         return None
 
     step = state.current_step
     data = dict(state.data or {})
-    normalized = text.strip().lower()
 
-    # Only handle replies belonging to this product conversation.
     if step not in {
         "whatsapp_product_selection",
         "whatsapp_product_builder",
-        "whatsapp_product_quantity",
-        "whatsapp_product_next_action",
     }:
         return None
 
@@ -5052,24 +5048,21 @@ def handle_whatsapp_product_conversation(text, organization, state):
         current_data = dict(state.data or {})
         if updates:
             current_data.update(updates)
-
         state.current_step = new_step
         state.waiting_for = waiting_for
         state.data = current_data
         state.save()
 
-    # STEP 1: Customer chooses one of the displayed products.
     if step == "whatsapp_product_selection":
         product_ids = data.get("whatsapp_product_ids", [])
+        normalized = text.strip().lower()
         selected_id = None
 
-        # Accept a displayed number such as "1".
         if normalized.isdigit():
             choice = int(normalized)
             if 1 <= choice <= len(product_ids):
                 selected_id = product_ids[choice - 1]
 
-        # Also accept the exact product name.
         if selected_id is None:
             for product in Product.objects.filter(
                 organization=organization,
@@ -5083,16 +5076,6 @@ def handle_whatsapp_product_conversation(text, organization, state):
                     break
 
         if selected_id is None:
-            # Allow new enquiries and general messages to continue
-            # through normal WhatsApp routing.
-            # Invalid numeric selections retain the existing prompt.
-            if normalized.isdigit():
-                return (
-                    "Samahani, Sijaweza kutambua bidhaa uliyochagua. "
-                    "Tafadhali jibu kwa namba ya bidhaa kwenye orodha, "
-                    "au andika jina lake."
-                )
-
             return None
 
         product = Product.objects.filter(
@@ -5102,251 +5085,156 @@ def handle_whatsapp_product_conversation(text, organization, state):
             deleted_at__isnull=True,
             show_on_whatsapp=True,
         ).first()
-
         if not product:
             save_state(None, None, {
                 "whatsapp_product_ids": [],
                 "selected_whatsapp_product_id": None,
                 "selected_whatsapp_product_name": None,
             })
+            return None
 
-            return (
-                "Samahani, bidhaa hiyo haipatikani kwa sasa. "
-                "Tafadhali tuambie bidhaa nyingine unayohitaji."
-            )
-
-
-
+        # Product details are collected only from the published dashboard
+        # configuration. Without a Builder, continue with product-aware AI.
         save_state(
-            "whatsapp_product_quantity",
-            "product_quantity",
+            "whatsapp_product_completed",
+            None,
             {
                 "selected_whatsapp_product_id": product.id,
                 "selected_whatsapp_product_name": product.name,
             },
         )
 
-        # Check whether this product has an enabled published Builder.
-        from conversation_builder.runtime import start_product_conversation
-
-        runtime = start_product_conversation(
-            state,
-            organization,
-            product,
-        )
-
-        # If a published Builder exists, show its first question.
-        if runtime and runtime.get("status") == "in_progress":
-            question_prompt = _format_product_builder_question(runtime)
-
-            if question_prompt:
-                return question_prompt
-
-            return runtime["snapshot"].get("fallback_message") or None
-
-        # Otherwise, continue with the original quantity workflow.
-        return (
-            f"Asante! Umechagua {product.name}.\n\n"
-            "Unahitaji kiasi gani? Tafadhali taja idadi unayohitaji."
-        )
-
-
-
-    # STEP 1B: Handle answers to the published Product Conversation Builder.
-    if step == "whatsapp_product_builder":
         from conversation_builder.runtime import (
             get_runtime_status,
-            submit_product_question_answers,
+            start_product_conversation,
         )
+        runtime = start_product_conversation(state, organization, product)
 
-        product_id = data.get("selected_whatsapp_product_id")
-        product = Product.objects.filter(
-            organization=organization,
-            id=product_id,
-            is_active=True,
-            deleted_at__isnull=True,
-            show_on_whatsapp=True,
-        ).first()
-
-        # Do not continue a Builder against a missing or foreign product.
-        if not product:
-            save_state(None, None, {
-                "selected_whatsapp_product_id": None,
-                "selected_whatsapp_product_name": None,
-            })
-            return (
-                "Samahani, bidhaa hii haipatikani kwa sasa. "
-                "Tafadhali tuambie bidhaa nyingine unayohitaji."
-            )
-
-        runtime = get_runtime_status(state, organization, product)
-        if not runtime:
-            return None
-
-        # A completed Builder hands control back to the existing quantity flow.
-        if runtime.get("status") == "completed":
-            save_state("whatsapp_product_quantity", "product_quantity")
-            closing_message = _product_builder_completion_response(runtime)
-            quantity_prompt = (
-                "Unahitaji kiasi gani? Tafadhali taja idadi unayohitaji."
-            )
-            return "\n\n".join(
-                part for part in (closing_message, quantity_prompt) if part
-            )
-
-        question = runtime.get("question")
-        if not isinstance(question, dict) or not question.get("key"):
+        if runtime and runtime.get("status") == "in_progress":
+            try:
+                if not _whatsapp_ai_is_enabled(organization):
+                    raise RuntimeError("WhatsApp AI is disabled for this organization.")
+                from whatsapp.ai_service import select_next_product_builder_question
+                preferred_key = select_next_product_builder_question(
+                    text, organization, state, product, runtime,
+                )
+                if preferred_key:
+                    runtime = get_runtime_status(
+                        state, organization, product,
+                        preferred_question_key=preferred_key,
+                    )
+            except Exception:
+                logger.exception(
+                    "AI question selection failed at product conversation start; using Builder order."
+                )
+            prompt = _format_product_builder_question(runtime)
+            if prompt:
+                return prompt
             return (runtime.get("snapshot") or {}).get("fallback_message") or None
 
-        # AI extracts multiple facts from one customer message. The pinned
-        # runtime snapshot is passed through; Django remains the validator.
-        answers = {}
-        corrections = {}
-        try:
-            from whatsapp.ai_service import interpret_product_builder_answers
+        # No hardcoded product questions: the selected product is now
+        # handled by the existing AI product assistant in the webhook.
+        return None
 
-            extraction = interpret_product_builder_answers(
-                text,
-                organization,
-                state,
-                product,
-                runtime,
-            )
-            answers = extraction.get("answers") or {}
-            corrections = extraction.get("corrections") or {}
-        except Exception:
-            # Preserve the existing direct-answer workflow if AI is unavailable.
-            logger.exception(
-                "Product Builder answer extraction failed; using direct answer."
-            )
+    # Only a published, tenant-matched Builder may process this answer.
+    from conversation_builder.runtime import (
+        get_runtime_status,
+        submit_product_question_answers,
+    )
 
-        if not answers and not corrections:
-            answers = {question["key"]: text}
+    product_id = data.get("selected_whatsapp_product_id")
+    product = Product.objects.filter(
+        organization=organization,
+        id=product_id,
+        is_active=True,
+        deleted_at__isnull=True,
+        show_on_whatsapp=True,
+    ).first()
+    if not product:
+        save_state(None, None, {
+            "selected_whatsapp_product_id": None,
+            "selected_whatsapp_product_name": None,
+        })
+        return None
 
-        result = submit_product_question_answers(
-            state,
-            organization,
-            product,
-            answers,
-            corrections=corrections,
-        )
+    runtime = get_runtime_status(state, organization, product)
+    if not runtime:
+        return None
 
-        # Refresh the pinned runtime after saving/validating the answer.
-        runtime = get_runtime_status(state, organization, product)
-        if not runtime:
-            return None
+    if runtime.get("status") == "completed":
+        save_state("whatsapp_product_completed", None)
+        return _product_builder_completion_response(runtime) or None
 
-        if result.get("status") == "completed" or runtime.get("status") == "completed":
-            save_state("whatsapp_product_quantity", "product_quantity")
-            closing_message = _product_builder_completion_response(runtime)
-            quantity_prompt = (
-                "Unahitaji kiasi gani? Tafadhali taja idadi unayohitaji."
-            )
-            return "\n\n".join(
-                part for part in (closing_message, quantity_prompt) if part
-            )
-
-        rejected = result.get("rejected") or []
-        if rejected:
-            current_question = runtime.get("question") or question
-            retry_message = current_question.get("retry_message") or (
-                (runtime.get("snapshot") or {}).get("fallback_message")
-            )
-            question_prompt = _format_product_builder_question(runtime)
-            return "\n\n".join(
-                part for part in (retry_message, question_prompt) if part
-            ) or None
-
-        question_prompt = _format_product_builder_question(runtime)
-        if question_prompt:
-            return question_prompt
-
+    question = runtime.get("question")
+    if not isinstance(question, dict) or not question.get("key"):
         return (runtime.get("snapshot") or {}).get("fallback_message") or None
 
-
-    # STEP 2: Capture quantity.
-    if step == "whatsapp_product_quantity":
-        import re
-
-        quantity_match = re.search(r"\d+", normalized)
-
-        if not quantity_match or int(quantity_match.group()) < 1:
-            return (
-                "Tafadhali tuambie idadi unayohitaji, "
-                "kwa mfano vipande 10."
-            )
-
-        quantity = int(quantity_match.group())
-
-        save_state(
-            "whatsapp_product_next_action",
-            "product_next_action",
-            {"whatsapp_product_quantity": quantity},
+    answers = {}
+    corrections = {}
+    try:
+        if not _whatsapp_ai_is_enabled(organization):
+            raise RuntimeError("WhatsApp AI is disabled for this organization.")
+        from whatsapp.ai_service import interpret_product_builder_answers
+        extraction = interpret_product_builder_answers(
+            text, organization, state, product, runtime,
+        )
+        answers = extraction.get("answers") or {}
+        corrections = extraction.get("corrections") or {}
+    except Exception:
+        logger.exception(
+            "Product Builder answer extraction failed; using current configured question."
         )
 
-        return (
-            f"Sawa, umehitaji kiasi cha {quantity}.\n\n"
-            "Ungependa nikusaidie kupata nukuu ya bei, "
-            "kuulizia upatikanaji na delivery, au kuwasiliana "
-            "na timu yetu ya mauzo?\n\n"
-            "Andika: Bei, Delivery, au Mauzo."
+    if not answers and not corrections:
+        answers = {question["key"]: text}
+
+    result = submit_product_question_answers(
+        state,
+        organization,
+        product,
+        answers,
+        corrections=corrections,
+    )
+    runtime = get_runtime_status(state, organization, product)
+    if not runtime:
+        return None
+
+    if result.get("status") != "completed" and runtime.get("status") == "in_progress":
+        try:
+            if not _whatsapp_ai_is_enabled(organization):
+                raise RuntimeError("WhatsApp AI is disabled for this organization.")
+            from whatsapp.ai_service import select_next_product_builder_question
+            preferred_key = select_next_product_builder_question(
+                text, organization, state, product, runtime,
+            )
+            if preferred_key:
+                runtime = get_runtime_status(
+                    state, organization, product,
+                    preferred_question_key=preferred_key,
+                )
+        except Exception:
+            logger.exception(
+                "AI question selection failed; using Builder question order."
+            )
+
+    if result.get("status") == "completed" or runtime.get("status") == "completed":
+        save_state("whatsapp_product_completed", None)
+        return _product_builder_completion_response(runtime) or None
+
+    rejected = result.get("rejected") or []
+    if rejected:
+        current_question = runtime.get("question") or question
+        retry_message = current_question.get("retry_message") or (
+            (runtime.get("snapshot") or {}).get("fallback_message")
         )
+        prompt = _format_product_builder_question(runtime)
+        return "\n\n".join(
+            part for part in (retry_message, prompt) if part
+        ) or None
 
-    # STEP 3: Ask what assistance the customer needs.
-    if step == "whatsapp_product_next_action":
-
-        if any(word in normalized for word in (
-            "bei", "quotation", "quote", "nukuu", "gharama",
-        )):
-            action = "quotation"
-            response = (
-                "Asante! Tumepokea ombi lako la nukuu ya bei. "
-                "Timu yetu ya mauzo itakusaidia kuthibitisha bei."
-            )
-
-        elif any(word in normalized for word in (
-            "delivery", "usafiri", "kusafirisha", "kuleta",
-        )):
-            action = "delivery"
-            response = (
-                "Sawa! Tunaweza kukusaidia kuhusu delivery. "
-                "Tafadhali tueleze eneo unalotaka bidhaa ipelekwe."
-            )
-
-        elif any(word in normalized for word in (
-            "mauzo", "sales", "mtu", "wakala", "ongea",
-        )):
-            action = "sales"
-            response = (
-                "Sawa kabisa! Tutakusaidia kuwasiliana na "
-                "mwakilishi wetu wa mauzo."
-            )
-
-        elif any(word in normalized for word in (
-            "ufungaji", "installation", "kufunga", "fundi",
-        )):
-            action = "installation"
-            response = (
-                "Sawa! Tafadhali tueleze eneo la ufungaji "
-                "ili timu yetu iweze kukushauri."
-            )
-
-        else:
-            return (
-                "Ungependa kujua bei, delivery, au kuzungumza "
-                "na timu ya mauzo? Unaweza pia kuomba ufungaji "
-                "ikiwa huduma hiyo inahitajika."
-            )
-
-        save_state(
-            "whatsapp_product_completed",
-            None,
-            {"whatsapp_product_action": action},
-        )
-
-        return response
-
-    return None
+    return _format_product_builder_question(runtime) or (
+        (runtime.get("snapshot") or {}).get("fallback_message") or None
+    )
 
 
 def search_whatsapp_products(text, organization, state=None):
@@ -5597,6 +5485,8 @@ def get_ai_general_interpretation(
     """
     if not text or not organization or not state:
         return None
+    if not _whatsapp_ai_is_enabled(organization):
+        return None
 
     state_data = state.data if isinstance(state.data, dict) else {}
 
@@ -5710,6 +5600,8 @@ def get_ai_human_support_language(
     """Return the customer's language when AI identifies a human-support request."""
     if not text or not organization or not state:
         return None
+    if not _whatsapp_ai_is_enabled(organization):
+        return None
 
     conversation = getattr(state, "conversation", None)
     if (
@@ -5789,6 +5681,8 @@ def get_ai_product_discovery_reply(
     search has no result. Django performs and validates the actual search.
     """
     if not text or not organization or not state:
+        return None
+    if not _whatsapp_ai_is_enabled(organization):
         return None
 
     state_data = state.data if isinstance(state.data, dict) else {}
@@ -5904,6 +5798,8 @@ def get_ai_request_category_reply(
     organization's active RequestCategory records.
     """
     if not text or not organization or not state:
+        return None
+    if not _whatsapp_ai_is_enabled(organization):
         return None
 
     state_data = state.data if isinstance(state.data, dict) else {}

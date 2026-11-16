@@ -118,6 +118,73 @@ class ProductConversationRuntimeTests(TestCase):
             result["version"].pk,
         )
 
+    def test_ai_preferred_question_is_used_only_when_eligible(self):
+        self.publish_questions([
+            {
+                "key": "customer_name",
+                "question": "What is your name?",
+                "field_type": "text",
+                "order": 1,
+            },
+            {
+                "key": "delivery_location",
+                "question": "Where should we deliver?",
+                "field_type": "text",
+                "order": 2,
+            },
+        ])
+        start_product_conversation(
+            self.state, self.organization, self.product
+        )
+
+        preferred = get_runtime_status(
+            self.state, self.organization, self.product,
+            preferred_question_key="delivery_location",
+        )
+        self.assertEqual(preferred["question"]["key"], "delivery_location")
+
+        invalid = get_runtime_status(
+            self.state, self.organization, self.product,
+            preferred_question_key="not_a_configured_question",
+        )
+        self.assertEqual(invalid["question"]["key"], "customer_name")
+
+        submit_product_question_answers(
+            self.state, self.organization, self.product,
+            {"delivery_location": "Dar es Salaam"},
+        )
+        answered = get_runtime_status(
+            self.state, self.organization, self.product,
+            preferred_question_key="delivery_location",
+        )
+        self.assertEqual(answered["question"]["key"], "customer_name")
+
+    def test_ai_cannot_select_dependency_hidden_question(self):
+        self.publish_questions([
+            {
+                "key": "customer_name",
+                "question": "What is your name?",
+                "field_type": "text",
+                "order": 1,
+            },
+            {
+                "key": "delivery_location",
+                "question": "Where should we deliver?",
+                "field_type": "text",
+                "order": 2,
+                "display_conditions": {"depends_on": ["customer_name"]},
+            },
+        ])
+        start_product_conversation(
+            self.state, self.organization, self.product
+        )
+
+        result = get_runtime_status(
+            self.state, self.organization, self.product,
+            preferred_question_key="delivery_location",
+        )
+        self.assertEqual(result["question"]["key"], "customer_name")
+
     def test_no_enabled_published_configuration_returns_none(self):
         result = start_product_conversation(
             self.state,

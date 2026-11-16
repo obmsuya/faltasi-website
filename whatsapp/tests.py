@@ -1351,26 +1351,16 @@ class WhatsAppProductBuilderIntegrationTests(TestCase):
             self.state,
         )
 
-    def test_without_builder_preserves_legacy_quantity_prompt(self):
+    def test_without_builder_does_not_ask_hardcoded_product_questions(self):
         response = self.select_product()
 
-        self.assertEqual(
-            response,
-            (
-                f"Asante! Umechagua {self.product.name}.\n\n"
-                "Unahitaji kiasi gani? Tafadhali taja idadi unayohitaji."
-            ),
-        )
-
+        self.assertIsNone(response)
         self.state.refresh_from_db()
-
+        self.assertEqual(self.state.current_step, "whatsapp_product_completed")
+        self.assertIsNone(self.state.waiting_for)
         self.assertEqual(
-            self.state.current_step,
-            "whatsapp_product_quantity",
-        )
-        self.assertEqual(
-            self.state.waiting_for,
-            "product_quantity",
+            self.state.data["selected_whatsapp_product_id"],
+            self.product.pk,
         )
 
     def test_published_builder_starts_after_product_selection(self):
@@ -1448,18 +1438,15 @@ class WhatsAppProductBuilderIntegrationTests(TestCase):
             self.state,
         )
 
-        self.assertIn("Unahitaji kiasi gani?", second_response)
+        self.assertIsNone(second_response)
 
         self.state.refresh_from_db()
 
         self.assertEqual(
             self.state.current_step,
-            "whatsapp_product_quantity",
+            "whatsapp_product_completed",
         )
-        self.assertEqual(
-            self.state.waiting_for,
-            "product_quantity",
-        )
+        self.assertIsNone(self.state.waiting_for)
 
         answers = self.state.data["product_conversation"]["answers"]
 
@@ -1544,15 +1531,12 @@ class WhatsAppProductBuilderIntegrationTests(TestCase):
         self.assertEqual(answers["quantity"], 10)
         self.assertEqual(answers["delivery_location"], "Dar es Salaam")
 
-        # All three configured questions were answered, so the existing
-        # workflow must return to its quantity step.
+        # All configured questions were answered. No hardcoded quantity
+        # or next-action prompt is appended after the Builder.
         self.assertEqual(
             self.state.current_step,
-            "whatsapp_product_quantity",
+            "whatsapp_product_completed",
         )
-        self.assertEqual(
-            self.state.waiting_for,
-            "product_quantity",
-        )
-        self.assertIsNotNone(response)
+        self.assertIsNone(self.state.waiting_for)
+        self.assertIsNone(response)
 

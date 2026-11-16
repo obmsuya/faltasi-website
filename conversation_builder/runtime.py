@@ -137,18 +137,14 @@ def _question_is_visible(question, answers, skipped):
     return all(key in completed_keys for key in dependencies)
 
 
-def get_next_question(snapshot, namespace):
-    """
-    Find the next active, visible, unanswered question.
-    """
+def get_eligible_questions(snapshot, namespace):
+    """Return active, unanswered questions whose dependencies are satisfied."""
     questions = snapshot.get("questions", [])
-
     if not isinstance(questions, list):
-        return None
+        return []
 
     answers = namespace.get("answers") or {}
     skipped = namespace.get("skipped") or []
-
     ordered_questions = sorted(
         (
             question for question in questions
@@ -161,19 +157,28 @@ def get_next_question(snapshot, namespace):
         ),
     )
 
-    for question in ordered_questions:
-        key = question.get("key")
-
-        if not key or key in answers or key in skipped:
-            continue
-
-        if _question_is_visible(question, answers, skipped):
-            return question
-
-    return None
+    return [
+        question for question in ordered_questions
+        if question.get("key")
+        and question.get("key") not in answers
+        and question.get("key") not in skipped
+        and _question_is_visible(question, answers, skipped)
+    ]
 
 
-def get_runtime_status(state, organization, product):
+def get_next_question(snapshot, namespace, preferred_question_key=None):
+    """Return a valid AI-preferred question, otherwise the normal fallback."""
+    eligible = get_eligible_questions(snapshot, namespace)
+    if preferred_question_key:
+        for question in eligible:
+            if question.get("key") == preferred_question_key:
+                return question
+    return eligible[0] if eligible else None
+
+
+def get_runtime_status(
+    state, organization, product, *, preferred_question_key=None
+):
     """
     Return the pinned snapshot and the next eligible question.
     """
@@ -201,7 +206,9 @@ def get_runtime_status(state, organization, product):
             "namespace": namespace,
         }
 
-    question = get_next_question(snapshot, namespace)
+    question = get_next_question(
+        snapshot, namespace, preferred_question_key=preferred_question_key
+    )
 
     if question is None:
         namespace["status"] = "completed"

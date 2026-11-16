@@ -1,0 +1,77 @@
+{% extends "main/base_business.html" %}
+
+{% block title %}WhatsApp AI Settings | Faltasi{% endblock %}
+{% block page_heading %}WhatsApp AI Settings{% endblock %}
+
+{% block content %}
+<style>
+    .wai-wrap { max-width: 900px; margin: 0 auto; }
+    .wai-card { background: #fff; border: 1px solid #dce3e8; border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+    .wai-card h2 { margin: 0 0 8px; font-size: 19px; color: #203047; }
+    .wai-muted { color: #64748b; line-height: 1.55; margin: 0 0 20px; }
+    .wai-field { margin: 18px 0; }
+    .wai-field label { display: block; font-weight: 600; color: #263548; margin-bottom: 7px; }
+    .wai-field select, .wai-field textarea { width: 100%; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 8px; padding: 11px 12px; background: #fff; font: inherit; }
+    .wai-field textarea { min-height: 150px; resize: vertical; }
+    .wai-help { color: #64748b; font-size: 13px; margin-top: 6px; }
+    .wai-toggle { display: flex; gap: 12px; align-items: flex-start; padding: 15px; background: #f8fafc; border-radius: 9px; }
+    .wai-toggle input { width: 18px; height: 18px; margin-top: 3px; }
+    .wai-toggle strong { display: block; margin-bottom: 4px; }
+    .wai-actions { display: flex; justify-content: flex-end; }
+    .wai-save { border: 0; border-radius: 8px; background: #203b59; color: white; padding: 11px 20px; font-weight: 600; cursor: pointer; }
+    .wai-save:hover { background: #152b43; }
+    @media (max-width: 600px) { .wai-card { padding: 17px; } .wai-actions { justify-content: stretch; } .wai-save { width: 100%; } }
+</style>
+
+<div class="wai-wrap">
+    <section class="wai-card">
+        <h2>WhatsApp AI for {{ organization.name }}</h2>
+        <p class="wai-muted">
+            Configure how the AI assistant communicates with customers for this organization.
+            These settings apply to general WhatsApp AI conversations. Product-specific questions
+            and instructions remain managed through the Conversation Builder.
+        </p>
+
+        <form method="post">
+            {% csrf_token %}
+
+            <div class="wai-toggle">
+                <input type="checkbox" id="wai-enabled" name="enabled" {% if ai_settings.enabled %}checked{% endif %}>
+                <div>
+                    <label for="wai-enabled"><strong>Enable WhatsApp AI</strong></label>
+                    <div class="wai-help">When disabled, the WhatsApp AI assistant should not generate automated AI replies for this organization.</div>
+                </div>
+            </div>
+
+            <div class="wai-field">
+                <label for="default-language">Default response language</label>
+                <select id="default-language" name="default_language" required>
+                    {% for value, label in language_choices.items %}
+                        <option value="{{ value }}" {% if ai_settings.default_language == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <div class="wai-help">“Follow the customer's language” lets the assistant respond in the language used by the customer.</div>
+            </div>
+
+            <div class="wai-field">
+                <label for="response-style">Response style</label>
+                <select id="response-style" name="response_style" required>
+                    {% for value, label in style_choices.items %}
+                        <option value="{{ value }}" {% if ai_settings.response_style == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="wai-field">
+                <label for="business-instructions">Business-specific AI instructions</label>
+                <textarea id="business-instructions" name="business_instructions" maxlength="4000" placeholder="Describe your business, services, important policies, and how the assistant should help customers.">{{ ai_settings.business_instructions }}</textarea>
+                <div class="wai-help">Maximum 4,000 characters. Do not put passwords, API keys, or other secrets here.</div>
+            </div>
+
+            <div class="wai-actions">
+                <button class="wai-save" type="submit">Save WhatsApp AI Settings</button>
+            </div>
+        </form>
+    </section>
+</div>
+{% endblock %}

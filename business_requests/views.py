@@ -2950,6 +2950,113 @@ def business_register(request):
     )
 
 @login_required
+def whatsapp_ai_settings(request):
+    """View and update organization-level WhatsApp AI preferences."""
+
+    organization = get_user_organization(
+        request.user,
+        request=request,
+    )
+
+    if not organization:
+        messages.error(
+            request,
+            "Your account is not connected to a business organization."
+        )
+        return redirect("business_requests:business_dashboard")
+
+    membership = OrganizationMember.objects.filter(
+        organization=organization,
+        user=request.user,
+        is_active=True,
+    ).first()
+
+    can_manage_settings = (
+        is_platform_administrator(request.user)
+        or (membership and membership.role in ["owner", "admin"])
+    )
+
+    if not can_manage_settings:
+        messages.error(
+            request,
+            "Only organization Owners and Admins can manage WhatsApp AI settings."
+        )
+        return redirect("business_requests:business_dashboard")
+
+    organization_settings = organization.settings
+    if not isinstance(organization_settings, dict):
+        organization_settings = {}
+
+    ai_settings = organization_settings.get("whatsapp_ai", {})
+    if not isinstance(ai_settings, dict):
+        ai_settings = {}
+
+    language_choices = {
+        "sw": "Tanzanian Kiswahili",
+        "en": "English",
+        "auto": "Follow the customer's language",
+    }
+    style_choices = {
+        "friendly": "Friendly and conversational",
+        "professional": "Professional",
+        "concise": "Short and direct",
+    }
+
+    if request.method == "POST":
+        default_language = request.POST.get("default_language", "sw").strip()
+        response_style = request.POST.get("response_style", "friendly").strip()
+        business_instructions = request.POST.get(
+            "business_instructions", ""
+        ).strip()
+
+        if default_language not in language_choices:
+            messages.error(request, "Please select a valid default language.")
+        elif response_style not in style_choices:
+            messages.error(request, "Please select a valid response style.")
+        elif len(business_instructions) > 4000:
+            messages.error(request, "Business instructions cannot exceed 4,000 characters.")
+        else:
+            # Preserve all other organization settings; update only this namespace.
+            updated_settings = dict(organization_settings)
+            updated_settings["whatsapp_ai"] = {
+                "enabled": request.POST.get("enabled") == "on",
+                "default_language": default_language,
+                "response_style": response_style,
+                "business_instructions": business_instructions,
+            }
+            organization.settings = updated_settings
+            organization.save(update_fields=["settings", "updated_at"])
+
+            messages.success(request, "WhatsApp AI settings have been saved.")
+            return redirect("business_requests:whatsapp_ai_settings")
+
+        # Keep submitted values visible when validation fails.
+        ai_settings = {
+            "enabled": request.POST.get("enabled") == "on",
+            "default_language": default_language,
+            "response_style": response_style,
+            "business_instructions": business_instructions,
+        }
+
+    context = {
+        "organization": organization,
+        "ai_settings": {
+            "enabled": ai_settings.get("enabled", True),
+            "default_language": ai_settings.get("default_language", "sw"),
+            "response_style": ai_settings.get("response_style", "friendly"),
+            "business_instructions": ai_settings.get("business_instructions", ""),
+        },
+        "language_choices": language_choices,
+        "style_choices": style_choices,
+    }
+    return render(
+        request,
+        "business_requests/whatsapp_ai_settings.html",
+        context,
+    )
+
+
+@login_required
 def business_profile(request):
     """
     Display and update the logged-in user's organization profile.

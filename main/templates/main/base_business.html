@@ -57,6 +57,11 @@
                 <span class="pa-nav-icon">▣</span>
                 <span>Business Profile</span>
             </a>
+             <a class="pa-nav-link {% if request.resolver_match.url_name == 'whatsapp_ai_settings' %}is-active{% endif %}"
+               href="{% url 'business_requests:whatsapp_ai_settings' %}">
+                <span class="pa-nav-icon">✦</span>
+                <span>WhatsApp AI Settings</span>
+            </a>
 
             <a class="pa-nav-link {% if request.resolver_match.url_name == 'staff_management' %}is-active{% endif %}"
                href="{% url 'business_requests:staff_management' %}">
