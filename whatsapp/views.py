@@ -5589,6 +5589,52 @@ def _human_handover_acknowledgement(language="sw"):
         return "Sawa, tumekuelewa. We’ll continue helping you hapa."
     return "Sawa, tumekuelewa. Tutaendelea kukusaidia hapa."
 
+def _detect_explicit_human_support_language(text):
+    """Detect clear human-support requests without relying on AI."""
+    if not text:
+        return None
+
+    normalized = re.sub(r"[^\w\s]", " ", text.lower())
+    normalized = " ".join(normalized.split())
+
+    swahili_phrases = [
+        "naomba niongee na mtu",
+        "naomba kuongea na mtu",
+        "naomba nizungumze na mtu",
+        "naomba kuzungumza na mtu",
+        "nataka kuongea na mtu",
+        "nataka kuzungumza na mtu",
+        "naomba kuongea na mfanyakazi",
+        "naomba kuongea na ofisi",
+        "naomba msaada wa mtu",
+        "niunganishe na mtu",
+        "nipe mtu wa kuongea naye",
+    ]
+
+    english_phrases = [
+        "speak to a human",
+        "talk to a human",
+        "speak with a human",
+        "talk with a human",
+        "speak to an agent",
+        "talk to an agent",
+        "speak to a person",
+        "talk to a person",
+        "speak to someone",
+        "talk to someone",
+        "human support",
+        "customer care agent",
+        "real person",
+    ]
+
+    if any(phrase in normalized for phrase in swahili_phrases):
+        return "sw"
+
+    if any(phrase in normalized for phrase in english_phrases):
+        return "en"
+
+    return None
+
 
 def get_ai_human_support_language(
     text,
@@ -5596,17 +5642,27 @@ def get_ai_human_support_language(
     state,
     current_message_id,
 ):
-    """Return the customer's language when AI identifies a human-support request."""
+    """Detect human-support requests using rules first, then AI."""
+
     if not text or not organization or not state:
-        return None
-    if not _whatsapp_ai_is_enabled(organization):
         return None
 
     conversation = getattr(state, "conversation", None)
+
     if (
         conversation is None
         or getattr(conversation, "organization_id", None) != organization.pk
     ):
+        return None
+
+    # 1. Detect clear human-support requests without AI.
+    detected_language = _detect_explicit_human_support_language(text)
+
+    if detected_language:
+        return detected_language
+
+    # 2. Use AI for less obvious requests.
+    if not _whatsapp_ai_is_enabled(organization):
         return None
 
     try:
@@ -5636,7 +5692,6 @@ def get_ai_human_support_language(
             "WhatsApp human-support intent interpretation failed."
         )
         return None
-
 
 def get_ai_human_support_intent(
     text,
@@ -5933,3 +5988,5 @@ def get_ai_request_category_reply(
             "using existing category routing."
         )
         return None
+
+
