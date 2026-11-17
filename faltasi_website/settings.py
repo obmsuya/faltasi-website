@@ -253,3 +253,22 @@ LOGIN_REDIRECT_URL = "/business-requests/dashboard/"
 
 LOGOUT_REDIRECT_URL = "/"
 WHATSAPP_PRODUCT_SHARE_TEMPLATE_ENABLED = True
+# ==========================================================
+# CELERY BACKGROUND PROCESSING
+# ==========================================================
+
+CELERY_BROKER_URL = os.environ.get(
+    "CELERY_BROKER_URL",
+    "redis://127.0.0.1:6380/0",
+)
+
+CELERY_TASK_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_RESULT_SERIALIZER = "json"
+
+CELERY_TASK_IGNORE_RESULT = True
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = USE_TZ
+

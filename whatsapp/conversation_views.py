@@ -5,6 +5,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from .models import Conversation, Message
 from .views import send_whatsapp_message
 from organizations.utils import get_user_organization
+from .handover import activate_human_handover
 
 
 
@@ -289,9 +290,12 @@ def close_conversation(request, conversation_id):
 
     if request.method == "POST":
         conversation.status = "closed"
+        conversation.handover_at = None
+
         conversation.save(
             update_fields=[
                 "status",
+                "handover_at",
             ]
         )
 
@@ -329,8 +333,7 @@ def take_over_conversation(request, conversation_id):
         organization=organization,
         status="active",
     )
-    conversation.handling_mode = "human"
-    conversation.save(update_fields=["handling_mode"])
+    activate_human_handover(conversation)
     messages.success(request, "Conversation is now human-handled.")
     return redirect(
         "whatsapp:conversation_detail",
@@ -362,7 +365,13 @@ def return_conversation_to_ai(request, conversation_id):
         status="active",
     )
     conversation.handling_mode = "ai"
-    conversation.save(update_fields=["handling_mode"])
+    conversation.handover_at = None
+    conversation.save(
+        update_fields=[
+            "handling_mode",
+            "handover_at",
+        ]
+    )
     messages.success(request, "Conversation returned to AI handling.")
     return redirect(
         "whatsapp:conversation_detail",

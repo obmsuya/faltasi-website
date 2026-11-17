@@ -375,6 +375,12 @@ class Conversation(models.Model):
         choices=HANDLING_MODE_CHOICES,
         default="ai",
     )
+    # Timestamp identifying the current human handover.
+    # Used to invalidate outdated Celery timeout tasks.
+    handover_at = models.DateTimeField(
+        blank=True,
+        null=True,
+    )
 
     started_at = models.DateTimeField(
         auto_now_add=True,

@@ -293,6 +293,10 @@ class OrganizationMember(models.Model):
 
     is_active = models.BooleanField(default=True)
     phone_number = models.CharField(max_length=30, blank=True, default="")
+
+    # Explicit consent for internal WhatsApp notifications.
+    whatsapp_notifications_opt_in = models.BooleanField(default=False)
+
     must_change_password = models.BooleanField(default=False)
 
     joined_at = models.DateTimeField(

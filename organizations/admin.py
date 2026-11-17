@@ -182,12 +182,14 @@ class OrganizationMemberAdmin(admin.ModelAdmin):
         "user",
         "role",
         "is_active",
+        "whatsapp_notifications_opt_in",
         "joined_at",
     )
 
     list_filter = (
         "role",
         "is_active",
+        "whatsapp_notifications_opt_in",
         "organization",
     )
 

@@ -27,6 +27,7 @@ from business_requests.models import (
     WorkflowStep,
     DepartmentMember,
 )
+from .handover import activate_human_handover
 
 from django.core.mail import send_mail
 
@@ -3231,8 +3232,7 @@ def webhook(request):
                 )
 
             if handover_language:
-                conversation.handling_mode = "human"
-                conversation.save(update_fields=["handling_mode"])
+                activate_human_handover(conversation)
                 product_flow_reply = _human_handover_acknowledgement(
                     handover_language
                 )
@@ -3292,8 +3292,7 @@ def webhook(request):
                         intent = general_ai_result.get("intent")
 
                         if intent == "human_support":
-                            conversation.handling_mode = "human"
-                            conversation.save(update_fields=["handling_mode"])
+                            activate_human_handover(conversation)
                             reply = _human_handover_acknowledgement(
                                 general_ai_result.get("language", "sw")
                             )
