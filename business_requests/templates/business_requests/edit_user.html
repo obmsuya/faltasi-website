@@ -1,3 +1,4 @@
+
 {% extends "main/base_business.html" %}
 
 {% block title %}Edit User | Faltasi{% endblock %}
@@ -84,6 +85,22 @@
                 <small>
                     Enter the staff member's WhatsApp number, preferably in international format.
                     This number can receive request assignment notifications.
+                </small>
+            </div>
+
+            <div class="form-group">
+                <label>
+                    <input
+                        type="checkbox"
+                        name="whatsapp_notifications_opt_in"
+                        {% if target_membership.whatsapp_notifications_opt_in %}checked{% endif %}
+                    >
+                    Receive WhatsApp handover notifications
+                </label>
+                <small>
+                    Allow this staff member to receive WhatsApp alerts when
+                    customers are waiting for human support. This applies to
+                    eligible Owners, Admins and Managers.
                 </small>
             </div>
         </div>

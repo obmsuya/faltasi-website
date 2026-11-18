@@ -649,12 +649,28 @@ def send_product_marketing_template(
         print("MARKETING TEMPLATE BLOCKED: Phone restriction.")
         return False
 
+    # Read template configuration from Django settings.
+    template_name = getattr(
+        settings,
+        "WHATSAPP_PRODUCT_ENQUIRY_TEMPLATE_NAME",
+        "",
+    )
+
+    language_code = getattr(
+        settings,
+        "WHATSAPP_PRODUCT_ENQUIRY_TEMPLATE_LANGUAGE",
+        "en_US",
+    )
+    if not template_name:
+        print("MARKETING TEMPLATE BLOCKED: Template name not configured.")
+        return False
+
     # Prevent duplicate sends for the same incoming message.
     already_sent = Message.objects.filter(
         organization=organization,
         conversation=conversation,
         direction="outgoing",
-        metadata__template_name="product_enquiry_response",
+        metadata__template_name=template_name,
         metadata__triggered_by_incoming_message_id=incoming_message_id,
     ).exists()
 
@@ -665,8 +681,8 @@ def send_product_marketing_template(
     response = send_whatsapp_template(
         whatsapp_phone=whatsapp_phone,
         phone_number=phone_number,
-        template_name="product_enquiry_response",
-        language_code="en",
+        template_name=template_name,
+        language_code=language_code,
         components=None,
     )
 
@@ -694,12 +710,12 @@ def send_product_marketing_template(
         direction="outgoing",
         sender_type="faltasi",
         message_type="text",
-        content="Marketing template: product_enquiry_response",
+        content=f"Marketing template: {template_name}",
         whatsapp_message_id=template_message_id,
         delivery_status="sent",
         metadata={
-            "template_name": "product_enquiry_response",
-            "language_code": "en",
+            "template_name": template_name,
+            "language_code": language_code,
             "triggered_by_incoming_message_id": incoming_message_id,
             "provider_response": response_data,
         },

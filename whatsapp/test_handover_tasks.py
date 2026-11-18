@@ -170,7 +170,6 @@ class WhatsAppHandoverTaskTests(TestCase):
 
         mock_post.assert_not_called()
 
-    
     @patch("whatsapp.handover.return_handover_to_ai.apply_async")
     @patch("whatsapp.handover.send_handover_reminder.apply_async")
     def test_handover_schedules_both_timeout_tasks(

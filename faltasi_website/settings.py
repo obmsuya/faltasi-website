@@ -46,6 +46,7 @@ ALLOWED_HOSTS = [
     "localhost",
     "faltasi.com",
     ".faltasi.com",
+    #s"aggregate-flirt-primer.ngrok-free.dev",
 ]
 
 
@@ -73,6 +74,39 @@ WHATSAPP_ONBOARDING_TEMPLATE_LANGUAGE = os.environ.get(
     "WHATSAPP_ONBOARDING_TEMPLATE_LANGUAGE",
     "en",
 )
+
+
+WHATSAPP_HANDOVER_ALERT_TEMPLATE_NAME = os.environ.get(
+    "WHATSAPP_HANDOVER_ALERT_TEMPLATE_NAME",
+    "",
+)
+
+WHATSAPP_HANDOVER_ALERT_LANGUAGE = os.environ.get(
+    "WHATSAPP_HANDOVER_ALERT_LANGUAGE",
+    "en_US",
+)
+
+WHATSAPP_PRODUCT_SHARE_TEMPLATE_NAME = os.environ.get(
+    "WHATSAPP_PRODUCT_SHARE_TEMPLATE_NAME",
+    "",
+)
+
+WHATSAPP_PRODUCT_SHARE_TEMPLATE_LANGUAGE = os.environ.get(
+    "WHATSAPP_PRODUCT_SHARE_TEMPLATE_LANGUAGE",
+    "en_US",
+)
+
+WHATSAPP_PRODUCT_ENQUIRY_TEMPLATE_NAME = os.environ.get(
+    "WHATSAPP_PRODUCT_ENQUIRY_TEMPLATE_NAME",
+    "",
+)
+
+WHATSAPP_PRODUCT_ENQUIRY_TEMPLATE_LANGUAGE = os.environ.get(
+    "WHATSAPP_PRODUCT_ENQUIRY_TEMPLATE_LANGUAGE",
+    "en_US",
+)
+
+
 
 OWNER_LOGIN_URL = os.environ.get(
     "OWNER_LOGIN_URL",

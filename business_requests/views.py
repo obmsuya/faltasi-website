@@ -2300,6 +2300,10 @@ def edit_user(request, user_id):
             "",
         ).strip()
 
+        whatsapp_notifications_opt_in = (
+        request.POST.get("whatsapp_notifications_opt_in") == "on"
+        )
+
         organization_role = request.POST.get(
             "organization_role",
             "",
@@ -2477,6 +2481,27 @@ def edit_user(request, user_id):
                             "whatsapp_number": whatsapp_number,
                         },
                     )
+
+
+
+                    # -----------------------------------------
+                    # UPDATE WHATSAPP HANDOVER NOTIFICATIONS
+                    # -----------------------------------------
+
+                    target_membership.phone_number = whatsapp_number
+                    target_membership.whatsapp_notifications_opt_in = (
+                        whatsapp_notifications_opt_in
+                    )
+
+                    target_membership.save(
+                        update_fields=[
+                            "phone_number",
+                            "whatsapp_notifications_opt_in",
+                            "updated_at",
+                        ]
+                    )
+
+
 
                     # -----------------------------------------
                     # UPDATE ORGANIZATION ROLE
