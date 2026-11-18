@@ -5376,7 +5376,7 @@ def process_customer_message(text):
     """Return a simple fallback when no request category is identified."""
     if not text or not text.strip():
         return 'Thank you for contacting Faltasi Innovations Limited. Please tell us what you need and we will be happy to help.'
-    return 'Habari yako.\n\nNikusaidie nini?'
+    return 'Habari yako.\n\nNikusaidieje?'
 
 def update_conversation_state(state, current_step=None, waiting_for='__UNCHANGED__', data=None):
     """
