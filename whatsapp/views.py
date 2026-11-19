@@ -384,7 +384,7 @@ def _get_configured_whatsapp_message(organization, message_type, language='sw'):
     fallback_messages = {
         'fallback': {
             'sw': 'Asante kwa ujumbe wako. Tumepokea taarifa zako.',
-            'en': 'Thank you for your message, will get back to you soon.',
+            'en': 'Thank you for your message. We have received it.',
         },
         'marketing_invitation': {
             'sw': (
@@ -1515,51 +1515,162 @@ def get_ai_general_interpretation(text, organization, state, current_message_id)
     including after a product has been displayed.
 
     Active Builder questions and business-request workflows remain
-    under their existing Django handlers.
+    under their existing Django handlers. Rejections are logged with
+    metadata only; customer text and AI answer content are never logged.
     """
-    if not text or not organization or (not state):
+    if not text or not organization or not state:
+        logger.info(
+            'WhatsApp general AI skipped: missing message, organization or state.'
+        )
         return None
     if not _whatsapp_ai_is_enabled(organization):
+        logger.info(
+            'WhatsApp general AI skipped: AI is disabled for organization_id=%s.',
+            getattr(organization, 'pk', None),
+        )
         return None
+
     state_data = state.data if isinstance(state.data, dict) else {}
-    if state_data.get('category') or state_data.get('business_request_id') or state_data.get('selected_whatsapp_product_id') or getattr(state, 'waiting_for', None):
+    skip_reasons = []
+    if state_data.get('category'):
+        skip_reasons.append('active_category')
+    if state_data.get('business_request_id'):
+        skip_reasons.append('active_business_request')
+    if state_data.get('selected_whatsapp_product_id'):
+        skip_reasons.append('selected_product')
+    if getattr(state, 'waiting_for', None):
+        skip_reasons.append('waiting_for_input')
+    if skip_reasons:
+        logger.info(
+            'WhatsApp general AI skipped: organization_id=%s reasons=%s.',
+            organization.pk,
+            ','.join(skip_reasons),
+        )
         return None
+
     conversation = getattr(state, 'conversation', None)
     if conversation is None:
+        logger.info(
+            'WhatsApp general AI skipped: conversation missing; organization_id=%s.',
+            organization.pk,
+        )
         return None
     if getattr(conversation, 'organization_id', None) != organization.pk:
+        logger.warning(
+            'WhatsApp general AI skipped: organization mismatch; organization_id=%s.',
+            organization.pk,
+        )
         return None
     if getattr(conversation, 'business_request_id', None) or getattr(conversation, 'business_request', None):
+        logger.info(
+            'WhatsApp general AI skipped: active business request; organization_id=%s.',
+            organization.pk,
+        )
         return None
     if getattr(state, 'current_step', None) not in {None, 'whatsapp_product_completed'}:
+        logger.info(
+            'WhatsApp general AI skipped: unsupported current_step=%s organization_id=%s.',
+            getattr(state, 'current_step', None),
+            organization.pk,
+        )
         return None
+
     try:
         from .ai_service import interpret_general_message
-        result = interpret_general_message(text, organization, state, current_message_id=current_message_id)
+        result = interpret_general_message(
+            text,
+            organization,
+            state,
+            current_message_id=current_message_id,
+        )
+
         if not isinstance(result, dict):
+            logger.warning(
+                'WhatsApp general AI rejected result: expected dict, received %s; organization_id=%s.',
+                type(result).__name__,
+                organization.pk,
+            )
             return None
+
         action = result.get('action')
         intent = result.get('intent')
         answer = result.get('answer')
+        language = result.get('language', 'sw')
+
+        # Log classification metadata before applying Django's allow-list.
+        logger.info(
+            'WhatsApp general AI raw classification: organization_id=%s '
+            'action=%s intent=%s language=%s answer_type=%s answer_length=%s keys=%s.',
+            organization.pk,
+            action,
+            intent,
+            language,
+            type(answer).__name__,
+            len(answer) if isinstance(answer, str) else -1,
+            ','.join(sorted(str(key) for key in result.keys())),
+        )
+
         if action == 'reply':
             if intent not in {'greeting', 'general_enquiry', 'unclear'}:
+                logger.warning(
+                    'WhatsApp general AI rejected reply: unsupported reply intent=%s organization_id=%s.',
+                    intent,
+                    organization.pk,
+                )
                 return None
             if not isinstance(answer, str):
+                logger.warning(
+                    'WhatsApp general AI rejected reply: answer is not text; organization_id=%s.',
+                    organization.pk,
+                )
                 return None
             answer = answer.strip()
             if not answer or len(answer) > 1000:
+                logger.warning(
+                    'WhatsApp general AI rejected reply: empty or oversized answer; '
+                    'organization_id=%s answer_length=%s.',
+                    organization.pk,
+                    len(answer),
+                )
                 return None
         elif action == 'route_existing':
             if intent not in {'product_enquiry', 'service_enquiry', 'business_request', 'human_support', 'workflow_input'}:
+                logger.warning(
+                    'WhatsApp general AI rejected route: unsupported route intent=%s organization_id=%s.',
+                    intent,
+                    organization.pk,
+                )
                 return None
             if answer != '':
+                logger.warning(
+                    'WhatsApp general AI rejected route: route answer must be empty; '
+                    'organization_id=%s answer_type=%s answer_length=%s.',
+                    organization.pk,
+                    type(answer).__name__,
+                    len(answer) if isinstance(answer, str) else -1,
+                )
                 return None
         else:
+            logger.warning(
+                'WhatsApp general AI rejected result: unsupported action=%s intent=%s organization_id=%s.',
+                action,
+                intent,
+                organization.pk,
+            )
             return None
-        return {'action': action, 'intent': intent, 'answer': answer, 'language': result.get('language', 'sw')}
+
+        return {
+            'action': action,
+            'intent': intent,
+            'answer': answer,
+            'language': language,
+        }
+
     except Exception:
-        import logging
-        logging.getLogger(__name__).exception('General WhatsApp AI interpretation failed.')
+        logger.exception(
+            'General WhatsApp AI interpretation failed: organization_id=%s.',
+            getattr(organization, 'pk', None),
+        )
         return None
 
 def _human_handover_acknowledgement(language='sw', organization=None):
