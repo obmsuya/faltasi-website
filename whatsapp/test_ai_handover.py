@@ -12,6 +12,7 @@ from whatsapp.views import (
     _human_handover_acknowledgement,
     get_ai_human_support_intent,
     get_ai_human_support_language,
+    _detect_explicit_human_support_language,
 )
 
 
@@ -214,6 +215,24 @@ class Phase3DHumanHandoverTests(SimpleTestCase):
         )
 
         self.assertIs(result, True)
+
+    def test_detects_customer_request_to_add_a_person(self):
+        self.assertEqual(
+            _detect_explicit_human_support_language("Naomba kuongeza na mtu"),
+            "sw",
+        )
+
+    def test_detects_natural_swahili_human_request_variant(self):
+        self.assertEqual(
+            _detect_explicit_human_support_language("Naomba uniongezee mtu"),
+            "sw",
+        )
+
+    def test_detects_english_add_someone_request(self):
+        self.assertEqual(
+            _detect_explicit_human_support_language("Please add someone"),
+            "en",
+        )
 
     def test_swahili_acknowledgement(self):
         self.assertEqual(

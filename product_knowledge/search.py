@@ -395,7 +395,9 @@ def search_organization_products(organization, query, limit=DEFAULT_LIMIT):
             output_field=CharField(),
         ),
     ).filter(
-        _matching_q(fields, tokens)
+        # Use normalized query tokens so singular/plural variants such as
+        # "laptop" and "laptops" can find the same products.
+        _matching_q(fields, query_tokens)
     ).select_related(
         "category"
     ).order_by("pk")
@@ -434,6 +436,23 @@ def search_organization_products(organization, query, limit=DEFAULT_LIMIT):
             for field, value in searchable_values.items()
         }
 
+        # Prefer matches in product identity fields. Keep description and
+        # technical-detail matching as a fallback so customers can still find
+        # products by a feature that is not repeated in the product name.
+        identity_fields = (
+            "name",
+            "category",
+            "brand",
+            "model",
+            "sku",
+            "barcode",
+            "manufacturer",
+        )
+        identity_tokens = set().union(
+            *(field_tokens[field] for field in identity_fields)
+        )
+        matched_identity_tokens = query_tokens.intersection(identity_tokens)
+
         all_product_tokens = set().union(*field_tokens.values())
         matched_tokens = query_tokens.intersection(all_product_tokens)
         coverage = len(matched_tokens) / len(query_tokens)
@@ -444,15 +463,36 @@ def search_organization_products(organization, query, limit=DEFAULT_LIMIT):
         ):
             continue
 
+        # Identity matches receive a large ranking advantage. If any identity
+        # matches exist, supporting-only matches are removed below; otherwise
+        # they remain available as the fallback search tier.
+        weights = {
+            "name": 25,
+            "category": 18,
+            "brand": 14,
+            "model": 14,
+            "sku": 10,
+            "barcode": 10,
+            "manufacturer": 8,
+            "short_description": 3,
+            "description": 2,
+            "specifications": 1,
+            "additional_information": 1,
+        }
 
-        brand_tokens = field_tokens["brand"]
-        name_tokens = field_tokens["name"]
-
-        score = len(matched_tokens) * 10
-        score += len(query_tokens.intersection(name_tokens)) * 5
-        score += len(query_tokens.intersection(brand_tokens)) * 12
-        score += len(query_tokens.intersection(field_tokens["model"])) * 8
+        score = sum(
+            len(query_tokens.intersection(field_tokens[field])) * weight
+            for field, weight in weights.items()
+        )
         score += round(coverage * 10)
+        identity_match = bool(matched_identity_tokens)
+        if identity_match:
+            score += 1000
+
+        normalized_query = " ".join(sorted(query_tokens))
+        normalized_name = " ".join(_tokens(product.name or ""))
+        if normalized_query and normalized_query in normalized_name:
+            score += 20
 
         results.append({
             "source": "product",
@@ -478,7 +518,20 @@ def search_organization_products(organization, query, limit=DEFAULT_LIMIT):
             "image_url": get_public_product_image_url(product),
             "display_order": product.display_order,
             "score": score,
+            "_identity_match": identity_match,
         })
+
+    # Do not mix unrelated supporting-text matches into a result set when
+    # there are direct product identity matches. Use supporting matches only
+    # when the query cannot be matched to any product identity fields.
+    if any(item["_identity_match"] for item in results):
+        results = [
+            item for item in results
+            if item["_identity_match"]
+        ]
+
+    for item in results:
+        item.pop("_identity_match", None)
 
     results.sort(
         key=lambda item: (

@@ -702,13 +702,29 @@ def get_ai_product_reply(text, organization, state, current_message_id):
     if not _whatsapp_ai_is_enabled(organization):
         return None
     state_data = state.data if isinstance(state.data, dict) else {}
-    if not state_data.get('selected_whatsapp_product_id'):
+    has_selected_product = bool(state_data.get('selected_whatsapp_product_id'))
+    candidate_product_ids = state_data.get('whatsapp_product_ids', [])
+    has_product_candidates = (
+        isinstance(candidate_product_ids, list)
+        and bool(candidate_product_ids)
+    )
+    current_step = getattr(state, 'current_step', None)
+    waiting_for = getattr(state, 'waiting_for', None)
+
+    # Product questions can refer to the displayed candidate list before
+    # the customer has selected a numbered item. Exact selections are still
+    # processed first by handle_whatsapp_product_conversation().
+    is_pending_product_selection = (
+        current_step == 'whatsapp_product_selection'
+        and waiting_for == 'product_selection'
+        and has_product_candidates
+        and not has_selected_product
+    )
+    if not has_selected_product and not is_pending_product_selection:
         return None
     if state_data.get('category') or state_data.get('business_request_id'):
         return None
-    current_step = getattr(state, 'current_step', None)
-    waiting_for = getattr(state, 'waiting_for', None)
-    if waiting_for:
+    if waiting_for and not is_pending_product_selection:
         return None
     conversation = getattr(state, 'conversation', None)
     if conversation is not None:
@@ -717,6 +733,8 @@ def get_ai_product_reply(text, organization, state, current_message_id):
         if getattr(conversation, 'business_request', None):
             return None
     allowed_steps = {None, 'whatsapp_product_completed'}
+    if is_pending_product_selection:
+        allowed_steps.add('whatsapp_product_selection')
     if current_step not in allowed_steps:
         return None
     try:
@@ -1538,7 +1556,17 @@ def get_ai_general_interpretation(text, organization, state, current_message_id)
         skip_reasons.append('active_business_request')
     if state_data.get('selected_whatsapp_product_id'):
         skip_reasons.append('selected_product')
-    if getattr(state, 'waiting_for', None):
+
+    # A displayed product list is not a blocking business workflow.
+    # The exact selection handler runs before this interpreter; if the
+    # message is not a selection, general AI may handle the conversation.
+    is_pending_product_selection = (
+        getattr(state, 'current_step', None) == 'whatsapp_product_selection'
+        and getattr(state, 'waiting_for', None) == 'product_selection'
+        and isinstance(state_data.get('whatsapp_product_ids'), list)
+        and bool(state_data.get('whatsapp_product_ids'))
+    )
+    if getattr(state, 'waiting_for', None) and not is_pending_product_selection:
         skip_reasons.append('waiting_for_input')
     if skip_reasons:
         logger.info(
@@ -1567,7 +1595,10 @@ def get_ai_general_interpretation(text, organization, state, current_message_id)
             organization.pk,
         )
         return None
-    if getattr(state, 'current_step', None) not in {None, 'whatsapp_product_completed'}:
+    allowed_steps = {None, 'whatsapp_product_completed'}
+    if is_pending_product_selection:
+        allowed_steps.add('whatsapp_product_selection')
+    if getattr(state, 'current_step', None) not in allowed_steps:
         logger.info(
             'WhatsApp general AI skipped: unsupported current_step=%s organization_id=%s.',
             getattr(state, 'current_step', None),
@@ -1717,8 +1748,44 @@ def _detect_explicit_human_support_language(text):
         return None
     normalized = re.sub('[^\\w\\s]', ' ', text.lower())
     normalized = ' '.join(normalized.split())
-    swahili_phrases = ['naomba niongee na mtu', 'naomba kuongea na mtu', 'naomba nizungumze na mtu', 'naomba kuzungumza na mtu', 'nataka kuongea na mtu', 'nataka kuzungumza na mtu', 'naomba kuongea na mfanyakazi', 'naomba kuongea na ofisi', 'naomba msaada wa mtu', 'niunganishe na mtu', 'nipe mtu wa kuongea naye']
-    english_phrases = ['speak to a human', 'talk to a human', 'speak with a human', 'talk with a human', 'speak to an agent', 'talk to an agent', 'speak to a person', 'talk to a person', 'speak to someone', 'talk to someone', 'human support', 'customer care agent', 'real person']
+    swahili_phrases = [
+        'naomba niongee na mtu',
+        'naomba kuongea na mtu',
+        'naomba nizungumze na mtu',
+        'naomba kuzungumza na mtu',
+        'nataka kuongea na mtu',
+        'nataka kuzungumza na mtu',
+        'naomba kuongea na mfanyakazi',
+        'naomba kuongea na ofisi',
+        'naomba msaada wa mtu',
+        'niunganishe na mtu',
+        'nipe mtu wa kuongea naye',
+        'naomba ongea na mtu',
+        'naomba ongea na mfanyakazi',
+        'naomba kuongeza na mtu',
+        'naomba uniongezee mtu',
+        'naomba mtu wa kunisaidia',
+        'ongeza mtu kwenye mazungumzo',
+        'niunge na mtu',
+    ]
+    english_phrases = [
+        'speak to a human',
+        'talk to a human',
+        'speak with a human',
+        'talk with a human',
+        'speak to an agent',
+        'talk to an agent',
+        'speak to a person',
+        'talk to a person',
+        'speak to someone',
+        'talk to someone',
+        'human support',
+        'customer care agent',
+        'real person',
+        'add a person',
+        'add someone',
+        'connect me to an agent',
+    ]
     if any((phrase in normalized for phrase in swahili_phrases)):
         return 'sw'
     if any((phrase in normalized for phrase in english_phrases)):

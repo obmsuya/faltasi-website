@@ -2,7 +2,7 @@
 from unittest import TestCase
 from unittest.mock import patch
 
-from whatsapp.views import get_ai_general_interpretation
+from whatsapp.views import get_ai_general_interpretation, get_ai_product_reply
 
 
 class GeneralIntentRoutingTests(TestCase):
@@ -231,14 +231,36 @@ class GeneralIntentRoutingTests(TestCase):
         interpreter.assert_not_called()
 
     @patch("whatsapp.ai_service.interpret_general_message")
-    def test_product_selection_blocks_interpreter(self, interpreter):
+    def test_pending_product_selection_allows_general_conversation(self, interpreter):
         self.state.current_step = "whatsapp_product_selection"
+        self.state.waiting_for = "product_selection"
+        self.state.data = {"whatsapp_product_ids": [4, 5]}
+        interpreter.return_value = {
+            "action": "reply",
+            "intent": "general_enquiry",
+            "answer": "Karibu FALTASI.",
+        }
+
+        result = get_ai_general_interpretation(
+            "Thanks, sihitaji Wi-Fi",
+            self.organization,
+            self.state,
+            135,
+        )
+
+        self.assertEqual(result["intent"], "general_enquiry")
+        interpreter.assert_called_once()
+
+    @patch("whatsapp.ai_service.interpret_general_message")
+    def test_active_product_builder_blocks_general_interpreter(self, interpreter):
+        self.state.current_step = "whatsapp_product_builder"
+        self.state.waiting_for = "customer_name"
 
         result = get_ai_general_interpretation(
             "Hello",
             self.organization,
             self.state,
-            135,
+            138,
         )
 
         self.assertIsNone(result)
@@ -270,3 +292,53 @@ class GeneralIntentRoutingTests(TestCase):
         )
 
         self.assertIsNone(result)
+
+
+class ProductFollowupRoutingTests(TestCase):
+
+    def setUp(self):
+        self.organization = SimpleNamespace(pk=10)
+        self.state = SimpleNamespace(
+            pk=100,
+            data={"whatsapp_product_ids": [4, 5]},
+            waiting_for="product_selection",
+            current_step="whatsapp_product_selection",
+            conversation=SimpleNamespace(
+                organization_id=10,
+                business_request_id=None,
+                business_request=None,
+            ),
+        )
+
+    @patch("whatsapp.ai_service.interpret_product_message")
+    def test_product_followup_uses_displayed_candidates(self, interpreter):
+        interpreter.return_value = {
+            "action": "answer_product",
+            "product_id": 4,
+            "answer": "Laptop hiyo ni TZS 850,000.",
+        }
+
+        result = get_ai_product_reply(
+            "Laptop ah ngapi",
+            self.organization,
+            self.state,
+            140,
+        )
+
+        self.assertEqual(result, "Laptop hiyo ni TZS 850,000.")
+        interpreter.assert_called_once()
+
+    @patch("whatsapp.ai_service.interpret_product_message")
+    def test_builder_workflow_does_not_use_candidate_followup(self, interpreter):
+        self.state.current_step = "whatsapp_product_builder"
+        self.state.waiting_for = "customer_name"
+
+        result = get_ai_product_reply(
+            "Laptop ah ngapi",
+            self.organization,
+            self.state,
+            141,
+        )
+
+        self.assertIsNone(result)
+        interpreter.assert_not_called()
