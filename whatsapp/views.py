@@ -929,22 +929,117 @@ def webhook(request):
                 selected_product_id = state_data_for_handover.get('selected_whatsapp_product_id')
                 if detected_category is None and (not current_category) and (not selected_product_id):
                     general_ai_attempted = True
-                    general_ai_result = get_ai_general_interpretation(text, organization, state, incoming_message.id if incoming_message else None)
+                    general_ai_result = get_ai_general_interpretation(
+                        text,
+                        organization,
+                        state,
+                        incoming_message.id if incoming_message else None,
+                    )
                     if general_ai_result:
                         intent = general_ai_result.get('intent')
-                        if intent == 'human_support':
+                        action = general_ai_result.get('action')
+                        logger.info(
+                            'WhatsApp general AI classified message: organization_id=%s '
+                            'conversation_id=%s action=%s intent=%s language=%s answer_length=%s',
+                            organization.pk,
+                            conversation.pk,
+                            action,
+                            intent,
+                            general_ai_result.get('language', 'sw'),
+                            len(general_ai_result.get('answer') or ''),
+                        )
+
+                        if intent == 'human_support' and action == 'route_existing':
                             activate_human_handover(conversation)
-                            reply = _human_handover_acknowledgement(general_ai_result.get('language', 'sw'), organization=organization)
+                            reply = _human_handover_acknowledgement(
+                                general_ai_result.get('language', 'sw'),
+                                organization=organization,
+                            )
                             detected_category = None
                             product_flow_handled = True
-                        elif general_ai_result.get('action') == 'reply':
+
+                        elif action == 'reply':
                             reply = general_ai_result['answer']
                             detected_category = None
                             product_flow_handled = True
-                        elif intent in {'service_enquiry', 'business_request'}:
-                            ai_category_result = get_ai_request_category_reply(text, organization, state, incoming_message.id if incoming_message else None)
-                if not product_flow_handled and detected_category is None and (not current_category) and (general_ai_result is None or general_ai_result.get('intent') == 'product_enquiry'):
-                    product_flow_reply = get_ai_product_reply(text, organization, state, incoming_message.id if incoming_message else None)
+
+                        elif intent in {'service_enquiry', 'business_request'} and action == 'route_existing':
+                            ai_category_result = get_ai_request_category_reply(
+                                text,
+                                organization,
+                                state,
+                                incoming_message.id if incoming_message else None,
+                            )
+                            if ai_category_result:
+                                if ai_category_result.get('clarification'):
+                                    reply = ai_category_result['clarification']
+                                    product_flow_handled = True
+                                    detected_category = None
+                                elif ai_category_result.get('category'):
+                                    detected_category = ai_category_result['category']
+                                    logger.info(
+                                        'WhatsApp AI category matched: organization_id=%s '
+                                        'category_id=%s category_name=%s',
+                                        organization.pk,
+                                        detected_category.pk,
+                                        detected_category.name,
+                                    )
+                            else:
+                                logger.info(
+                                    'WhatsApp AI could not map service/business intent to an active '
+                                    'organization category: organization_id=%s conversation_id=%s intent=%s',
+                                    organization.pk,
+                                    conversation.pk,
+                                    intent,
+                                )
+
+                        elif intent == 'workflow_input' and action == 'route_existing':
+                            logger.info(
+                                'WhatsApp AI classified workflow input without an active workflow: '
+                                'organization_id=%s conversation_id=%s',
+                                organization.pk,
+                                conversation.pk,
+                            )
+
+                        elif intent == 'product_enquiry' and action == 'route_existing':
+                            logger.info(
+                                'WhatsApp AI routed message to product discovery: '
+                                'organization_id=%s conversation_id=%s',
+                                organization.pk,
+                                conversation.pk,
+                            )
+                        else:
+                            logger.warning(
+                                'WhatsApp general AI returned an unhandled route: '
+                                'organization_id=%s conversation_id=%s action=%s intent=%s',
+                                organization.pk,
+                                conversation.pk,
+                                action,
+                                intent,
+                            )
+                    else:
+                        logger.info(
+                            'WhatsApp general AI returned no usable interpretation: '
+                            'organization_id=%s conversation_id=%s',
+                            organization.pk,
+                            conversation.pk,
+                        )
+
+                if (
+                    not product_flow_handled
+                    and detected_category is None
+                    and not current_category
+                    and (
+                        general_ai_result is None
+                        or general_ai_result.get('intent') == 'product_enquiry'
+                    )
+                ):
+                    product_flow_reply = get_ai_product_reply(
+                        text,
+                        organization,
+                        state,
+                        incoming_message.id if incoming_message else None,
+                    )
                     if product_flow_reply is not None:
                         reply = product_flow_reply
                         detected_category = None
@@ -1048,11 +1143,35 @@ def webhook(request):
                 if product_reply:
                     reply = product_reply
                 else:
-                    discovery = get_ai_product_discovery_reply(text, organization, state, incoming_message.id if incoming_message else None)
+                    logger.info(
+                        'WhatsApp product catalogue search had no direct result; trying AI discovery: '
+                        'organization_id=%s conversation_id=%s',
+                        organization.pk,
+                        conversation.pk,
+                    )
+                    discovery = get_ai_product_discovery_reply(
+                        text,
+                        organization,
+                        state,
+                        incoming_message.id if incoming_message else None,
+                    )
                     if discovery:
                         reply = discovery['reply']
                         product_reply = discovery['product_reply']
+                        logger.info(
+                            'WhatsApp product discovery returned a customer reply: '
+                            'organization_id=%s conversation_id=%s has_catalogue_products=%s',
+                            organization.pk,
+                            conversation.pk,
+                            bool(product_reply),
+                        )
                     else:
+                        logger.info(
+                            'WhatsApp product discovery returned no usable result; sending configured fallback: '
+                            'organization_id=%s conversation_id=%s',
+                            organization.pk,
+                            conversation.pk,
+                        )
                         reply = _get_configured_whatsapp_message(organization, 'fallback', getattr(organization, 'language', 'sw'))
             should_send_product_marketing_template = bool(product_reply and customer and customer.whatsapp_marketing_opt_in and whatsapp_message_id)
             if product_reply and state is not None:
