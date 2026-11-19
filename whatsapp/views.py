@@ -384,7 +384,7 @@ def _get_configured_whatsapp_message(organization, message_type, language='sw'):
     fallback_messages = {
         'fallback': {
             'sw': 'Asante kwa ujumbe wako. Tumepokea taarifa zako.',
-            'en': 'Thank you for your message. We have received it.',
+            'en': 'Thank you for your message, will get back to you soon.',
         },
         'marketing_invitation': {
             'sw': (
