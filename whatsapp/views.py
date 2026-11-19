@@ -3864,10 +3864,9 @@ def webhook(request):
 
 
 
-                reply = process_customer_message(
-
-                    text
-
+                reply = (
+                    "Samahani, sijaweza kutambua huduma unayoihitaji. "
+                    "Tafadhali eleza huduma au bidhaa unayotafuta kwa maelezo zaidi."
                 )
 
 
@@ -4587,7 +4586,11 @@ def webhook(request):
                             reply = discovery["reply"]
                             product_reply = discovery["product_reply"]
                         else:
-                            reply = process_customer_message(text)
+                            reply = (
+                                "Samahani, sijapata taarifa inayotosha kujibu "
+                                "swali lako. Tafadhali fafanua kidogo au wasiliana "
+                                "na timu yetu kwa msaada zaidi."
+                            )
             should_send_product_marketing_template = bool(
                 product_reply
                 and customer

@@ -684,9 +684,6 @@ class WhatsAppMarketingInvitationWebhookTests(TestCase):
             "whatsapp.views.search_whatsapp_products",
             return_value=None,
         ), patch(
-            "whatsapp.views.process_customer_message",
-            return_value="Thank you for contacting us.",
-        ), patch(
             "whatsapp.views.send_whatsapp_message",
             return_value=response,
         ) as mock_send:
@@ -747,11 +744,6 @@ class WhatsAppMarketingInvitationWebhookTests(TestCase):
         )
 
         self.assertIn("Nijibu YES kukubali au NO kukataa.", sent_reply)
-
-        self.assertIn(
-            "Thank you for contacting us.",
-            sent_reply,
-        )
 
         outgoing_message = Message.objects.get(
             organization=self.organization,

@@ -46,7 +46,7 @@ ALLOWED_HOSTS = [
     "localhost",
     "faltasi.com",
     ".faltasi.com",
-    #s"aggregate-flirt-primer.ngrok-free.dev",
+    #"aggregate-flirt-primer.ngrok-free.dev",
 ]
 
 

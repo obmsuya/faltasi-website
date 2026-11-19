@@ -265,24 +265,35 @@ def retrieve_knowledge(
 
     return {
         "query": str(query)[:MAX_QUERY_LENGTH],
-        "products": search_organization_products(
-            organization,
-            query,
-            limit=product_limit,
+        "products": (
+            search_organization_products(
+                organization,
+                query,
+                limit=product_limit,
+            )
+            if product_limit is not None and int(product_limit) > 0
+            else []
         ),
-        "documents": search_document_chunks(
-            organization,
-            query,
-            limit=document_limit,
-            can_access_admin_only=can_access_admin_only,
+        "documents": (
+            search_document_chunks(
+                organization,
+                query,
+                limit=document_limit,
+                can_access_admin_only=can_access_admin_only,
+            )
+            if document_limit is not None and int(document_limit) > 0
+            else []
         ),
-        "request_categories": get_request_categories(
-            organization,
-            query,
-            limit=category_limit,
+        "request_categories": (
+            get_request_categories(
+                organization,
+                query,
+                limit=category_limit,
+            )
+            if category_limit is not None and int(category_limit) > 0
+            else []
         ),
     }
-
 
 def _normalize_relevance_token(token):
     """Normalize simple English plurals for product-query matching."""
