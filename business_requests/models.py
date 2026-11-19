@@ -179,3 +179,61 @@ class StaffContact(models.Model):
             f"WhatsApp contact - "
             f"{self.user.get_full_name() or self.user.username}"
         )
+
+
+class WhatsAppAutomationSettings(models.Model):
+    """
+    Organization-specific configuration for WhatsApp automation.
+
+    Customer-facing messages and request-detection phrases are
+    maintained in the database instead of the webhook.
+    """
+
+    organization = models.OneToOneField(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="whatsapp_automation_settings",
+    )
+
+    default_language = models.CharField(
+        max_length=10,
+        default="sw",
+        help_text="Default language when the customer's language is unknown.",
+    )
+
+    # Customer-facing messages
+    general_fallback_message_sw = models.TextField(blank=True, default="")
+    general_fallback_message_en = models.TextField(blank=True, default="")
+
+    request_not_understood_message_sw = models.TextField(blank=True, default="")
+    request_not_understood_message_en = models.TextField(blank=True, default="")
+
+    marketing_invitation_message_sw = models.TextField(blank=True, default="")
+    marketing_invitation_message_en = models.TextField(blank=True, default="")
+
+    # Request detection phrases
+    request_phrases = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Phrases that indicate a customer is making a request.",
+    )
+
+    explicit_new_request_phrases = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Phrases indicating a customer wants to start another request.",
+    )
+
+    location_interruption_phrases = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Phrases indicating a new request instead of a location answer.",
+    )
+
+    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"WhatsApp Automation - {self.organization}"

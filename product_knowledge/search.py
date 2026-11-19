@@ -81,6 +81,7 @@ def search_document_chunks(
     limit=DEFAULT_LIMIT,
     *,
     can_access_admin_only=False,
+    customer_facing=False,
 ):
     """
     Search chunks from ready, active documents in one organization.
@@ -112,6 +113,13 @@ def search_document_chunks(
     if not can_access_admin_only:
         queryset = queryset.filter(
             document__access_level=ProductKnowledgeDocument.AccessLevel.EMPLOYEE
+        )
+
+    # WhatsApp customers may only receive documents explicitly classified
+    # as FAQs. Other Employee Access documents remain internal to AI STAFF.
+    if customer_facing:
+        queryset = queryset.filter(
+            document__document_type=ProductKnowledgeDocument.DocumentType.FAQ
         )
 
     queryset = queryset.select_related("document")
@@ -247,6 +255,7 @@ def retrieve_knowledge(
     category_limit=5,
     *,
     can_access_admin_only=False,
+    customer_facing=False,
 ):
     """
     Retrieve organization-specific products, document passages, and
@@ -280,6 +289,7 @@ def retrieve_knowledge(
                 query,
                 limit=document_limit,
                 can_access_admin_only=can_access_admin_only,
+                customer_facing=customer_facing,
             )
             if document_limit is not None and int(document_limit) > 0
             else []

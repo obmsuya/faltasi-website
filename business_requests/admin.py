@@ -28,6 +28,7 @@ from .models import (
 )
 
 from .excel_importer import import_categories_from_excel
+from .models import WhatsAppAutomationSettings
 
 
 @admin.register(Department)
@@ -129,3 +130,26 @@ class WorkflowStepAdmin(admin.ModelAdmin):
 @admin.register(RequestNotification)
 class RequestNotificationAdmin(admin.ModelAdmin):
     pass
+
+@admin.register(WhatsAppAutomationSettings)
+class WhatsAppAutomationSettingsAdmin(admin.ModelAdmin):
+    list_display = (
+        "organization",
+        "default_language",
+        "is_active",
+        "updated_at",
+    )
+
+    list_filter = (
+        "default_language",
+        "is_active",
+    )
+
+    search_fields = (
+        "organization__name",
+    )
+
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+    )

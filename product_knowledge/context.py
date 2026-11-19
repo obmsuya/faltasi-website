@@ -511,6 +511,7 @@ Keep the answer concise and suitable for WhatsApp.
         document_limit=document_limit,
         category_limit=category_limit,
         can_access_admin_only=can_access_admin_only,
+        customer_facing=customer_facing,
     )
 
     # Do not let loosely matching product keywords distract from a
