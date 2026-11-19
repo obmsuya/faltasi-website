@@ -354,68 +354,68 @@ def get_or_create_conversation_state(conversation):
         pass
     return state
 
-# def _get_configured_whatsapp_message(organization, message_type, language='sw'):
-#     """Read an organization's configured message with a safe project fallback."""
-#     language_key = 'en' if str(language or '').lower().startswith('en') else 'sw'
-#     try:
-#         configured = get_whatsapp_message(
-#             organization, message_type, language=language_key
-#         )
-#         if configured:
-#             return configured
-#     except Exception:
-#         logger.exception(
-#             'Unable to load WhatsApp message configuration (%s).',
-#             message_type,
-#         )
+def _get_configured_whatsapp_message(organization, message_type, language='sw'):
+    """Read an organization's configured message with a safe project fallback."""
+    language_key = 'en' if str(language or '').lower().startswith('en') else 'sw'
+    try:
+        configured = get_whatsapp_message(
+            organization, message_type, language=language_key
+        )
+        if configured:
+            return configured
+    except Exception:
+        logger.exception(
+            'Unable to load WhatsApp message configuration (%s).',
+            message_type,
+        )
 
-#     defaults = getattr(settings, 'WHATSAPP_DEFAULT_MESSAGES', {})
-#     if isinstance(defaults, dict):
-#         message = defaults.get(message_type, {})
-#         if isinstance(message, dict):
-#             configured = message.get(language_key) or message.get('sw')
-#             if configured:
-#                 return configured
-#         elif isinstance(message, str) and message:
-#             return message
+    defaults = getattr(settings, 'WHATSAPP_DEFAULT_MESSAGES', {})
+    if isinstance(defaults, dict):
+        message = defaults.get(message_type, {})
+        if isinstance(message, dict):
+            configured = message.get(language_key) or message.get('sw')
+            if configured:
+                return configured
+        elif isinstance(message, str) and message:
+            return message
 
-#     # Minimal defaults apply only when an organization has not configured
-#     # a message. Organization-specific messages always take precedence.
-#     fallback_messages = {
-#         'fallback': {
-#             'sw': 'Asante kwa ujumbe wako. Tumepokea taarifa zako.',
-#             'en': 'Thank you for your message. We have received it.',
-#         },
-#         'marketing_invitation': {
-#             'sw': (
-#                 'Pia tuna bidhaa nyingi ambazo nina uhakika utazifurahia. '
-#                 'Je, ungependa kupokea taarifa za bidhaa na ofa zetu kupitia WhatsApp? '
-#                 'Nijibu YES kukubali au NO kukataa.'
-#             ),
-#             'en': (
-#                 'We also have many products we believe you will enjoy. '
-#                 'Would you like to receive WhatsApp marketing messages? '
-#                 'Reply YES to subscribe or NO to decline.'
-#             ),
-#         },
-#         'human_handover': {
-#             'sw': 'Sawa, tumekuelewa. Tutaendelea kukusaidia hapa.',
-#             'en': 'Thanks for letting us know. We’ll continue helping you here.',
-#         },
-#         'marketing_opt_in_confirmation': {
-#             'sw': 'Asante. Umejiunga kupokea taarifa za matangazo kupitia WhatsApp.',
-#             'en': 'Thank you. You have opted in to receive WhatsApp marketing updates.',
-#         },
-#         'marketing_opt_out_confirmation': {
-#             'sw': 'Umeondolewa kwenye orodha ya matangazo ya WhatsApp.',
-#             'en': 'You have been unsubscribed from WhatsApp marketing messages.',
-#         },
-#         'marketing_declined_confirmation': {
-#             'sw': 'Asante kwa kutujibu. Hutapokea matangazo bila kutoa ridhaa yako.',
-#             'en': 'Thank you for responding. You will not receive marketing messages.',
-#         },
-#     }
-#     return fallback_messages.get(message_type, {}).get(language_key, '')
+    # Minimal defaults apply only when an organization has not configured
+    # a message. Organization-specific messages always take precedence.
+    fallback_messages = {
+        'fallback': {
+            'sw': 'Asante kwa ujumbe wako. Tumepokea taarifa zako.',
+            'en': 'Thank you for your message. We have received it.',
+        },
+        'marketing_invitation': {
+            'sw': (
+                'Pia tuna bidhaa nyingi ambazo nina uhakika utazifurahia. '
+                'Je, ungependa kupokea taarifa za bidhaa na ofa zetu kupitia WhatsApp? '
+                'Nijibu YES kukubali au NO kukataa.'
+            ),
+            'en': (
+                'We also have many products we believe you will enjoy. '
+                'Would you like to receive WhatsApp marketing messages? '
+                'Reply YES to subscribe or NO to decline.'
+            ),
+        },
+        'human_handover': {
+            'sw': 'Sawa, tumekuelewa. Tutaendelea kukusaidia hapa.',
+            'en': 'Thanks for letting us know. We’ll continue helping you here.',
+        },
+        'marketing_opt_in_confirmation': {
+            'sw': 'Asante. Umejiunga kupokea taarifa za matangazo kupitia WhatsApp.',
+            'en': 'Thank you. You have opted in to receive WhatsApp marketing updates.',
+        },
+        'marketing_opt_out_confirmation': {
+            'sw': 'Umeondolewa kwenye orodha ya matangazo ya WhatsApp.',
+            'en': 'You have been unsubscribed from WhatsApp marketing messages.',
+        },
+        'marketing_declined_confirmation': {
+            'sw': 'Asante kwa kutujibu. Hutapokea matangazo bila kutoa ridhaa yako.',
+            'en': 'Thank you for responding. You will not receive marketing messages.',
+        },
+    }
+    return fallback_messages.get(message_type, {}).get(language_key, '')
 
 
 def process_whatsapp_marketing_consent(customer, text):
