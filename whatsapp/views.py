@@ -957,7 +957,7 @@ def webhook(request):
                     incoming_message.id if incoming_message else None,
                 )
             product_flow_handled = product_flow_reply is not None
-            
+
             if product_flow_handled:
                 reply = product_flow_reply
                 detected_category = None
@@ -1256,7 +1256,7 @@ def webhook(request):
                             getattr(organization, 'language', 'sw'),
                         )
             should_send_product_marketing_template = bool(product_reply and customer and customer.whatsapp_marketing_opt_in and whatsapp_message_id)
-            
+
             if product_reply and state is not None:
                 displayed_product_ids = (state.data or {}).get('whatsapp_product_ids', [])
                 products_by_id = Product.objects.filter(organization=organization, id__in=displayed_product_ids, is_active=True, deleted_at__isnull=True, show_on_whatsapp=True).in_bulk()
