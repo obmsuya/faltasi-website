@@ -124,7 +124,13 @@ def search_document_chunks(
 
     queryset = queryset.select_related("document")
 
-    candidates = list(queryset[:500])
+    candidates = list(
+        queryset.order_by(
+            "document_id",
+            "chunk_index",
+            "pk",
+        )[:500]
+    )
     normalized_query = str(query).strip().lower()
     results = []
 
@@ -153,9 +159,17 @@ def search_document_chunks(
             "score": score,
         })
 
+
     results.sort(
-        key=lambda item: (-item["score"], item["title"].lower())
+        key=lambda item: (
+            -item["score"],
+            item["title"].lower(),
+            item["document_id"],
+            item["chunk_index"],
+            item["chunk_id"],
+        )
     )
+
     return results[:limit]
 
 

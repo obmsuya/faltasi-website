@@ -485,6 +485,44 @@ class KnowledgeSearchTests(TestCase):
             "Router Technical Manual",
         )
 
+    def test_document_search_returns_equal_scores_in_deterministic_order(self):
+        document = ProductKnowledgeDocument.objects.create(
+            organization=self.organization,
+            title="Router FAQ",
+            document_type=ProductKnowledgeDocument.DocumentType.FAQ,
+            status=ProductKnowledgeDocument.Status.READY,
+            index_status=ProductKnowledgeDocument.IndexStatus.PENDING,
+            access_level=ProductKnowledgeDocument.AccessLevel.EMPLOYEE,
+            is_active=True,
+        )
+
+        # Insert chunk 2 first.
+        ProductKnowledgeChunk.objects.create(
+            document=document,
+            organization=self.organization,
+            chunk_index=2,
+            text="Router supports wireless network installation.",
+        )
+
+        # Insert chunk 1 second.
+        ProductKnowledgeChunk.objects.create(
+            document=document,
+            organization=self.organization,
+            chunk_index=1,
+            text="Router supports wireless network installation.",
+        )
+
+        results = search_document_chunks(
+            self.organization,
+            "router wireless",
+        )
+
+        self.assertEqual(len(results), 2)
+        self.assertEqual(
+            [item["chunk_index"] for item in results],
+            [1, 2],
+        )    
+
     def test_document_search_excludes_other_organization(self):
         document = ProductKnowledgeDocument.objects.create(
             organization=self.other_organization,
