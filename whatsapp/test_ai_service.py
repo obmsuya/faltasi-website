@@ -207,7 +207,11 @@ class WhatsAppAIProductBuilderAnswerParserTests(TestCase):
     def test_accepts_empty_extraction(self):
         self.assertEqual(
             self.parse_answers({"answers": {}}),
-            {"answers": {}, "corrections": {}},
+            {
+                "answers": {},
+                "corrections": {},
+                "unrelated_question": "",
+            }
         )
 
     def test_rejects_unknown_question_key(self):

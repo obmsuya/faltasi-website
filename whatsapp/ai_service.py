@@ -129,6 +129,60 @@ def _organization_ai_guidance(organization, language_override=None):
     return guidance
 
 
+def _shared_customer_response_policy():
+    """
+    Shared factual-response rules for all customer-facing WhatsApp AI paths.
+    """
+    return """
+
+SHARED CUSTOMER RESPONSE POLICY
+
+Apply these rules consistently, regardless of which AI conversation
+path handles the customer.
+
+1. AUTHORITATIVE INFORMATION
+- Use only information supplied in the current organization's approved
+  knowledge context or the actual customer-facing product records.
+- Never invent company details, product specifications, prices,
+  availability, warranty, delivery terms, or business policies.
+- If the required information is missing, say that it is not currently
+  confirmed and that the business can verify it.
+
+2. FACTUAL CONSISTENCY
+- Give the same factual answer when the same question is supported by
+  the same authoritative business information.
+- Do not change product facts based on the customer's identity,
+  conversation history, communication style, or previous AI replies.
+- Do not contradict an authoritative fact supplied by Django.
+- Do not present assumptions or estimates as confirmed facts.
+
+3. USE OF CONVERSATION HISTORY
+- Use conversation history only to understand references, follow-up
+  questions, language preference, and the current conversation.
+- Do not treat previous AI-generated answers as authoritative facts.
+- If a previous AI answer conflicts with current authoritative
+  information, follow the authoritative information.
+
+4. CUSTOMER COMMUNICATION
+- Follow the organization's configured language and response style.
+- Use natural Tanzanian Kiswahili when Kiswahili is appropriate.
+- Use English when English is appropriate.
+- Support natural mixed Kiswahili-English.
+- Be polite, clear, helpful, and concise.
+- Avoid unnecessary repetition and do not ask for information
+  the customer has already provided.
+
+5. BUSINESS AND DATA PROTECTION
+- Never disclose internal cost, wholesale price, purchase price,
+  supplier information, profit, margin, or other restricted data.
+- Never claim an order, quotation, payment, reservation, delivery,
+  installation, or other business action has been completed unless
+  Django has confirmed that action.
+- Django remains responsible for business rules, validation,
+  permissions, records, and transactions.
+"""
+
+
 def _normalize_key(value):
     """Normalize a field name for sensitive-data detection."""
     return "".join(
@@ -667,7 +721,7 @@ Only Django can execute and validate business workflows.
             (product_conversation or {}).get("default_language"),
         )
         if organization else ""
-    )
+    ) + _shared_customer_response_policy()
 
 
 def _parse_ai_response(response, products, selected_product):
@@ -967,6 +1021,7 @@ def interpret_product_message(
 BUILDER_MAX_ANSWER_CHARS = 1000
 
 
+
 def _parse_product_builder_answers(
     response,
     allowed_question_keys,
@@ -988,10 +1043,11 @@ def _parse_product_builder_answers(
     except (TypeError, json.JSONDecodeError) as exc:
         raise WhatsAppAIInvalidResponseError("The AI returned invalid JSON.") from exc
 
-    # Accept the previous one-field shape for compatibility with older callers.
+    # Accept previous response formats for compatibility.
     if not isinstance(result, dict) or set(result) not in (
         {"answers"},
         {"answers", "corrections"},
+        {"answers", "corrections", "unrelated_question"},
     ):
         raise WhatsAppAIInvalidResponseError(
             "The AI response has an unexpected Builder answer structure."
@@ -999,6 +1055,20 @@ def _parse_product_builder_answers(
 
     answers = result.get("answers")
     corrections = result.get("corrections", {})
+    unrelated_question = result.get("unrelated_question", "")
+
+    if not isinstance(unrelated_question, str):
+        raise WhatsAppAIInvalidResponseError(
+            "The unrelated question must be text."
+        )
+
+    unrelated_question = unrelated_question.strip()
+
+    if len(unrelated_question) > MAX_MESSAGE_CHARS:
+        raise WhatsAppAIInvalidResponseError(
+            "The unrelated question exceeds the permitted length."
+        )
+
     if not isinstance(answers, dict) or not isinstance(corrections, dict):
         raise WhatsAppAIInvalidResponseError(
             "Builder answers and corrections must be objects."
@@ -1007,27 +1077,41 @@ def _parse_product_builder_answers(
     def clean_values(values, allowed_keys, label):
         cleaned = {}
         allowed = set(allowed_keys or ())
+
         for key, value in values.items():
             if not isinstance(key, str) or key not in allowed:
                 raise WhatsAppAIInvalidResponseError(
                     f"The AI returned an unknown or unavailable {label} key."
                 )
+
             if not isinstance(value, str):
                 raise WhatsAppAIInvalidResponseError(
                     f"Builder {label} values must be text."
                 )
+
             value = value.strip()
+
             if not value or len(value) > BUILDER_MAX_ANSWER_CHARS:
                 raise WhatsAppAIInvalidResponseError(
                     f"A Builder {label} is empty or exceeds the permitted length."
                 )
+
             cleaned[key] = value
+
         return cleaned
 
-    cleaned_answers = clean_values(answers, allowed_question_keys, "answer")
-    cleaned_corrections = clean_values(
-        corrections, allowed_correction_keys, "correction"
+    cleaned_answers = clean_values(
+        answers,
+        allowed_question_keys,
+        "answer",
     )
+
+    cleaned_corrections = clean_values(
+        corrections,
+        allowed_correction_keys,
+        "correction",
+    )
+
     if set(cleaned_answers) & set(cleaned_corrections):
         raise WhatsAppAIInvalidResponseError(
             "A Builder question cannot be both a new answer and a correction."
@@ -1036,6 +1120,7 @@ def _parse_product_builder_answers(
     return {
         "answers": cleaned_answers,
         "corrections": cleaned_corrections,
+        "unrelated_question": unrelated_question,
     }
 
 
@@ -1131,7 +1216,7 @@ def interpret_product_builder_answers(
         question["key"] for question in correction_questions
     }
     if not allowed_keys and not allowed_correction_keys:
-        return {"answers": {}, "corrections": {}}
+        return {"answers": {}, "corrections": {}, "unrelated_question": ""}
 
     api_key = os.getenv("OPENAI_API_KEY")
     model = os.getenv("OPENAI_MODEL")
@@ -1163,8 +1248,12 @@ def interpret_product_builder_answers(
     Markdown, comments, or explanations outside the JSON object.
 
     The JSON object must have exactly this structure:
-    {"answers": {"question_key": "answer text"},
-     "corrections": {"question_key": "corrected answer text"}}
+
+        {
+            "answers": {"question_key": "answer text"},
+            "corrections": {"question_key": "corrected answer text"},
+            "unrelated_question": "customer's separate question or empty string"
+        }
 
     Understand English, natural Tanzanian Kiswahili, and mixed Kiswahili-English.
     Use only question keys listed in available_questions for new answers.
@@ -1179,8 +1268,16 @@ def interpret_product_builder_answers(
     details. Respect display_conditions for new answers. Preserve the customer's
     meaning and values as text. Do not validate, ask questions, answer product
     enquiries, or perform any business operation.
-    If there is no clear new answer or explicit correction, return
-    {"answers": {}, "corrections": {}}."""
+    If the customer asks a separate question that is not an answer to any
+    available Builder question, put that question in unrelated_question.
+    If the message contains both Builder answers and a separate question,
+    extract the answers and put only the separate question in unrelated_question.
+    If there is no separate question, use an empty string.
+    Do not put Builder answers into unrelated_question.
+    Do not invent or rewrite the customer's question.
+    If there is no clear new answer or explicit correction, return empty
+    answers and corrections, but preserve any separate customer question
+    in unrelated_question."""
 
     try:
         if client is None:
@@ -1539,7 +1636,10 @@ Return JSON only, with exactly these four fields:
 }
 
 
-""" + (_organization_ai_guidance(organization) if organization else "")
+""" + (
+        (_organization_ai_guidance(organization) if organization else "")
+        + _shared_customer_response_policy()
+    )
 
 
 def interpret_general_message(

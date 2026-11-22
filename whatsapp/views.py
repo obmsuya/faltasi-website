@@ -935,7 +935,12 @@ def webhook(request):
                 product_flow_reply = _human_handover_acknowledgement(handover_language, organization=organization)
             else:
                 product_flow_reply = None
-                product_flow_reply = handle_whatsapp_product_conversation(text, organization, state)
+                product_flow_reply = handle_whatsapp_product_conversation(
+                    text,
+                    organization,
+                    state,
+                    incoming_message.id if incoming_message else None,
+                )
             product_flow_handled = product_flow_reply is not None
             if product_flow_handled:
                 reply = product_flow_reply
@@ -1273,7 +1278,7 @@ def _product_builder_completion_response(runtime):
     snapshot = (runtime or {}).get('snapshot') or {}
     return snapshot.get('closing_message') or ''
 
-def handle_whatsapp_product_conversation(text, organization, state):
+def handle_whatsapp_product_conversation(text, organization, state, current_message_id=None,):
     """Handle product selection and dashboard-configured product questions."""
     if not text or not organization or (not state):
         return None
@@ -1282,103 +1287,373 @@ def handle_whatsapp_product_conversation(text, organization, state):
     if step not in {'whatsapp_product_selection', 'whatsapp_product_builder'}:
         return None
 
+    
+def handle_whatsapp_product_conversation(
+    text,
+    organization,
+    state,
+    current_message_id=None,
+):
+    """Handle product selection and dashboard-configured product questions."""
+    if not text or not organization or not state:
+        return None
+
+    step = state.current_step
+    data = dict(state.data or {})
+
+    if step not in {
+        'whatsapp_product_selection',
+        'whatsapp_product_builder',
+    }:
+        return None
+
     def save_state(new_step, waiting_for, updates=None):
         current_data = dict(state.data or {})
+
         if updates:
             current_data.update(updates)
+
         state.current_step = new_step
         state.waiting_for = waiting_for
         state.data = current_data
         state.save()
+
+    def answer_builder_unrelated_question(separate_question):
+        if not separate_question:
+            return None
+
+        try:
+            result = get_ai_general_interpretation(
+                separate_question,
+                organization,
+                state,
+                current_message_id,
+                allow_product_builder=True,
+            )
+
+            if not isinstance(result, dict):
+                return None
+
+            if result.get('action') != 'reply':
+                return None
+
+            answer = result.get('answer')
+
+            if not isinstance(answer, str) or not answer.strip():
+                return None
+
+            return answer.strip()
+
+        except Exception:
+            logger.exception(
+                'WhatsApp Builder separate-question response failed: '
+                'organization_id=%s.',
+                organization.pk,
+            )
+            return None
+
+    # STEP 1: Customer selects one of the displayed products.
     if step == 'whatsapp_product_selection':
         product_ids = data.get('whatsapp_product_ids', [])
         normalized = text.strip().lower()
         selected_id = None
+
         if normalized.isdigit():
             choice = int(normalized)
+
             if 1 <= choice <= len(product_ids):
                 selected_id = product_ids[choice - 1]
+
         if selected_id is None:
-            for product in Product.objects.filter(organization=organization, id__in=product_ids, is_active=True, deleted_at__isnull=True, show_on_whatsapp=True):
+            for product in Product.objects.filter(
+                organization=organization,
+                id__in=product_ids,
+                is_active=True,
+                deleted_at__isnull=True,
+                show_on_whatsapp=True,
+            ):
                 if normalized == product.name.lower():
                     selected_id = product.id
                     break
+
         if selected_id is None:
             return None
-        product = Product.objects.filter(organization=organization, id=selected_id, is_active=True, deleted_at__isnull=True, show_on_whatsapp=True).first()
+
+        product = Product.objects.filter(
+            organization=organization,
+            id=selected_id,
+            is_active=True,
+            deleted_at__isnull=True,
+            show_on_whatsapp=True,
+        ).first()
+
         if not product:
-            save_state(None, None, {'whatsapp_product_ids': [], 'selected_whatsapp_product_id': None, 'selected_whatsapp_product_name': None})
+            save_state(
+                None,
+                None,
+                {
+                    'whatsapp_product_ids': [],
+                    'selected_whatsapp_product_id': None,
+                    'selected_whatsapp_product_name': None,
+                },
+            )
             return None
-        save_state('whatsapp_product_completed', None, {'selected_whatsapp_product_id': product.id, 'selected_whatsapp_product_name': product.name})
-        from conversation_builder.runtime import get_runtime_status, start_product_conversation
-        runtime = start_product_conversation(state, organization, product)
+
+        save_state(
+            'whatsapp_product_completed',
+            None,
+            {
+                'selected_whatsapp_product_id': product.id,
+                'selected_whatsapp_product_name': product.name,
+            },
+        )
+
+        from conversation_builder.runtime import (
+            get_runtime_status,
+            start_product_conversation,
+        )
+
+        runtime = start_product_conversation(
+            state,
+            organization,
+            product,
+        )
+
         if runtime and runtime.get('status') == 'in_progress':
             try:
                 if not _whatsapp_ai_is_enabled(organization):
-                    raise RuntimeError('WhatsApp AI is disabled for this organization.')
-                from whatsapp.ai_service import select_next_product_builder_question
-                preferred_key = select_next_product_builder_question(text, organization, state, product, runtime)
+                    raise RuntimeError(
+                        'WhatsApp AI is disabled for this organization.'
+                    )
+
+                from whatsapp.ai_service import (
+                    select_next_product_builder_question,
+                )
+
+                preferred_key = select_next_product_builder_question(
+                    text,
+                    organization,
+                    state,
+                    product,
+                    runtime,
+                )
+
                 if preferred_key:
-                    runtime = get_runtime_status(state, organization, product, preferred_question_key=preferred_key)
+                    runtime = get_runtime_status(
+                        state,
+                        organization,
+                        product,
+                        preferred_question_key=preferred_key,
+                    )
+
             except Exception:
-                logger.exception('AI question selection failed at product conversation start; using Builder order.')
+                logger.exception(
+                    'AI question selection failed at product conversation '
+                    'start; using Builder order.'
+                )
+
             prompt = _format_product_builder_question(runtime)
+
             if prompt:
                 return prompt
-            return (runtime.get('snapshot') or {}).get('fallback_message') or None
+
+            return (
+                runtime.get('snapshot') or {}
+            ).get('fallback_message') or None
+
         return None
-    from conversation_builder.runtime import get_runtime_status, submit_product_question_answers
+
+    # STEP 2: Continue the selected product's configured Builder.
+    from conversation_builder.runtime import (
+        get_runtime_status,
+        submit_product_question_answers,
+    )
+
     product_id = data.get('selected_whatsapp_product_id')
-    product = Product.objects.filter(organization=organization, id=product_id, is_active=True, deleted_at__isnull=True, show_on_whatsapp=True).first()
+
+    product = Product.objects.filter(
+        organization=organization,
+        id=product_id,
+        is_active=True,
+        deleted_at__isnull=True,
+        show_on_whatsapp=True,
+    ).first()
+
     if not product:
-        save_state(None, None, {'selected_whatsapp_product_id': None, 'selected_whatsapp_product_name': None})
+        save_state(
+            None,
+            None,
+            {
+                'selected_whatsapp_product_id': None,
+                'selected_whatsapp_product_name': None,
+            },
+        )
         return None
+
     runtime = get_runtime_status(state, organization, product)
+
     if not runtime:
         return None
+
     if runtime.get('status') == 'completed':
         save_state('whatsapp_product_completed', None)
         return _product_builder_completion_response(runtime) or None
+
     question = runtime.get('question')
+
     if not isinstance(question, dict) or not question.get('key'):
-        return (runtime.get('snapshot') or {}).get('fallback_message') or None
+        return (
+            runtime.get('snapshot') or {}
+        ).get('fallback_message') or None
+
+    # STEP 3: Extract Builder answers and separate customer questions.
     answers = {}
     corrections = {}
+    unrelated_question = ''
+
     try:
         if not _whatsapp_ai_is_enabled(organization):
-            raise RuntimeError('WhatsApp AI is disabled for this organization.')
+            raise RuntimeError(
+                'WhatsApp AI is disabled for this organization.'
+            )
+
         from whatsapp.ai_service import interpret_product_builder_answers
-        extraction = interpret_product_builder_answers(text, organization, state, product, runtime)
+
+        extraction = interpret_product_builder_answers(
+            text,
+            organization,
+            state,
+            product,
+            runtime,
+        )
+
         answers = extraction.get('answers') or {}
         corrections = extraction.get('corrections') or {}
+        unrelated_question = extraction.get('unrelated_question') or ''
+
     except Exception:
-        logger.exception('Product Builder answer extraction failed; using current configured question.')
-    if not answers and (not corrections):
-        answers = {question['key']: text}
-    result = submit_product_question_answers(state, organization, product, answers, corrections=corrections)
+        logger.exception(
+            'Product Builder answer extraction failed; '
+            'preserving current Builder question.'
+        )
+
+    # STEP 4: Obtain a separate answer while the Builder is still active.
+    # This does not change the Builder state.
+    unrelated_reply = answer_builder_unrelated_question(
+        unrelated_question
+    )
+
+    # Do not assume the customer's entire message is an answer.
+    # If AI cannot identify a valid Builder answer, keep the current
+    # question active and allow the customer to clarify.
+    # STEP 5: Submit only actual Builder answers or corrections.
+    result = {
+        'status': 'no_input',
+        'rejected': [],
+    }
+
+    if answers or corrections:
+        result = submit_product_question_answers(
+            state,
+            organization,
+            product,
+            answers,
+            corrections=corrections,
+        )
+
     runtime = get_runtime_status(state, organization, product)
+
     if not runtime:
-        return None
-    if result.get('status') != 'completed' and runtime.get('status') == 'in_progress':
+        return unrelated_reply
+
+    # STEP 6: Select the next eligible Builder question only when
+    # the customer supplied Builder answers or corrections.
+    if (
+        (answers or corrections)
+        and result.get('status') != 'completed'
+        and runtime.get('status') == 'in_progress'
+    ):
         try:
             if not _whatsapp_ai_is_enabled(organization):
-                raise RuntimeError('WhatsApp AI is disabled for this organization.')
-            from whatsapp.ai_service import select_next_product_builder_question
-            preferred_key = select_next_product_builder_question(text, organization, state, product, runtime)
+                raise RuntimeError(
+                    'WhatsApp AI is disabled for this organization.'
+                )
+
+            from whatsapp.ai_service import (
+                select_next_product_builder_question,
+            )
+
+            preferred_key = select_next_product_builder_question(
+                text,
+                organization,
+                state,
+                product,
+                runtime,
+            )
+
             if preferred_key:
-                runtime = get_runtime_status(state, organization, product, preferred_question_key=preferred_key)
+                runtime = get_runtime_status(
+                    state,
+                    organization,
+                    product,
+                    preferred_question_key=preferred_key,
+                )
+
         except Exception:
-            logger.exception('AI question selection failed; using Builder question order.')
-    if result.get('status') == 'completed' or runtime.get('status') == 'completed':
+            logger.exception(
+                'AI question selection failed; using Builder question order.'
+            )
+
+    # STEP 7: Builder completion.
+    if (
+        result.get('status') == 'completed'
+        or runtime.get('status') == 'completed'
+    ):
         save_state('whatsapp_product_completed', None)
-        return _product_builder_completion_response(runtime) or None
+
+        completion_message = _product_builder_completion_response(runtime)
+
+        return '\n\n'.join(
+            part for part in (
+                unrelated_reply,
+                completion_message,
+            ) if part
+        ) or None
+
+    # STEP 8: Handle rejected Builder answers.
     rejected = result.get('rejected') or []
+
     if rejected:
         current_question = runtime.get('question') or question
-        retry_message = current_question.get('retry_message') or (runtime.get('snapshot') or {}).get('fallback_message')
+
+        retry_message = (
+            current_question.get('retry_message')
+            or (runtime.get('snapshot') or {}).get('fallback_message')
+        )
+
         prompt = _format_product_builder_question(runtime)
-        return '\n\n'.join((part for part in (retry_message, prompt) if part)) or None
-    return _format_product_builder_question(runtime) or ((runtime.get('snapshot') or {}).get('fallback_message') or None)
+
+        return '\n\n'.join(
+            part for part in (
+                unrelated_reply,
+                retry_message,
+                prompt,
+            ) if part
+        ) or None
+
+    # STEP 9: Return the separate answer together with the next
+    # Builder question, or simply repeat the current question.
+    prompt = (
+        _format_product_builder_question(runtime)
+        or (runtime.get('snapshot') or {}).get('fallback_message')
+    )
+
+    return '\n\n'.join(
+        part for part in (
+            unrelated_reply,
+            prompt,
+        ) if part
+    ) or None
 
 def search_whatsapp_products(text, organization, state=None):
     """Search WhatsApp-enabled products and remember the displayed choices."""
@@ -1527,7 +1802,14 @@ def get_next_request_question(category, collected_data):
         return field.question
     return None
 
-def get_ai_general_interpretation(text, organization, state, current_message_id):
+def get_ai_general_interpretation(
+        text, 
+        organization, 
+        state, 
+        current_message_id, 
+        *, 
+        allow_product_builder=False,
+        ):
     """
     Interpret general customer messages in an idle conversation,
     including after a product has been displayed.
@@ -1549,12 +1831,21 @@ def get_ai_general_interpretation(text, organization, state, current_message_id)
         return None
 
     state_data = state.data if isinstance(state.data, dict) else {}
+    builder_data = state_data.get('product_conversation')
+    is_active_product_builder = (
+        allow_product_builder
+        and getattr(state, 'current_step', None) == 'whatsapp_product_builder'
+        and bool(state_data.get('selected_whatsapp_product_id'))
+        and isinstance(builder_data, dict)
+        and builder_data.get('status') == 'in_progress'
+    )
     skip_reasons = []
+        
     if state_data.get('category'):
         skip_reasons.append('active_category')
     if state_data.get('business_request_id'):
         skip_reasons.append('active_business_request')
-    if state_data.get('selected_whatsapp_product_id'):
+    if state_data.get('selected_whatsapp_product_id')and not is_active_product_builder:
         skip_reasons.append('selected_product')
 
     # A displayed product list is not a blocking business workflow.
@@ -1566,7 +1857,12 @@ def get_ai_general_interpretation(text, organization, state, current_message_id)
         and isinstance(state_data.get('whatsapp_product_ids'), list)
         and bool(state_data.get('whatsapp_product_ids'))
     )
-    if getattr(state, 'waiting_for', None) and not is_pending_product_selection:
+
+    if (
+        getattr(state, 'waiting_for', None)
+        and not is_pending_product_selection
+        and not is_active_product_builder
+    ):
         skip_reasons.append('waiting_for_input')
     if skip_reasons:
         logger.info(
@@ -1595,9 +1891,14 @@ def get_ai_general_interpretation(text, organization, state, current_message_id)
             organization.pk,
         )
         return None
+    
     allowed_steps = {None, 'whatsapp_product_completed'}
     if is_pending_product_selection:
         allowed_steps.add('whatsapp_product_selection')
+    if is_active_product_builder:
+        allowed_steps.add('whatsapp_product_builder')
+
+
     if getattr(state, 'current_step', None) not in allowed_steps:
         logger.info(
             'WhatsApp general AI skipped: unsupported current_step=%s organization_id=%s.',
@@ -1665,6 +1966,16 @@ def get_ai_general_interpretation(text, organization, state, current_message_id)
                 )
                 return None
         elif action == 'route_existing':
+            if allow_product_builder:
+                logger.info(
+                    'WhatsApp Builder general AI rejected workflow routing: '
+                    'organization_id=%s intent=%s.',
+                    organization.pk,
+                    intent,
+                )
+                return None
+
+
             if intent not in {'product_enquiry', 'service_enquiry', 'business_request', 'human_support', 'workflow_input'}:
                 logger.warning(
                     'WhatsApp general AI rejected route: unsupported route intent=%s organization_id=%s.',

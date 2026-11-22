@@ -670,9 +670,10 @@ class WhatsAppMarketingInvitationWebhookTests(TestCase):
         ), patch(
             "whatsapp.views.get_ai_general_interpretation",
             return_value={
-                "action": "route_existing",
-                "intent": "unclear",
-                "answer": "",
+                "action": "reply",
+                "intent": "greeting",
+                "answer": "Hello! How can I help you today?",
+                "language": "en",
             },
         ), patch(
             "whatsapp.views.get_ai_product_discovery_reply",
@@ -1327,6 +1328,9 @@ class WhatsAppProductBuilderIntegrationTests(TestCase):
         return configuration
 
     def select_product(self):
+        from unittest.mock import patch
+        from whatsapp.views import handle_whatsapp_product_conversation
+
         self.state.data = {
             **self.state.data,
             "whatsapp_product_ids": [self.product.pk],
@@ -1335,14 +1339,15 @@ class WhatsAppProductBuilderIntegrationTests(TestCase):
         self.state.waiting_for = "product_selection"
         self.state.save()
 
-        from whatsapp.views import handle_whatsapp_product_conversation
-
-        return handle_whatsapp_product_conversation(
-            "1",
-            self.organization,
-            self.state,
-        )
-
+        with patch(
+            "whatsapp.ai_service.select_next_product_builder_question",
+            return_value=None,
+        ):
+            return handle_whatsapp_product_conversation(
+                "1",
+                self.organization,
+                self.state,
+            )
     def test_without_builder_does_not_ask_hardcoded_product_questions(self):
         response = self.select_product()
 
@@ -1390,6 +1395,7 @@ class WhatsAppProductBuilderIntegrationTests(TestCase):
             self.state.data,
         )
 
+    
     def test_builder_answers_advance_and_return_to_quantity(self):
         self.publish_builder([
             {
@@ -1410,27 +1416,44 @@ class WhatsAppProductBuilderIntegrationTests(TestCase):
 
         from whatsapp.views import handle_whatsapp_product_conversation
 
-        first_response = handle_whatsapp_product_conversation(
-            "Amina",
-            self.organization,
-            self.state,
-        )
+        with (
+            patch("whatsapp.views._whatsapp_ai_is_enabled", return_value=True),
+            patch(
+                "whatsapp.ai_service.interpret_product_builder_answers",
+                side_effect=[
+                    {
+                        "answers": {"customer_name": "Amina"},
+                        "corrections": {},
+                        "unrelated_question": "",
+                    },
+                    {
+                        "answers": {"delivery_location": "Dar es Salaam"},
+                        "corrections": {},
+                        "unrelated_question": "",
+                    },
+                ],
+            ),
+        ):
+            first_response = handle_whatsapp_product_conversation(
+                "Amina",
+                self.organization,
+                self.state,
+            )
 
-        self.assertIn("Where should we deliver?", first_response)
+            self.assertIn("Where should we deliver?", first_response)
 
-        self.state.refresh_from_db()
+            self.state.refresh_from_db()
 
-        answers = self.state.data["product_conversation"]["answers"]
+            answers = self.state.data["product_conversation"]["answers"]
+            self.assertEqual(answers["customer_name"], "Amina")
 
-        self.assertEqual(answers["customer_name"], "Amina")
+            second_response = handle_whatsapp_product_conversation(
+                "Dar es Salaam",
+                self.organization,
+                self.state,
+            )
 
-        second_response = handle_whatsapp_product_conversation(
-            "Dar es Salaam",
-            self.organization,
-            self.state,
-        )
-
-        self.assertIsNone(second_response)
+            self.assertIsNone(second_response)
 
         self.state.refresh_from_db()
 
@@ -1532,3 +1555,195 @@ class WhatsAppProductBuilderIntegrationTests(TestCase):
         self.assertIsNone(self.state.waiting_for)
         self.assertIsNone(response)
 
+
+    def test_unrelated_question_does_not_advance_product_builder(self):
+        self.publish_builder([
+            {
+                "key": "ram",
+                "question": "What RAM size do you need?",
+                "field_type": "text",
+                "order": 1,
+            },
+            {
+                "key": "delivery_location",
+                "question": "Where should we deliver?",
+                "field_type": "text",
+                "order": 2,
+            },
+        ])
+
+        self.select_product()
+
+        from whatsapp.views import handle_whatsapp_product_conversation
+
+        extraction = {
+            "answers": {},
+            "corrections": {},
+            "unrelated_question": "Do you deliver to Arusha?",
+        }
+
+        general_reply = {
+            "action": "reply",
+            "intent": "general_enquiry",
+            "answer": "Yes, we can assist with delivery enquiries.",
+            "language": "en",
+        }
+
+        with (
+            patch(
+                "whatsapp.ai_service.interpret_product_builder_answers",
+                return_value=extraction,
+            ),
+            patch(
+                "whatsapp.views.get_ai_general_interpretation",
+                return_value=general_reply,
+            ) as mock_general_ai,
+        ):
+            response = handle_whatsapp_product_conversation(
+                "Do you deliver to Arusha?",
+                self.organization,
+                self.state,
+                current_message_id=123,
+            )
+
+        mock_general_ai.assert_called_once_with(
+            "Do you deliver to Arusha?",
+            self.organization,
+            self.state,
+            123,
+            allow_product_builder=True,
+        )
+
+        self.assertIn(
+            "Yes, we can assist with delivery enquiries.",
+            response,
+        )
+        self.assertIn("What RAM size do you need?", response)
+
+        self.state.refresh_from_db()
+
+        namespace = self.state.data["product_conversation"]
+
+        self.assertEqual(namespace["answers"], {})
+        self.assertEqual(self.state.current_step, "whatsapp_product_builder")
+        self.assertEqual(
+            self.state.waiting_for,
+            "product_conversation_question",
+        )
+
+    def test_mixed_message_saves_builder_answer_and_answers_unrelated_question(self):
+        self.publish_builder([
+            {
+                "key": "ram",
+                "question": "What RAM size do you need?",
+                "field_type": "text",
+                "order": 1,
+            },
+            {
+                "key": "delivery_location",
+                "question": "Where should we deliver?",
+                "field_type": "text",
+                "order": 2,
+            },
+        ])
+        self.select_product()
+
+        from whatsapp.views import handle_whatsapp_product_conversation
+
+        extraction = {
+            "answers": {"ram": "16GB"},
+            "corrections": {},
+            "unrelated_question": "Do you deliver to Arusha?",
+        }
+
+        general_reply = {
+            "action": "reply",
+            "intent": "general_enquiry",
+            "answer": "Yes, we can assist with delivery enquiries.",
+            "language": "en",
+        }
+
+        with (
+            patch(
+                "whatsapp.ai_service.interpret_product_builder_answers",
+                return_value=extraction,
+            ),
+            patch(
+                "whatsapp.views.get_ai_general_interpretation",
+                return_value=general_reply,
+            ) as mock_general_ai,
+        ):
+            response = handle_whatsapp_product_conversation(
+                "I need 16GB RAM. Do you deliver to Arusha?",
+                self.organization,
+                self.state,
+                current_message_id=124,
+            )
+
+        mock_general_ai.assert_called_once_with(
+            "Do you deliver to Arusha?",
+            self.organization,
+            self.state,
+            124,
+            allow_product_builder=True,
+        )
+
+        self.assertIn("Yes, we can assist with delivery enquiries.", response)
+        self.assertIn("Where should we deliver?", response)
+
+        self.state.refresh_from_db()
+        namespace = self.state.data["product_conversation"]
+
+        self.assertEqual(namespace["answers"]["ram"], "16GB")
+        self.assertNotIn("delivery_location", namespace["answers"])
+        self.assertEqual(self.state.current_step, "whatsapp_product_builder")
+
+    
+    def test_builder_extraction_failure_does_not_save_raw_message(self):
+        self.publish_builder([
+            {
+                "key": "ram",
+                "question": "What RAM size do you need?",
+                "field_type": "text",
+                "order": 1,
+            },
+            {
+                "key": "delivery_location",
+                "question": "Where should we deliver?",
+                "field_type": "text",
+                "order": 2,
+            },
+        ])
+
+        self.select_product()
+
+        from whatsapp.views import handle_whatsapp_product_conversation
+
+        with (
+            patch("whatsapp.views._whatsapp_ai_is_enabled", return_value=True),
+            patch(
+                "whatsapp.ai_service.interpret_product_builder_answers",
+                side_effect=RuntimeError("Simulated AI extraction failure"),
+            ),
+        ):
+            response = handle_whatsapp_product_conversation(
+                "Do you deliver to Arusha?",
+                self.organization,
+                self.state,
+            )
+
+        self.assertIn("What RAM size do you need?", response)
+
+        self.state.refresh_from_db()
+
+        namespace = self.state.data["product_conversation"]
+
+        self.assertEqual(namespace["answers"], {})
+        self.assertEqual(
+            self.state.current_step,
+            "whatsapp_product_builder",
+        )
+        self.assertEqual(
+            self.state.waiting_for,
+            "product_conversation_question",
+        )
