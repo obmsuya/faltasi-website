@@ -1878,6 +1878,7 @@ def _parse_product_discovery_response(response):
     }
 
 
+
 def interpret_product_discovery(
     text,
     organization,
@@ -1885,6 +1886,7 @@ def interpret_product_discovery(
     *,
     client=None,
     current_message_id=None,
+    discovery_context=None,
 ):
     """
     Convert a customer's natural-language product request into a
@@ -1939,10 +1941,38 @@ def interpret_product_discovery(
             current_message_id=current_message_id,
         )
 
+        saved_discovery = (
+            discovery_context
+            if isinstance(discovery_context, dict)
+            else {}
+        )
+
+        original_request = saved_discovery.get("original_request")
+        clarification_question = saved_discovery.get(
+            "clarification_question"
+        )
+
+        product_discovery_context = {
+            "original_request": (
+                original_request[:MAX_MESSAGE_CHARS]
+                if isinstance(original_request, str)
+                else ""
+            ),
+            "clarification_question": (
+                clarification_question[:500]
+                if isinstance(clarification_question, str)
+                else ""
+            ),
+        }
+
         context = {
             "conversation_history": history,
+            "product_discovery_context": product_discovery_context,
             "customer_message": text,
-            "response_format_instruction": "Return a valid JSON object only, following the required response schema.",
+            "response_format_instruction": (
+                "Return a valid JSON object only, "
+                "following the required response schema."
+            ),
             "language_guidance": (
                 "Use natural Tanzanian Kiswahili by default. "
                 "Use English when the customer uses English. "
@@ -2046,6 +2076,7 @@ For action clarify, search_query must be empty.
         ) from exc
 
     return _parse_product_discovery_response(response)
+
 
 
 # =========================================================

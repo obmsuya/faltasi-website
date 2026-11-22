@@ -1259,6 +1259,295 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
 
         canonical_search.assert_not_called()
 
+    def test_ai_clarification_is_saved_in_conversation_state(self):
+        from unittest.mock import patch
+        from whatsapp.views import get_ai_product_discovery_reply
+
+        self.state.current_step = None
+        self.state.waiting_for = None
+        self.state.data = {"unrelated_value": "preserve_me"}
+        self.state.save()
+
+        with patch(
+            "whatsapp.ai_service.interpret_product_discovery",
+            return_value={
+                "action": "clarify",
+                "search_query": "",
+                "clarification": (
+                    "Are you looking for a laser distance meter "
+                    "or a measuring tape?"
+                ),
+            },
+        ):
+            result = get_ai_product_discovery_reply(
+                "I need something for measuring distance",
+                self.organization,
+                self.state,
+                123,
+            )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(
+            result["reply"],
+            "Are you looking for a laser distance meter or a measuring tape?",
+        )
+        self.assertIsNone(result["product_reply"])
+
+        self.state.refresh_from_db()
+
+        discovery = self.state.data.get("whatsapp_product_discovery", {})
+
+        self.assertEqual(
+            discovery.get("status"),
+            "awaiting_clarification",
+        )
+        self.assertEqual(
+            discovery.get("original_request"),
+            "I need something for measuring distance",
+        )
+        self.assertEqual(
+            discovery.get("clarification_question"),
+            "Are you looking for a laser distance meter or a measuring tape?",
+        )
+        self.assertEqual(
+            self.state.current_step,
+            "whatsapp_product_discovery",
+        )
+        self.assertEqual(
+            self.state.waiting_for,
+            "product_discovery_clarification",
+        )
+        self.assertEqual(
+            self.state.data["unrelated_value"],
+            "preserve_me",
+        )
+
+    def test_pending_discovery_accepts_customer_clarification_reply(self):
+        from unittest.mock import patch
+        from whatsapp.views import get_ai_product_discovery_reply
+
+        self.state.current_step = "whatsapp_product_discovery"
+        self.state.waiting_for = "product_discovery_clarification"
+        self.state.data = {
+            "whatsapp_product_discovery": {
+                "status": "awaiting_clarification",
+                "original_request": (
+                    "I need something for measuring distance"
+                ),
+                "clarification_question": (
+                    "Are you looking for a laser distance meter "
+                    "or a measuring tape?"
+                ),
+            }
+        }
+        self.state.save()
+
+        with patch(
+            "whatsapp.ai_service.interpret_product_discovery",
+            return_value={
+                "action": "search",
+                "search_query": "laser distance meter for construction",
+                "clarification": "",
+            },
+        ) as interpret, patch(
+            "whatsapp.views.search_organization_products",
+            return_value=[],
+        ) as canonical_search:
+            result = get_ai_product_discovery_reply(
+                "A laser one, for construction",
+                self.organization,
+                self.state,
+                124,
+            )
+
+        interpret.assert_called_once()
+        canonical_search.assert_called_once_with(
+            self.organization,
+            "laser distance meter for construction",
+            limit=5,
+        )
+
+
+    def test_ai_discovery_receives_saved_clarification_context(self):
+        import json
+        import os
+        from types import SimpleNamespace
+        from unittest.mock import Mock, patch
+        from whatsapp.ai_service import interpret_product_discovery
+
+        discovery_context = {
+            "original_request": (
+                "I need something for measuring distance"
+            ),
+            "clarification_question": (
+                "Are you looking for a laser distance meter "
+                "or a measuring tape?"
+            ),
+        }
+
+        mock_response = SimpleNamespace(
+            status="completed",
+            output_text=json.dumps({
+                "action": "search",
+                "search_query": "laser distance meter for construction",
+                "clarification": "",
+            }),
+        )
+
+        mock_client = SimpleNamespace(
+            responses=SimpleNamespace(
+                create=Mock(return_value=mock_response)
+            )
+        )
+
+        with patch.dict(
+            os.environ,
+            {
+                "OPENAI_API_KEY": "test-key",
+                "OPENAI_MODEL": "test-model",
+            },
+        ), patch(
+            "whatsapp.ai_service._get_recent_history",
+            return_value=[],
+        ):
+            result = interpret_product_discovery(
+                "A laser one, for construction",
+                self.organization,
+                self.state,
+                client=mock_client,
+                current_message_id=124,
+                discovery_context=discovery_context,
+            )
+
+        self.assertEqual(result["action"], "search")
+
+        ai_input = mock_client.responses.create.call_args.kwargs["input"]
+        context = json.loads(ai_input)
+
+        self.assertEqual(
+            context["product_discovery_context"],
+            discovery_context,
+        )
+        self.assertEqual(
+            context["customer_message"],
+            "A laser one, for construction",
+        )
+
+
+    def test_second_clarification_preserves_original_product_request(self):
+        from unittest.mock import patch
+        from whatsapp.views import get_ai_product_discovery_reply
+
+        original_request = "I need something for measuring distance"
+
+        self.state.current_step = "whatsapp_product_discovery"
+        self.state.waiting_for = "product_discovery_clarification"
+        self.state.data = {
+            "whatsapp_product_discovery": {
+                "status": "awaiting_clarification",
+                "original_request": original_request,
+                "clarification_question": (
+                    "Are you looking for a laser distance meter "
+                    "or a measuring tape?"
+                ),
+            }
+        }
+        self.state.save()
+
+        with patch(
+            "whatsapp.ai_service.interpret_product_discovery",
+            return_value={
+                "action": "clarify",
+                "search_query": "",
+                "clarification": (
+                    "Will you use it indoors or outdoors?"
+                ),
+            },
+        ):
+            result = get_ai_product_discovery_reply(
+                "A laser one, for construction",
+                self.organization,
+                self.state,
+                125,
+            )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(
+            result["reply"],
+            "Will you use it indoors or outdoors?",
+        )
+
+        self.state.refresh_from_db()
+        discovery = self.state.data["whatsapp_product_discovery"]
+
+        self.assertEqual(
+            discovery["original_request"],
+            original_request,
+        )
+        self.assertEqual(
+            discovery["clarification_question"],
+            "Will you use it indoors or outdoors?",
+        )
+        self.assertEqual(
+            discovery["status"],
+            "awaiting_clarification",
+        )
+
+
+    def test_successful_search_clears_pending_discovery_state(self):
+        from unittest.mock import patch
+        from whatsapp.views import search_whatsapp_products
+
+        product = self.create_product("Laser Distance Meter")
+
+        self.state.current_step = "whatsapp_product_discovery"
+        self.state.waiting_for = "product_discovery_clarification"
+        self.state.data = {
+            "whatsapp_product_discovery": {
+                "status": "awaiting_clarification",
+                "original_request": "I need something for measuring distance",
+                "clarification_question": "Laser or measuring tape?",
+            },
+            "unrelated_value": "preserve_me",
+        }
+        self.state.save()
+
+        with patch(
+            "whatsapp.views.search_organization_products",
+            return_value=[self.search_result(product)],
+        ):
+            reply = search_whatsapp_products(
+                "laser distance meter",
+                self.organization,
+                self.state,
+            )
+
+        self.assertIsNotNone(reply)
+        self.assertIn("Laser Distance Meter", reply)
+
+        self.state.refresh_from_db()
+
+        self.assertNotIn(
+            "whatsapp_product_discovery",
+            self.state.data,
+        )
+        self.assertEqual(
+            self.state.data["unrelated_value"],
+            "preserve_me",
+        )
+        self.assertEqual(
+            self.state.data["whatsapp_product_ids"],
+            [product.pk],
+        )
+        self.assertEqual(
+            self.state.current_step,
+            "whatsapp_product_selection",
+        )
+        self.assertEqual(
+            self.state.waiting_for,
+            "product_selection",
+        )
+
 
 class WhatsAppProductBuilderIntegrationTests(TestCase):
     """Integration tests for product-specific Builder in WhatsApp."""
@@ -1746,4 +2035,318 @@ class WhatsAppProductBuilderIntegrationTests(TestCase):
         self.assertEqual(
             self.state.waiting_for,
             "product_conversation_question",
+        )
+
+
+class WhatsAppProductDiscoveryWebhookTests(TestCase):
+    """Integration tests for product discovery through the WhatsApp webhook."""
+
+    def setUp(self):
+        from whatsapp.models import ConversationState
+
+        self.factory = RequestFactory()
+
+        self.organization = Organization.objects.create(
+            name="Product Discovery Test Business",
+            organization_type="business",
+            status="active",
+        )
+
+        self.waba = WhatsAppBusinessAccount.objects.create(
+            organization=self.organization,
+            waba_id="TEST_DISCOVERY_WABA",
+            business_name="Product Discovery Test Business",
+            status="connected",
+            is_active=True,
+        )
+
+        self.whatsapp_phone = WhatsAppPhoneNumber.objects.create(
+            whatsapp_business_account=self.waba,
+            organization=self.organization,
+            phone_number_id="TEST_DISCOVERY_PHONE_ID",
+            phone_number="+255700000210",
+            status="connected",
+            is_active=True,
+        )
+
+        self.customer = Customer.objects.create(
+            organization=self.organization,
+            name="Discovery Test Customer",
+            phone="+255700000201",
+            status="active",
+            phone_status="active",
+            relationship_stage="visitor",
+            contact_source="whatsapp",
+            whatsapp_marketing_opt_in=True,
+        )
+
+        self.conversation = Conversation.objects.create(
+            organization=self.organization,
+            whatsapp_phone_number=self.whatsapp_phone,
+            customer=self.customer,
+            phone_number=self.customer.phone,
+            whatsapp_user_id=self.customer.phone,
+            status="active",
+        )
+
+        self.state = ConversationState.objects.create(
+            conversation=self.conversation,
+            current_step="whatsapp_product_discovery",
+            waiting_for="product_discovery_clarification",
+            data={
+                "whatsapp_product_discovery": {
+                    "status": "awaiting_clarification",
+                    "original_request": "I need a laptop for design work",
+                    "clarification_question": (
+                        "What type of design work will you use it for?"
+                    ),
+                },
+                "other_existing_data": "preserve this",
+            },
+        )
+
+    def successful_meta_response(self):
+        response = Mock()
+        response.status_code = 200
+        response.text = ""
+        response.json.return_value = {
+            "messages": [
+                {"id": "wamid.test_discovery_outgoing"}
+            ]
+        }
+        return response
+
+    def send_webhook_message(self, message_id, message_text):
+        payload = {
+            "object": "whatsapp_business_account",
+            "entry": [
+                {
+                    "id": "TEST_DISCOVERY_WABA",
+                    "changes": [
+                        {
+                            "field": "messages",
+                            "value": {
+                                "messaging_product": "whatsapp",
+                                "metadata": {
+                                    "display_phone_number": "255700000210",
+                                    "phone_number_id": "TEST_DISCOVERY_PHONE_ID",
+                                },
+                                "messages": [
+                                    {
+                                        "from": self.customer.phone,
+                                        "id": message_id,
+                                        "timestamp": "1794000000",
+                                        "type": "text",
+                                        "text": {
+                                            "body": message_text,
+                                        },
+                                    }
+                                ],
+                            },
+                        }
+                    ],
+                }
+            ],
+        }
+
+        request = self.factory.post(
+            "/whatsapp/webhook/",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        with (
+            patch(
+                "whatsapp.views.verify_meta_webhook_signature",
+                return_value=True,
+            ),
+            patch(
+                "whatsapp.views.handle_whatsapp_product_conversation",
+                return_value=None,
+            ),
+            patch(
+                "whatsapp.views.get_ai_human_support_language",
+                return_value=None,
+            ),
+            patch(
+                "whatsapp.views.find_request_category",
+                return_value=None,
+            ),
+            patch(
+                "whatsapp.views.get_ai_general_interpretation",
+                return_value=None,
+            ) as mock_general_ai,
+            patch(
+                "whatsapp.views.get_ai_product_reply",
+                return_value=None,
+            ) as mock_old_product_ai,
+            patch(
+                "whatsapp.views.search_whatsapp_products",
+                return_value=None,
+            ) as mock_catalogue_search,
+            patch(
+                "whatsapp.views.get_ai_product_discovery_reply",
+                return_value={
+                    "reply": "I found some options for your design work.",
+                    "product_reply": None,
+                },
+            ) as mock_discovery,
+            patch(
+                "whatsapp.views.send_whatsapp_message",
+                return_value=self.successful_meta_response(),
+            ) as mock_send,
+        ):
+            webhook_response = webhook(request)
+
+        return (
+            webhook_response,
+            mock_general_ai,
+            mock_old_product_ai,
+            mock_catalogue_search,
+            mock_discovery,
+            mock_send,
+        )
+
+    def test_clarification_reply_resumes_pending_product_discovery(self):
+        clarification_reply = (
+            "I need it for graphic design and video editing"
+        )
+
+        (
+            response,
+            mock_general_ai,
+            mock_old_product_ai,
+            mock_catalogue_search,
+            mock_discovery,
+            mock_send,
+        ) = self.send_webhook_message(
+            "wamid.test_discovery_incoming_001",
+            clarification_reply,
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.state.refresh_from_db()
+
+        incoming_message = Message.objects.get(
+            organization=self.organization,
+            whatsapp_message_id="wamid.test_discovery_incoming_001",
+        )
+
+        # The pending clarification must bypass general AI.
+        mock_general_ai.assert_not_called()
+
+        # The older product AI interpreter must not intercept it.
+        mock_old_product_ai.assert_not_called()
+
+        # Django first performs its normal catalogue search.
+        mock_catalogue_search.assert_called_once_with(
+            clarification_reply,
+            self.organization,
+            self.state,
+        )
+
+        # The discovery interpreter receives the customer's answer.
+        mock_discovery.assert_called_once_with(
+            clarification_reply,
+            self.organization,
+            self.state,
+            incoming_message.id,
+        )
+
+        # The webhook sends the discovery response to the customer.
+        mock_send.assert_called_once()
+
+        sent_reply = mock_send.call_args.args[2]
+
+        self.assertIn(
+            "I found some options for your design work.",
+            sent_reply,
+        )
+
+        # Existing discovery context must not be lost by webhook routing.
+        self.assertEqual(
+            self.state.data["whatsapp_product_discovery"]["original_request"],
+            "I need a laptop for design work",
+        )
+
+        self.assertEqual(
+            self.state.data["other_existing_data"],
+            "preserve this",
+        )
+
+    def test_ai_search_query_is_executed_by_django_catalogue_search(self):
+        from products.models import Product
+        from whatsapp.views import get_ai_product_discovery_reply
+
+        product = Product.objects.create(
+            organization=self.organization,
+            name="Professional Graphic Design Laptop",
+            price="2500000.00",
+            is_active=True,
+            show_on_whatsapp=True,
+        )
+
+        customer_reply = (
+            "I need it for graphic design and video editing"
+        )
+
+        ai_search_query = (
+            "laptop suitable for graphic design and video editing"
+        )
+
+        ai_result = {
+            "action": "search",
+            "search_query": ai_search_query,
+            "clarification": "",
+        }
+
+        canonical_results = [
+            {"id": product.pk},
+        ]
+
+        with (
+            patch(
+                "whatsapp.ai_service.interpret_product_discovery",
+                return_value=ai_result,
+            ) as mock_ai,
+            patch(
+                "whatsapp.views.search_organization_products",
+                return_value=canonical_results,
+            ) as mock_catalogue_search,
+        ):
+            result = get_ai_product_discovery_reply(
+                customer_reply,
+                self.organization,
+                self.state,
+                current_message_id=12345,
+            )
+
+        # AI interprets the customer's clarification.
+        mock_ai.assert_called_once()
+
+        # Django executes the AI-generated search description.
+        mock_catalogue_search.assert_called_once_with(
+            self.organization,
+            ai_search_query,
+            limit=5,
+        )
+
+        # Django, not AI, retrieves the actual organization-owned product.
+        self.assertIsNotNone(result)
+        self.assertIn(product.name, result["reply"])
+        self.assertEqual(result["product_reply"], result["reply"])
+
+        # Successful product discovery clears the pending discovery state.
+        self.state.refresh_from_db()
+
+        self.assertNotIn(
+            "whatsapp_product_discovery",
+            self.state.data,
+        )
+
+        # Unrelated conversation data remains untouched.
+        self.assertEqual(
+            self.state.data["other_existing_data"],
+            "preserve this",
         )

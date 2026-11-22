@@ -925,6 +925,21 @@ def webhook(request):
             product_flow_handled = True
             detected_category = None
         else:
+            state_data_for_discovery = (
+                state.data if isinstance(state.data, dict) else {}
+            )
+            discovery_state = state_data_for_discovery.get(
+                'whatsapp_product_discovery'
+            )
+
+            pending_product_discovery = (
+                isinstance(discovery_state, dict)
+                and discovery_state.get('status') == 'awaiting_clarification'
+                and state.current_step == 'whatsapp_product_discovery'
+                and state.waiting_for == 'product_discovery_clarification'
+                and isinstance(discovery_state.get('original_request'), str)
+                and bool(discovery_state.get('original_request').strip())
+            )
             state_data_for_handover = state.data if isinstance(state.data, dict) else {}
             active_workflow = bool(state.current_step or state.waiting_for or state_data_for_handover.get('category') or state_data_for_handover.get('business_request_id') or state_data_for_handover.get('selected_whatsapp_product_id') or conversation.business_request_id)
             handover_language = None
@@ -950,7 +965,12 @@ def webhook(request):
                 general_ai_result = None
                 general_ai_attempted = False
                 selected_product_id = state_data_for_handover.get('selected_whatsapp_product_id')
-                if detected_category is None and (not current_category) and (not selected_product_id):
+                if (
+                    not pending_product_discovery
+                    and detected_category is None
+                    and (not current_category)
+                    and (not selected_product_id)
+                ):
                     general_ai_attempted = True
                     general_ai_result = get_ai_general_interpretation(
                         text,
@@ -1050,6 +1070,7 @@ def webhook(request):
 
                 if (
                     not product_flow_handled
+                    and not pending_product_discovery
                     and detected_category is None
                     and not current_category
                     and (
@@ -1237,6 +1258,7 @@ def webhook(request):
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
     except Exception as e:
         return JsonResponse({'error': 'Webhook processing failed'}, status=500)
+
 
 def _format_product_builder_question(runtime):
     """Format the next question using the pinned published configuration."""
@@ -1669,6 +1691,7 @@ def search_whatsapp_products(text, organization, state=None):
         return None
     if state is not None:
         state_data = dict(state.data or {})
+        state_data.pop('whatsapp_product_discovery', None)
         for key in ('selected_whatsapp_product_id', 'selected_whatsapp_product_name', 'whatsapp_product_quantity', 'whatsapp_product_action'):
             state_data.pop(key, None)
         state_data['whatsapp_product_ids'] = [p.id for p in matches]
@@ -2148,26 +2171,89 @@ def get_ai_product_discovery_reply(text, organization, state, current_message_id
     if not _whatsapp_ai_is_enabled(organization):
         return None
     state_data = state.data if isinstance(state.data, dict) else {}
-    if state_data.get('selected_whatsapp_product_id') or state_data.get('category') or state_data.get('business_request_id') or getattr(state, 'waiting_for', None):
+    discovery_state = state_data.get('whatsapp_product_discovery')
+
+    pending_discovery = (
+        isinstance(discovery_state, dict)
+        and discovery_state.get('status') == 'awaiting_clarification'
+        and state.current_step == 'whatsapp_product_discovery'
+        and state.waiting_for == 'product_discovery_clarification'
+        and isinstance(discovery_state.get('original_request'), str)
+        and bool(discovery_state.get('original_request').strip())
+    )
+
+    if (
+        state_data.get('selected_whatsapp_product_id')
+        or state_data.get('category')
+        or state_data.get('business_request_id')
+        or (getattr(state, 'waiting_for', None) and not pending_discovery)
+    ):
         return None
+
     conversation = getattr(state, 'conversation', None)
     if conversation is None:
         return None
     if getattr(conversation, 'business_request_id', None) or getattr(conversation, 'business_request', None):
         return None
-    if getattr(state, 'current_step', None) not in {None, 'whatsapp_product_completed'}:
+    if (
+        getattr(state, 'current_step', None)
+        not in {None, 'whatsapp_product_completed', 'whatsapp_product_discovery'}
+        or (
+            getattr(state, 'current_step', None) == 'whatsapp_product_discovery'
+            and not pending_discovery
+        )
+    ):
         return None
     try:
         from .ai_service import interpret_product_discovery
-        result = interpret_product_discovery(text, organization, state, current_message_id=current_message_id)
+        
+        result = interpret_product_discovery(
+            text,
+            organization,
+            state,
+            current_message_id=current_message_id,
+            discovery_context=(
+                discovery_state if pending_discovery else None
+            ),
+        )
+
         if not isinstance(result, dict):
             return None
         action = result.get('action')
+        
         if action == 'clarify':
             clarification = result.get('clarification')
             if isinstance(clarification, str) and clarification.strip() and (len(clarification.strip()) <= 500):
-                return {'reply': clarification.strip(), 'product_reply': None}
+                   
+                state_data = dict(state.data or {})
+                original_request = (
+                    discovery_state.get('original_request')
+                    if pending_discovery
+                    else text.strip()
+                )
+                state_data['whatsapp_product_discovery'] = {
+                    'status': 'awaiting_clarification',
+                    'original_request': original_request,
+                    'clarification_question': clarification.strip(),
+                }
+
+                state.data = state_data
+                state.current_step = 'whatsapp_product_discovery'
+                state.waiting_for = 'product_discovery_clarification'
+                state.save(
+                    update_fields=[
+                        'data',
+                        'current_step',
+                        'waiting_for',
+                        'updated_at',
+                    ]
+                )   
+                
+                return {'reply': clarification.strip(), 
+                        'product_reply': None,
+                }
             return None
+        
         if action == 'search':
             search_query = result.get('search_query')
             if not isinstance(search_query, str) or not search_query.strip() or len(search_query.strip()) > 300:
