@@ -110,6 +110,7 @@ class ProductDiscoveryIntegrationGuardTests(SimpleTestCase):
             waiting_for=None,
             current_step=None,
             conversation=self.conversation,
+            save=lambda **kwargs: None,
         )
 
     @patch("whatsapp.ai_service.interpret_product_discovery")

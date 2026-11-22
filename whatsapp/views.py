@@ -957,9 +957,40 @@ def webhook(request):
                     incoming_message.id if incoming_message else None,
                 )
             product_flow_handled = product_flow_reply is not None
+            
             if product_flow_handled:
                 reply = product_flow_reply
                 detected_category = None
+
+                discovery_state = (
+                    state.data
+                    if isinstance(state.data, dict)
+                    else {}
+                ).get('whatsapp_product_discovery')
+
+                if (
+                    isinstance(discovery_state, dict)
+                    and discovery_state.get('status') == 'awaiting_next_option'
+                ):
+                    displayed_product_ids = (
+                        state.data or {}
+                    ).get('whatsapp_product_ids', [])
+
+                    products_by_id = Product.objects.filter(
+                        organization=organization,
+                        id__in=displayed_product_ids,
+                        is_active=True,
+                        deleted_at__isnull=True,
+                        show_on_whatsapp=True,
+                    ).in_bulk()
+
+                    product_images_to_send = [
+                        products_by_id[product_id]
+                        for product_id in displayed_product_ids
+                        if product_id in products_by_id
+                    ]
+
+
             else:
                 detected_category = find_request_category(text, organization=organization)
                 general_ai_result = None
@@ -1183,45 +1214,54 @@ def webhook(request):
                 if not reply:
                     reply = _get_configured_whatsapp_message(organization, 'fallback', getattr(organization, 'language', 'sw'))
             else:
-                product_reply = search_whatsapp_products(text, organization, state)
-                if product_reply:
-                    reply = product_reply
-                else:
+                discovery = get_ai_product_discovery_reply(
+                    text,
+                    organization,
+                    state,
+                    incoming_message.id if incoming_message else None,
+                )
+
+                if discovery:
+                    reply = discovery['reply']
+                    product_reply = discovery['product_reply']
+
                     logger.info(
-                        'WhatsApp product catalogue search had no direct result; trying AI discovery: '
-                        'organization_id=%s conversation_id=%s',
+                        'WhatsApp AI product discovery returned a customer reply: '
+                        'organization_id=%s conversation_id=%s has_catalogue_products=%s',
                         organization.pk,
                         conversation.pk,
+                        bool(product_reply),
                     )
-                    discovery = get_ai_product_discovery_reply(
+                else:
+                    # Keep direct catalogue search as a fallback when
+                    # AI discovery is unavailable or returns no usable result.
+                    product_reply = search_whatsapp_products(
                         text,
                         organization,
                         state,
-                        incoming_message.id if incoming_message else None,
                     )
-                    if discovery:
-                        reply = discovery['reply']
-                        product_reply = discovery['product_reply']
-                        logger.info(
-                            'WhatsApp product discovery returned a customer reply: '
-                            'organization_id=%s conversation_id=%s has_catalogue_products=%s',
-                            organization.pk,
-                            conversation.pk,
-                            bool(product_reply),
-                        )
+
+                    if product_reply:
+                        reply = product_reply
                     else:
                         logger.info(
-                            'WhatsApp product discovery returned no usable result; sending configured fallback: '
-                            'organization_id=%s conversation_id=%s',
+                            'WhatsApp product discovery and direct catalogue search '
+                            'returned no usable result: organization_id=%s conversation_id=%s',
                             organization.pk,
                             conversation.pk,
                         )
-                        reply = _get_configured_whatsapp_message(organization, 'fallback', getattr(organization, 'language', 'sw'))
+                        reply = _get_configured_whatsapp_message(
+                            organization,
+                            'fallback',
+                            getattr(organization, 'language', 'sw'),
+                        )
             should_send_product_marketing_template = bool(product_reply and customer and customer.whatsapp_marketing_opt_in and whatsapp_message_id)
+            
             if product_reply and state is not None:
                 displayed_product_ids = (state.data or {}).get('whatsapp_product_ids', [])
                 products_by_id = Product.objects.filter(organization=organization, id__in=displayed_product_ids, is_active=True, deleted_at__isnull=True, show_on_whatsapp=True).in_bulk()
                 product_images_to_send = [products_by_id[product_id] for product_id in displayed_product_ids if product_id in products_by_id]
+
         marketing_invitation_included = False
         if customer and customer.phone_status == 'active' and (customer.status == 'active') and (not customer.whatsapp_marketing_opt_in) and (not customer.whatsapp_marketing_invitation_sent_at) and (not customer.whatsapp_marketing_declined_at) and (not customer.whatsapp_marketing_opt_out_at):
             organization_language = (getattr(customer.organization, 'language', None) or '').strip().lower().replace('-', '_')
@@ -1300,16 +1340,7 @@ def _product_builder_completion_response(runtime):
     snapshot = (runtime or {}).get('snapshot') or {}
     return snapshot.get('closing_message') or ''
 
-def handle_whatsapp_product_conversation(text, organization, state, current_message_id=None,):
-    """Handle product selection and dashboard-configured product questions."""
-    if not text or not organization or (not state):
-        return None
-    step = state.current_step
-    data = dict(state.data or {})
-    if step not in {'whatsapp_product_selection', 'whatsapp_product_builder'}:
-        return None
 
-    
 def handle_whatsapp_product_conversation(
     text,
     organization,
@@ -1322,6 +1353,112 @@ def handle_whatsapp_product_conversation(
 
     step = state.current_step
     data = dict(state.data or {})
+
+    # Handle the one-at-a-time product suggestion conversation first.
+    discovery = data.get('whatsapp_product_discovery')
+
+    if (
+        isinstance(discovery, dict)
+        and discovery.get('status') == 'awaiting_next_option'
+    ):
+        normalized = text.strip().lower().strip(' .,!?:;')
+
+        yes_responses = {
+            'yes', 'yeah', 'yep', 'sure', 'okay', 'ok',
+            'another', 'next', 'show me another',
+            'yes please', 'another one', 'show another',
+            'ndio', 'ndiyo', 'ndio tafadhali',
+            'endelea', 'ongeza', 'na nyingine',
+        }
+
+        no_responses = {
+            'no', 'no thanks', 'no thank you', 'not interested',
+            'no more', 'that is all', "that's all", 'thats all',
+            'hapana', 'hapana asante', 'basi', 'imetosha',
+            'sihitaji', 'sitaki',
+        }
+
+        if normalized in no_responses:
+            data.pop('whatsapp_product_remaining_ids', None)
+            data.pop('whatsapp_product_ids', None)
+            data.pop('whatsapp_product_discovery', None)
+
+            state.data = data
+            state.current_step = 'whatsapp_product_completed'
+            state.waiting_for = None
+            state.save()
+
+            return (
+                'Thank you for your interest! '
+                'Please let us know if you need anything else.'
+            )
+
+        if normalized in yes_responses:
+            remaining_ids = data.get(
+                'whatsapp_product_remaining_ids',
+                discovery.get('remaining_product_ids', []),
+            )
+            remaining_ids = list(remaining_ids or [])
+            next_product = None
+
+            # Skip products that are no longer active or WhatsApp-visible.
+            while remaining_ids and next_product is None:
+                next_product_id = remaining_ids.pop(0)
+                next_product = Product.objects.filter(
+                    organization=organization,
+                    id=next_product_id,
+                    is_active=True,
+                    deleted_at__isnull=True,
+                    show_on_whatsapp=True,
+                ).first()
+
+            if not next_product:
+                data.pop('whatsapp_product_remaining_ids', None)
+                data.pop('whatsapp_product_ids', None)
+                data.pop('whatsapp_product_discovery', None)
+
+                state.data = data
+                state.current_step = 'whatsapp_product_completed'
+                state.waiting_for = None
+                state.save()
+
+                return (
+                    'Those are all the matching options we currently have. '
+                    'Please let us know if you need anything else.'
+                )
+
+            data['whatsapp_product_ids'] = [next_product.id]
+            data['whatsapp_product_remaining_ids'] = remaining_ids
+            data['whatsapp_product_discovery'] = {
+                'status': 'awaiting_next_option',
+                'current_product_id': next_product.id,
+                'remaining_product_ids': remaining_ids,
+            }
+
+            state.data = data
+            state.current_step = 'whatsapp_product_completed'
+            state.waiting_for = None
+            state.save()
+
+            price = (
+                f'{next_product.currency} {next_product.price:,.2f}'
+                if next_product.price is not None
+                else 'Price available on request'
+            )
+
+            return (
+                f'{next_product.name}\\n'
+                f'Brand: {next_product.brand or "Not specified"}\\n'
+                f'Model: {next_product.model or "Not specified"}\\n'
+                f'Price: {price}\\n'
+                f'Availability: {next_product.get_availability_display()}\\n\\n'
+                'Would you like to see another option?'
+            )
+
+        return (
+            'Would you like to see another product option? '
+            'Please reply Yes or No.'
+        )
 
     if step not in {
         'whatsapp_product_selection',
@@ -1677,52 +1814,113 @@ def handle_whatsapp_product_conversation(
         ) if part
     ) or None
 
+
 def search_whatsapp_products(text, organization, state=None):
-    """Search WhatsApp-enabled products and remember the displayed choices."""
+    """
+    Search WhatsApp-enabled products and prepare one product at a time
+    for customer discovery. The Product Builder selection workflow
+    remains separate.
+    """
     if not text or not organization:
         return None
-    search_results = search_organization_products(organization, text, limit=5)
+
+    search_results = search_organization_products(
+        organization,
+        text,
+        limit=5,
+    )
+
     if not search_results:
         return None
-    product_ids = [item['id'] for item in search_results if item.get('id') is not None]
-    products_by_id = Product.objects.filter(organization=organization, pk__in=product_ids, is_active=True, deleted_at__isnull=True, show_on_whatsapp=True).select_related('category').in_bulk()
-    matches = [products_by_id[product_id] for product_id in product_ids if product_id in products_by_id]
+
+    product_ids = [
+        item['id']
+        for item in search_results
+        if item.get('id') is not None
+    ]
+
+    products_by_id = Product.objects.filter(
+        organization=organization,
+        pk__in=product_ids,
+        is_active=True,
+        deleted_at__isnull=True,
+        show_on_whatsapp=True,
+    ).select_related('category').in_bulk()
+
+    matches = [
+        products_by_id[product_id]
+        for product_id in product_ids
+        if product_id in products_by_id
+    ]
+
     if not matches:
         return None
+
+    # Present only the best matching product.
+    product = matches[0]
+    remaining_product_ids = [item.id for item in matches[1:]]
+
     if state is not None:
         state_data = dict(state.data or {})
+
         state_data.pop('whatsapp_product_discovery', None)
-        for key in ('selected_whatsapp_product_id', 'selected_whatsapp_product_name', 'whatsapp_product_quantity', 'whatsapp_product_action'):
+
+        for key in (
+            'selected_whatsapp_product_id',
+            'selected_whatsapp_product_name',
+            'whatsapp_product_quantity',
+            'whatsapp_product_action',
+        ):
             state_data.pop(key, None)
-        state_data['whatsapp_product_ids'] = [p.id for p in matches]
-        state.current_step = 'whatsapp_product_selection'
-        state.waiting_for = 'product_selection'
+
+        # The webhook uses this list to send product images.
+        # Keep only the current product here.
+        state_data['whatsapp_product_ids'] = [product.id]
+
+        # Preserve other matching products for a later next-option step.
+        state_data['whatsapp_product_remaining_ids'] = remaining_product_ids
+
+        state_data['whatsapp_product_discovery'] = {
+            'status': 'awaiting_next_option',
+            'current_product_id': product.id,
+            'remaining_product_ids': remaining_product_ids,
+        }
+
+        # Do not enter the old numbered product-selection workflow.
+        state.current_step = 'whatsapp_product_completed'
+        state.waiting_for = None
         state.data = state_data
         state.save()
-    lines = ['Here are some products matching your request:', '']
-    for number, product in enumerate(matches, start=1):
-        lines.append(f'{number}. {product.name}')
-        if product.brand:
-            lines.append(f'   Brand: {product.brand}')
-        if product.model:
-            lines.append(f'   Model: {product.model}')
-        price = f'{product.currency} {product.price:,.2f}' if product.price is not None else 'Price available on request'
-        lines.append(f'   Price: {price}')
-        lines.append(f'   Availability: {product.get_availability_display()}')
-        lines.append('')
-    catalogue_url = None
-    if organization.organization_type == 'platform_owner':
-        catalogue_url = 'https://www.faltasi.com/products/'
-    else:
-        organization_settings = organization.settings if isinstance(organization.settings, dict) else {}
-        if organization_settings.get('public_catalogue_enabled') is True:
-            configured_url = organization_settings.get('public_catalogue_url')
-            if isinstance(configured_url, str) and configured_url.startswith('https://') and (configured_url.strip() == configured_url):
-                catalogue_url = configured_url
-    if catalogue_url:
-        lines.extend(['View our catalogue:', catalogue_url, ''])
-    lines.append('Reply with the product number (for example, 1) or its name to continue.')
+
+    lines = [
+        'Here is a product that matches your request:',
+        '',
+        product.name,
+    ]
+
+    if product.brand:
+        lines.append(f'Brand: {product.brand}')
+
+    if product.model:
+        lines.append(f'Model: {product.model}')
+
+    price = (
+        f'{product.currency} {product.price:,.2f}'
+        if product.price is not None
+        else 'Price available on request'
+    )
+    lines.append(f'Price: {price}')
+    lines.append(
+        f'Availability: {product.get_availability_display()}'
+    )
+
+    lines.extend([
+        '',
+        'Would you like to see another option?',
+    ])
+
     return '\n'.join(lines)
+
 
 def update_conversation_state(state, current_step=None, waiting_for='__UNCHANGED__', data=None):
     """
@@ -2161,15 +2359,18 @@ def get_ai_general_reply(text, organization, state, current_message_id):
         return result['answer']
     return None
 
+
 def get_ai_product_discovery_reply(text, organization, state, current_message_id):
     """
-    Use AI to interpret a new product request when literal catalogue
-    search has no result. Django performs and validates the actual search.
+    Use AI to interpret a new product request or resume a pending
+    product clarification. Django performs and validates the actual search.
     """
-    if not text or not organization or (not state):
+    if not text or not organization or not state:
         return None
+
     if not _whatsapp_ai_is_enabled(organization):
         return None
+
     state_data = state.data if isinstance(state.data, dict) else {}
     discovery_state = state_data.get('whatsapp_product_discovery')
 
@@ -2182,31 +2383,47 @@ def get_ai_product_discovery_reply(text, organization, state, current_message_id
         and bool(discovery_state.get('original_request').strip())
     )
 
+    # Do not intercept an active product selection or another workflow.
     if (
         state_data.get('selected_whatsapp_product_id')
         or state_data.get('category')
         or state_data.get('business_request_id')
-        or (getattr(state, 'waiting_for', None) and not pending_discovery)
-    ):
-        return None
-
-    conversation = getattr(state, 'conversation', None)
-    if conversation is None:
-        return None
-    if getattr(conversation, 'business_request_id', None) or getattr(conversation, 'business_request', None):
-        return None
-    if (
-        getattr(state, 'current_step', None)
-        not in {None, 'whatsapp_product_completed', 'whatsapp_product_discovery'}
         or (
-            getattr(state, 'current_step', None) == 'whatsapp_product_discovery'
+            getattr(state, 'waiting_for', None)
             and not pending_discovery
         )
     ):
         return None
+
+    conversation = getattr(state, 'conversation', None)
+
+    if conversation is None:
+        return None
+
+    if (
+        getattr(conversation, 'business_request_id', None)
+        or getattr(conversation, 'business_request', None)
+    ):
+        return None
+
+    current_step = getattr(state, 'current_step', None)
+
+    if current_step not in {
+        None,
+        'whatsapp_product_completed',
+        'whatsapp_product_discovery',
+    }:
+        return None
+
+    if (
+        current_step == 'whatsapp_product_discovery'
+        and not pending_discovery
+    ):
+        return None
+
     try:
         from .ai_service import interpret_product_discovery
-        
+
         result = interpret_product_discovery(
             text,
             organization,
@@ -2219,53 +2436,83 @@ def get_ai_product_discovery_reply(text, organization, state, current_message_id
 
         if not isinstance(result, dict):
             return None
+
         action = result.get('action')
-        
+
         if action == 'clarify':
             clarification = result.get('clarification')
-            if isinstance(clarification, str) and clarification.strip() and (len(clarification.strip()) <= 500):
-                   
-                state_data = dict(state.data or {})
-                original_request = (
-                    discovery_state.get('original_request')
-                    if pending_discovery
-                    else text.strip()
-                )
-                state_data['whatsapp_product_discovery'] = {
-                    'status': 'awaiting_clarification',
-                    'original_request': original_request,
-                    'clarification_question': clarification.strip(),
-                }
 
-                state.data = state_data
-                state.current_step = 'whatsapp_product_discovery'
-                state.waiting_for = 'product_discovery_clarification'
-                state.save(
-                    update_fields=[
-                        'data',
-                        'current_step',
-                        'waiting_for',
-                        'updated_at',
-                    ]
-                )   
-                
-                return {'reply': clarification.strip(), 
-                        'product_reply': None,
-                }
-            return None
-        
+            if (
+                not isinstance(clarification, str)
+                or not clarification.strip()
+                or len(clarification.strip()) > 500
+            ):
+                return None
+
+            state_data = dict(state.data or {})
+
+            original_request = (
+                discovery_state.get('original_request')
+                if pending_discovery
+                else text.strip()
+            )
+
+            state_data['whatsapp_product_discovery'] = {
+                'status': 'awaiting_clarification',
+                'original_request': original_request,
+                'clarification_question': clarification.strip(),
+            }
+
+            state.data = state_data
+            state.current_step = 'whatsapp_product_discovery'
+            state.waiting_for = 'product_discovery_clarification'
+
+            state.save(
+                update_fields=[
+                    'data',
+                    'current_step',
+                    'waiting_for',
+                    'updated_at',
+                ]
+            )
+
+            return {
+                'reply': clarification.strip(),
+                'product_reply': None,
+            }
+
         if action == 'search':
             search_query = result.get('search_query')
-            if not isinstance(search_query, str) or not search_query.strip() or len(search_query.strip()) > 300:
+
+            if (
+                not isinstance(search_query, str)
+                or not search_query.strip()
+                or len(search_query.strip()) > 300
+            ):
                 return None
-            product_reply = search_whatsapp_products(search_query.strip(), organization, state)
+
+            product_reply = search_whatsapp_products(
+                search_query.strip(),
+                organization,
+                state,
+            )
+
             if product_reply:
-                return {'reply': product_reply, 'product_reply': product_reply}
+                return {
+                    'reply': product_reply,
+                    'product_reply': product_reply,
+                }
+
             return None
+
         return None
+
     except Exception:
         import logging
-        logging.getLogger(__name__).exception('Product discovery AI failed; using existing fallback.')
+
+        logging.getLogger(__name__).exception(
+            'Product discovery AI failed; using existing fallback.'
+        )
         return None
 
 def get_ai_request_category_reply(text, organization, state, current_message_id=None):

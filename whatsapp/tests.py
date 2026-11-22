@@ -2,6 +2,7 @@
 import json
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
+from whatsapp.views import search_whatsapp_products
 
 from django.utils import timezone
 
@@ -1092,7 +1093,18 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
             limit=5,
         )
 
-        self.assertEqual(reply.count("   Price:"), 5)
+        self.assertEqual(reply.count("Price:"), 1)
+        self.assertIn("Laptop Model 1", reply)
+
+        self.state.refresh_from_db()
+        self.assertEqual(
+            self.state.data["whatsapp_product_ids"],
+            [products[0].pk],
+        )
+        self.assertEqual(
+            self.state.data["whatsapp_product_remaining_ids"],
+            [product.pk for product in products[1:]],
+        )
 
     def test_preserves_canonical_ranking_and_updates_state(self):
         from unittest.mock import patch
@@ -1120,25 +1132,25 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
                 self.state,
             )
 
-        self.assertLess(
-            reply.index("Laptop Alpha"),
-            reply.index("Laptop Beta"),
-        )
+        # Only the first canonical search result is returned.
+        self.assertIn("Laptop Alpha", reply)
+        self.assertNotIn("Laptop Beta", reply)
 
         self.state.refresh_from_db()
 
         self.assertEqual(
             self.state.data["whatsapp_product_ids"],
-            [first.pk, second.pk],
+            [first.pk],
+        )
+        self.assertEqual(
+            self.state.data["whatsapp_product_remaining_ids"],
+            [second.pk],
         )
         self.assertEqual(
             self.state.current_step,
-            "whatsapp_product_selection",
+            "whatsapp_product_completed",
         )
-        self.assertEqual(
-            self.state.waiting_for,
-            "product_selection",
-        )
+        self.assertIsNone(self.state.waiting_for)
 
         self.assertNotIn(
             "selected_whatsapp_product_id",
@@ -1160,7 +1172,6 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
             self.state.data["unrelated_value"],
             "preserve_me",
         )
-
     def test_hydration_excludes_other_organizations_and_hidden_products(self):
         from unittest.mock import patch
         from whatsapp.views import search_whatsapp_products
@@ -1494,10 +1505,9 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
         )
 
 
-    def test_successful_search_clears_pending_discovery_state(self):
+    def test_successful_search_keeps_next_option_state(self):
         from unittest.mock import patch
         from whatsapp.views import search_whatsapp_products
-
         product = self.create_product("Laser Distance Meter")
 
         self.state.current_step = "whatsapp_product_discovery"
@@ -1527,9 +1537,19 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
 
         self.state.refresh_from_db()
 
-        self.assertNotIn(
-            "whatsapp_product_discovery",
-            self.state.data,
+        discovery = self.state.data["whatsapp_product_discovery"]
+
+        self.assertEqual(
+            discovery["status"],
+            "awaiting_next_option",
+        )
+        self.assertEqual(
+            discovery["current_product_id"],
+            product.pk,
+        )
+        self.assertEqual(
+            discovery["remaining_product_ids"],
+            [],
         )
         self.assertEqual(
             self.state.data["unrelated_value"],
@@ -1540,14 +1560,14 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
             [product.pk],
         )
         self.assertEqual(
-            self.state.current_step,
-            "whatsapp_product_selection",
+            self.state.data["whatsapp_product_remaining_ids"],
+            [],
         )
         self.assertEqual(
-            self.state.waiting_for,
-            "product_selection",
+            self.state.current_step,
+            "whatsapp_product_completed",
         )
-
+        self.assertIsNone(self.state.waiting_for)
 
 class WhatsAppProductBuilderIntegrationTests(TestCase):
     """Integration tests for product-specific Builder in WhatsApp."""
@@ -2239,12 +2259,9 @@ class WhatsAppProductDiscoveryWebhookTests(TestCase):
         # The older product AI interpreter must not intercept it.
         mock_old_product_ai.assert_not_called()
 
-        # Django first performs its normal catalogue search.
-        mock_catalogue_search.assert_called_once_with(
-            clarification_reply,
-            self.organization,
-            self.state,
-        )
+        # The AI discovery handler processes the clarification.
+        # Direct catalogue fallback must not run when AI returns a reply.
+        mock_catalogue_search.assert_not_called()
 
         # The discovery interpreter receives the customer's answer.
         mock_discovery.assert_called_once_with(
@@ -2337,12 +2354,29 @@ class WhatsAppProductDiscoveryWebhookTests(TestCase):
         self.assertIn(product.name, result["reply"])
         self.assertEqual(result["product_reply"], result["reply"])
 
-        # Successful product discovery clears the pending discovery state.
+        # Successful product discovery keeps the next-option state.
         self.state.refresh_from_db()
 
-        self.assertNotIn(
-            "whatsapp_product_discovery",
-            self.state.data,
+        discovery = self.state.data["whatsapp_product_discovery"]
+
+        self.assertEqual(
+            discovery["status"],
+            "awaiting_next_option",
+        )
+
+        self.assertEqual(
+            discovery["current_product_id"],
+            product.pk,
+        )
+
+        self.assertEqual(
+            self.state.data["whatsapp_product_ids"],
+            [product.pk],
+        )
+
+        self.assertEqual(
+            self.state.data["whatsapp_product_remaining_ids"],
+            [],
         )
 
         # Unrelated conversation data remains untouched.
