@@ -15,15 +15,6 @@ urlpatterns = [
     path("about/", views.about, name="about"),
     path("services/", views.services, name="services"),
     path("contact/", views.contact, name="contact"),
-    path("products/", views.products, name="products"),
-
-    # Product-specific quote requests
-    path(
-        "request-quote/",
-        views.request_quote,
-        name="request_quote",
-    ),
-
     path("team/", views.team, name="team"),
     path(
         "sitemap.xml",

@@ -10,6 +10,7 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("", include("products.public_urls")),
     path("", include("main.urls")),
     path("whatsapp/", include("whatsapp.urls")),
     path("business-requests/", include("business_requests.urls")),

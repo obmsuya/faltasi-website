@@ -51,10 +51,7 @@ ALLOWED_HOSTS = [
 
 
 # WhatsApp settings
-WHATSAPP_VERIFY_TOKEN = os.environ.get(
-    "WHATSAPP_VERIFY_TOKEN",
-    "faltasi_whatsapp_2026",
-)
+WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "")
 
 WHATSAPP_PHONE_NUMBER_ID = os.environ.get(
     "WHATSAPP_PHONE_NUMBER_ID"
@@ -277,6 +274,24 @@ EMAIL_USE_SSL = False
 
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+
+DEFAULT_COUNTRY = os.environ.get("DEFAULT_COUNTRY", "Tanzania")
+WEBSITE_REQUEST_NOTIFICATION_EMAILS = os.environ.get(
+    "WEBSITE_REQUEST_NOTIFICATION_EMAILS", ""
+)
+WEBSITE_REQUEST_NOTIFICATION_SUBJECT = os.environ.get(
+    "WEBSITE_REQUEST_NOTIFICATION_SUBJECT", "New website request"
+)
+WEBSITE_REQUEST_CONFIRMATION_SUBJECT = os.environ.get(
+    "WEBSITE_REQUEST_CONFIRMATION_SUBJECT", "We received your request"
+)
+WEBSITE_REQUEST_CONFIRMATION_BODY = os.environ.get(
+    "WEBSITE_REQUEST_CONFIRMATION_BODY", ""
+)
+WEBSITE_GENERAL_REQUEST_SUBJECT = os.environ.get(
+    "WEBSITE_GENERAL_REQUEST_SUBJECT", "General Website Inquiry"
+)
+
 
 DEFAULT_FROM_EMAIL = "Faltasi Innovations Limited <accounts@faltasi.com>"
 
