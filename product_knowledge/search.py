@@ -1,5 +1,6 @@
 
 import re
+from decimal import Decimal, InvalidOperation
 from urllib.parse import urlsplit
 
 from django.db.models import CharField, Q
@@ -341,7 +342,14 @@ def _relevance_tokens(value):
 
 
 
-def search_organization_products(organization, query, limit=DEFAULT_LIMIT):
+def search_organization_products(
+    organization,
+    query,
+    limit=DEFAULT_LIMIT,
+    *,
+    price_preference="relevance",
+    max_price=None,
+):
     """
     Canonical organization-scoped product search.
 
@@ -547,12 +555,56 @@ def search_organization_products(organization, query, limit=DEFAULT_LIMIT):
     for item in results:
         item.pop("_identity_match", None)
 
-    results.sort(
-        key=lambda item: (
-            -item["score"],
-            item["display_order"],
-            (item["name"] or "").lower(),
+    # Optional customer price constraints use selling price only.
+    # Keep the existing relevance ranking unchanged by default.
+    if max_price is not None:
+        try:
+            maximum = Decimal(str(max_price))
+        except (InvalidOperation, TypeError, ValueError):
+            return []
+
+        if not maximum.is_finite() or maximum < 0:
+            return []
+
+        budget_matches = []
+        for item in results:
+            raw_price = item.get("price")
+            if raw_price is None:
+                continue
+            try:
+                selling_price = Decimal(str(raw_price))
+            except (InvalidOperation, TypeError, ValueError):
+                continue
+            if selling_price.is_finite() and selling_price <= maximum:
+                budget_matches.append(item)
+
+        results = budget_matches
+
+    if price_preference == "lowest":
+        def selling_price_key(item):
+            raw_price = item.get("price")
+            if raw_price is None:
+                return (1, Decimal("0"), -item["score"],
+                        item["display_order"], (item["name"] or "").lower())
+            try:
+                price = Decimal(str(raw_price))
+            except (InvalidOperation, TypeError, ValueError):
+                return (1, Decimal("0"), -item["score"],
+                        item["display_order"], (item["name"] or "").lower())
+            if not price.is_finite():
+                return (1, Decimal("0"), -item["score"],
+                        item["display_order"], (item["name"] or "").lower())
+            return (0, price, -item["score"],
+                    item["display_order"], (item["name"] or "").lower())
+
+        results.sort(key=selling_price_key)
+    else:
+        results.sort(
+            key=lambda item: (
+                -item["score"],
+                item["display_order"],
+                (item["name"] or "").lower(),
+            )
         )
-    )
 
     return results[:limit]

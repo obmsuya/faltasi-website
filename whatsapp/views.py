@@ -1729,7 +1729,14 @@ def handle_whatsapp_product_conversation(
     ) or None
 
 
-def search_whatsapp_products(text, organization, state=None):
+def search_whatsapp_products(
+    text,
+    organization,
+    state=None,
+    *,
+    price_preference="relevance",
+    max_price=None,
+):
     """
     Search WhatsApp-enabled products and prepare one product at a time
     for customer discovery. The Product Builder selection workflow
@@ -1738,10 +1745,17 @@ def search_whatsapp_products(text, organization, state=None):
     if not text or not organization:
         return None
 
+    search_options = {}
+    if price_preference != "relevance":
+        search_options["price_preference"] = price_preference
+    if max_price is not None:
+        search_options["max_price"] = max_price
+
     search_results = search_organization_products(
         organization,
         text,
         limit=5,
+        **search_options,
     )
 
     if not search_results:
@@ -2405,10 +2419,19 @@ def get_ai_product_discovery_reply(text, organization, state, current_message_id
             ):
                 return None
 
+            price_preference = result.get('price_preference', 'relevance')
+            max_price = result.get('max_price')
+            search_options = {}
+            if price_preference != 'relevance':
+                search_options['price_preference'] = price_preference
+            if max_price is not None:
+                search_options['max_price'] = max_price
+
             product_reply = search_whatsapp_products(
                 search_query.strip(),
                 organization,
                 state,
+                **search_options,
             )
 
             if product_reply:

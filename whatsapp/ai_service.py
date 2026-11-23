@@ -1822,7 +1822,12 @@ def _parse_product_discovery_response(response):
             "The product-discovery response must be an object."
         )
 
-    if set(payload) != {"action", "search_query", "clarification"}:
+    # Accept the previous three-field response during rollout so existing
+    # integrations and tests remain compatible. New responses may include
+    # the two optional price-control fields.
+    legacy_keys = {"action", "search_query", "clarification"}
+    current_keys = legacy_keys | {"price_preference", "max_price"}
+    if set(payload) not in (legacy_keys, current_keys):
         raise WhatsAppAIInvalidResponseError(
             "The product-discovery response has unexpected fields."
         )
@@ -1830,6 +1835,33 @@ def _parse_product_discovery_response(response):
     action = payload.get("action")
     search_query = payload.get("search_query")
     clarification = payload.get("clarification")
+    price_preference = payload.get("price_preference", "relevance")
+    max_price = payload.get("max_price")
+
+    if (
+        not isinstance(price_preference, str)
+        or price_preference not in {"lowest", "relevance"}
+    ):
+        raise WhatsAppAIInvalidResponseError(
+            "The product-discovery price preference is invalid."
+        )
+
+    if max_price is not None:
+        if isinstance(max_price, bool):
+            raise WhatsAppAIInvalidResponseError(
+                "The maximum product price is invalid."
+            )
+        try:
+            max_price = Decimal(str(max_price))
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            raise WhatsAppAIInvalidResponseError(
+                "The maximum product price is invalid."
+            ) from exc
+
+        if not max_price.is_finite() or max_price < 0:
+            raise WhatsAppAIInvalidResponseError(
+                "The maximum product price is invalid."
+            )
 
     if action not in PRODUCT_DISCOVERY_ACTIONS:
         raise WhatsAppAIInvalidResponseError(
@@ -1871,10 +1903,17 @@ def _parse_product_discovery_response(response):
                 "A clarification decision cannot also contain a search query."
             )
 
+        if price_preference != "relevance" or max_price is not None:
+            raise WhatsAppAIInvalidResponseError(
+                "A clarification decision cannot contain price filters."
+            )
+
     return {
         "action": action,
         "search_query": search_query,
         "clarification": clarification,
+        "price_preference": price_preference,
+        "max_price": max_price,
     }
 
 
@@ -2033,6 +2072,20 @@ FOR A SEARCH
   capacity, compatibility, brand preference and specifications.
 - Do not invent a brand, model or requirement.
 - Do not invent product names or claim a product exists.
+- Detect whether the customer wants the cheapest/lowest-priced option.
+  This includes natural expressions such as "cheapest", "low price",
+  "cheap", "bei nafuu", "ya bei rahisi", or "ya bei ya chini".
+  If so, set price_preference to "lowest"; otherwise use "relevance".
+- Detect an explicit maximum budget or price ceiling, such as
+  "under 500,000", "not more than 500,000", "within 500,000",
+  "chini ya 500,000", or "bajeti yangu ni 500,000".
+  Set max_price to the numeric amount only (500000 in this example).
+- Do not invent a budget. If no clear maximum amount is stated,
+  set max_price to null.
+- Cheapest-first and a maximum budget can be used together.
+- Do not interpret an ordinary mention of a product price as a budget ceiling.
+- You do not choose products or calculate their prices. Django applies
+  the requested sorting and budget filter using saved selling prices.
 
 FOR CLARIFICATION
 
@@ -2053,11 +2106,15 @@ Return JSON only with exactly these fields:
 {
   "action": "search or clarify",
   "search_query": "concise catalogue search description or empty string",
-  "clarification": "one clarification question or empty string"
+  "clarification": "one clarification question or empty string",
+  "price_preference": "lowest or relevance",
+  "max_price": 500000
 }
 
+Use null for max_price when the customer did not state a clear maximum budget.
 For action search, clarification must be empty.
-For action clarify, search_query must be empty.
+For action clarify, search_query must be empty, price_preference must be
+"relevance", and max_price must be null.
 """ + _organization_ai_guidance(organization)
 
     try:
