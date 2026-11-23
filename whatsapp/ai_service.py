@@ -1822,12 +1822,10 @@ def _parse_product_discovery_response(response):
             "The product-discovery response must be an object."
         )
 
-    # Accept the previous three-field response during rollout so existing
-    # integrations and tests remain compatible. New responses may include
-    # the two optional price-control fields.
-    legacy_keys = {"action", "search_query", "clarification"}
-    current_keys = legacy_keys | {"price_preference", "max_price"}
-    if set(payload) not in (legacy_keys, current_keys):
+    if set(payload) != {
+        "action", "search_query", "clarification",
+        "price_preference", "max_price",
+    }:
         raise WhatsAppAIInvalidResponseError(
             "The product-discovery response has unexpected fields."
         )
@@ -1835,7 +1833,7 @@ def _parse_product_discovery_response(response):
     action = payload.get("action")
     search_query = payload.get("search_query")
     clarification = payload.get("clarification")
-    price_preference = payload.get("price_preference", "relevance")
+    price_preference = payload.get("price_preference")
     max_price = payload.get("max_price")
 
     if (
