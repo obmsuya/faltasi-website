@@ -1892,6 +1892,7 @@ def search_whatsapp_products(
     ])
 
     return "\n".join(lines)
+
 def update_conversation_state(state, current_step=None, waiting_for='__UNCHANGED__', data=None):
     """
     Update the conversation state and save it.
