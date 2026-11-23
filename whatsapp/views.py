@@ -1746,8 +1746,10 @@ def search_whatsapp_products(
         return None
 
     search_options = {}
+
     if price_preference != "relevance":
         search_options["price_preference"] = price_preference
+
     if max_price is not None:
         search_options["max_price"] = max_price
 
@@ -1762,9 +1764,9 @@ def search_whatsapp_products(
         return None
 
     product_ids = [
-        item['id']
+        item["id"]
         for item in search_results
-        if item.get('id') is not None
+        if item.get("id") is not None
     ]
 
     products_by_id = Product.objects.filter(
@@ -1773,7 +1775,7 @@ def search_whatsapp_products(
         is_active=True,
         deleted_at__isnull=True,
         show_on_whatsapp=True,
-    ).select_related('category').in_bulk()
+    ).select_related("category").in_bulk()
 
     matches = [
         products_by_id[product_id]
@@ -1791,65 +1793,105 @@ def search_whatsapp_products(
     if state is not None:
         state_data = dict(state.data or {})
 
-        state_data.pop('whatsapp_product_discovery', None)
+        state_data.pop("whatsapp_product_discovery", None)
 
         for key in (
-            'selected_whatsapp_product_id',
-            'selected_whatsapp_product_name',
-            'whatsapp_product_quantity',
-            'whatsapp_product_action',
+            "selected_whatsapp_product_id",
+            "selected_whatsapp_product_name",
+            "whatsapp_product_quantity",
+            "whatsapp_product_action",
         ):
             state_data.pop(key, None)
 
-        # The webhook uses this list to send product images.
-        # Keep only the current product here.
-        state_data['whatsapp_product_ids'] = [product.id]
+        state_data["whatsapp_product_ids"] = [product.id]
+        state_data["whatsapp_product_remaining_ids"] = remaining_product_ids
 
-        # Preserve other matching products for a later next-option step.
-        state_data['whatsapp_product_remaining_ids'] = remaining_product_ids
-
-        state_data['whatsapp_product_discovery'] = {
-            'status': 'awaiting_next_option',
-            'current_product_id': product.id,
-            'remaining_product_ids': remaining_product_ids,
+        state_data["whatsapp_product_discovery"] = {
+            "status": "awaiting_next_option",
+            "current_product_id": product.id,
+            "remaining_product_ids": remaining_product_ids,
         }
 
-        # Do not enter the old numbered product-selection workflow.
-        state.current_step = 'whatsapp_product_completed'
+        state.current_step = "whatsapp_product_completed"
         state.waiting_for = None
         state.data = state_data
         state.save()
 
+    # Reuse the existing AI service sanitizer for JSON product fields.
+    from .ai_service import _clean_customer_data
+
     lines = [
-        'Here is a product that matches your request:',
-        '',
+        "Here is a product that matches your request:",
+        "",
         product.name,
     ]
 
     if product.brand:
-        lines.append(f'Brand: {product.brand}')
+        lines.append(f"Brand: {product.brand}")
 
     if product.model:
-        lines.append(f'Model: {product.model}')
+        lines.append(f"Model: {product.model}")
+
+    if product.manufacturer:
+        lines.append(f"Manufacturer: {product.manufacturer}")
+
+    description = (
+        product.short_description
+        or product.description
+    )
+
+    if description:
+        lines.extend([
+            "",
+            "Description:",
+            description.strip()[:1500],
+        ])
+
+    specifications = _clean_customer_data(
+        product.specifications or {}
+    )
+
+    specification_lines = _format_whatsapp_product_json(
+        specifications
+    )
+
+    if specification_lines:
+        lines.extend([
+            "",
+            "Specifications:",
+            *specification_lines,
+        ])
+
+    additional_information = _clean_customer_data(
+        product.additional_information or {}
+    )
+
+    additional_lines = _format_whatsapp_product_json(
+        additional_information
+    )
+
+    if additional_lines:
+        lines.extend([
+            "",
+            "Additional Information:",
+            *additional_lines,
+        ])
 
     price = (
-        f'{product.currency} {product.price:,.2f}'
+        f"{product.currency} {product.price:,.2f}"
         if product.price is not None
-        else 'Price available on request'
-    )
-    lines.append(f'Price: {price}')
-    lines.append(
-        f'Availability: {product.get_availability_display()}'
+        else "Price available on request"
     )
 
     lines.extend([
-        '',
-        'Would you like to see another option?',
+        "",
+        f"Price: {price}",
+        f"Availability: {product.get_availability_display()}",
+        "",
+        "Would you like to see another option?",
     ])
 
-    return '\n'.join(lines)
-
-
+    return "\n".join(lines)
 def update_conversation_state(state, current_step=None, waiting_for='__UNCHANGED__', data=None):
     """
     Update the conversation state and save it.
@@ -2517,3 +2559,55 @@ def get_ai_request_category_reply(text, organization, state, current_message_id=
         import logging
         logging.getLogger(__name__).exception('WhatsApp AI category interpretation failed; using existing category routing.')
         return None
+
+def _format_whatsapp_product_json(value, depth=0):
+    """
+    Format sanitized product JSON fields for customer-facing WhatsApp
+    messages without exposing restricted information.
+    """
+    if value is None or depth > 4:
+        return []
+
+    if isinstance(value, dict):
+        lines = []
+
+        for key, item in value.items():
+            if item is None or item == "":
+                continue
+
+            label = str(key).replace("_", " ").replace("-", " ").strip().title()
+
+            if isinstance(item, dict):
+                nested = _format_whatsapp_product_json(item, depth + 1)
+                if nested:
+                    lines.append(f"{label}:")
+                    lines.extend(f"  {line}" for line in nested)
+
+            elif isinstance(item, (list, tuple)):
+                nested = _format_whatsapp_product_json(item, depth + 1)
+                if nested:
+                    lines.append(f"{label}:")
+                    lines.extend(f"  {line}" for line in nested)
+
+            else:
+                lines.append(f"{label}: {item}")
+
+            if len(lines) >= 20:
+                break
+
+        return lines
+
+    if isinstance(value, (list, tuple)):
+        lines = []
+
+        for item in value[:15]:
+            if isinstance(item, dict):
+                lines.extend(
+                    _format_whatsapp_product_json(item, depth + 1)
+                )
+            elif item is not None and item != "":
+                lines.append(str(item))
+
+        return lines
+
+    return [str(value)]
