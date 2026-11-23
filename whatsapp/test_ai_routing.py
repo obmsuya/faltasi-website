@@ -2,7 +2,7 @@
 from unittest import TestCase
 from unittest.mock import patch
 
-from whatsapp.views import get_ai_general_interpretation, get_ai_product_reply
+from whatsapp.views import get_ai_general_interpretation
 
 
 class GeneralIntentRoutingTests(TestCase):
@@ -310,35 +310,4 @@ class ProductFollowupRoutingTests(TestCase):
             ),
         )
 
-    @patch("whatsapp.ai_service.interpret_product_message")
-    def test_product_followup_uses_displayed_candidates(self, interpreter):
-        interpreter.return_value = {
-            "action": "answer_product",
-            "product_id": 4,
-            "answer": "Laptop hiyo ni TZS 850,000.",
-        }
 
-        result = get_ai_product_reply(
-            "Laptop ah ngapi",
-            self.organization,
-            self.state,
-            140,
-        )
-
-        self.assertEqual(result, "Laptop hiyo ni TZS 850,000.")
-        interpreter.assert_called_once()
-
-    @patch("whatsapp.ai_service.interpret_product_message")
-    def test_builder_workflow_does_not_use_candidate_followup(self, interpreter):
-        self.state.current_step = "whatsapp_product_builder"
-        self.state.waiting_for = "customer_name"
-
-        result = get_ai_product_reply(
-            "Laptop ah ngapi",
-            self.organization,
-            self.state,
-            141,
-        )
-
-        self.assertIsNone(result)
-        interpreter.assert_not_called()

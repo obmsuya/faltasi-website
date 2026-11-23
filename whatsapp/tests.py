@@ -666,9 +666,6 @@ class WhatsAppMarketingInvitationWebhookTests(TestCase):
             "whatsapp.views.handle_whatsapp_product_conversation",
             return_value=None,
         ), patch(
-            "whatsapp.views.get_ai_product_reply",
-            return_value=None,
-        ), patch(
             "whatsapp.views.get_ai_general_interpretation",
             return_value={
                 "action": "reply",
@@ -2197,10 +2194,6 @@ class WhatsAppProductDiscoveryWebhookTests(TestCase):
                 return_value=None,
             ) as mock_general_ai,
             patch(
-                "whatsapp.views.get_ai_product_reply",
-                return_value=None,
-            ) as mock_old_product_ai,
-            patch(
                 "whatsapp.views.search_whatsapp_products",
                 return_value=None,
             ) as mock_catalogue_search,
@@ -2221,7 +2214,6 @@ class WhatsAppProductDiscoveryWebhookTests(TestCase):
         return (
             webhook_response,
             mock_general_ai,
-            mock_old_product_ai,
             mock_catalogue_search,
             mock_discovery,
             mock_send,
@@ -2235,7 +2227,6 @@ class WhatsAppProductDiscoveryWebhookTests(TestCase):
         (
             response,
             mock_general_ai,
-            mock_old_product_ai,
             mock_catalogue_search,
             mock_discovery,
             mock_send,
@@ -2255,10 +2246,6 @@ class WhatsAppProductDiscoveryWebhookTests(TestCase):
 
         # The pending clarification must bypass general AI.
         mock_general_ai.assert_not_called()
-
-        # The older product AI interpreter must not intercept it.
-        mock_old_product_ai.assert_not_called()
-
         # The AI discovery handler processes the clarification.
         # Direct catalogue fallback must not run when AI returns a reply.
         mock_catalogue_search.assert_not_called()

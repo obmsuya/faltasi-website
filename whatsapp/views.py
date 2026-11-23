@@ -689,72 +689,6 @@ def notify_assigned_staff(business_request, assignment):
     except Exception as e:
         return False
 
-def get_ai_product_reply(text, organization, state, current_message_id):
-    """
-    Provide optional AI assistance for questions about an already
-    selected WhatsApp product.
-
-    AI is allowed only in an idle or completed product conversation.
-    Django retains control of all business-request and product workflows.
-    """
-    if not text or not organization or (not state):
-        return None
-    if not _whatsapp_ai_is_enabled(organization):
-        return None
-    state_data = state.data if isinstance(state.data, dict) else {}
-    has_selected_product = bool(state_data.get('selected_whatsapp_product_id'))
-    candidate_product_ids = state_data.get('whatsapp_product_ids', [])
-    has_product_candidates = (
-        isinstance(candidate_product_ids, list)
-        and bool(candidate_product_ids)
-    )
-    current_step = getattr(state, 'current_step', None)
-    waiting_for = getattr(state, 'waiting_for', None)
-
-    # Product questions can refer to the displayed candidate list before
-    # the customer has selected a numbered item. Exact selections are still
-    # processed first by handle_whatsapp_product_conversation().
-    is_pending_product_selection = (
-        current_step == 'whatsapp_product_selection'
-        and waiting_for == 'product_selection'
-        and has_product_candidates
-        and not has_selected_product
-    )
-    if not has_selected_product and not is_pending_product_selection:
-        return None
-    if state_data.get('category') or state_data.get('business_request_id'):
-        return None
-    if waiting_for and not is_pending_product_selection:
-        return None
-    conversation = getattr(state, 'conversation', None)
-    if conversation is not None:
-        if getattr(conversation, 'business_request_id', None):
-            return None
-        if getattr(conversation, 'business_request', None):
-            return None
-    allowed_steps = {None, 'whatsapp_product_completed'}
-    if is_pending_product_selection:
-        allowed_steps.add('whatsapp_product_selection')
-    if current_step not in allowed_steps:
-        return None
-    try:
-        from .ai_service import interpret_product_message
-        result = interpret_product_message(text, organization, state, current_message_id=current_message_id)
-        if not isinstance(result, dict):
-            return None
-        if result.get('action') not in {'answer_product', 'clarify_product'}:
-            return None
-        answer = result.get('answer')
-        if not isinstance(answer, str):
-            return None
-        answer = answer.strip()
-        if not answer or len(answer) > 2000:
-            return None
-        return answer
-    except Exception:
-        import logging
-        logging.getLogger(__name__).exception('WhatsApp AI product assistance failed; using normal fallback.')
-        return None
 
 @csrf_exempt
 def webhook(request):
@@ -1099,26 +1033,6 @@ def webhook(request):
                             conversation.pk,
                         )
 
-                if (
-                    not product_flow_handled
-                    and not pending_product_discovery
-                    and detected_category is None
-                    and not current_category
-                    and (
-                        general_ai_result is None
-                        or general_ai_result.get('intent') == 'product_enquiry'
-                    )
-                ):
-                    product_flow_reply = get_ai_product_reply(
-                        text,
-                        organization,
-                        state,
-                        incoming_message.id if incoming_message else None,
-                    )
-                    if product_flow_reply is not None:
-                        reply = product_flow_reply
-                        detected_category = None
-                        product_flow_handled = True
         current_field = None
         if not product_flow_handled and current_category and state.waiting_for:
             try:
