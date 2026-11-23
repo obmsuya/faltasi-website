@@ -25,7 +25,9 @@ class ProductDiscoveryResponseTests(SimpleTestCase):
             "action": "search",
             "search_query": "laptop suitable for accounting",
             "clarification": "",
-        })
+
+            "price_preference": "relevance",
+            "max_price": None})
 
         self.assertEqual(result["action"], "search")
         self.assertEqual(
@@ -38,7 +40,9 @@ class ProductDiscoveryResponseTests(SimpleTestCase):
             "action": "clarify",
             "search_query": "",
             "clarification": "Unahitaji laptop kwa matumizi gani?",
-        })
+
+            "price_preference": "relevance",
+            "max_price": None})
 
         self.assertEqual(result["action"], "clarify")
 
@@ -57,7 +61,9 @@ class ProductDiscoveryResponseTests(SimpleTestCase):
                 "action": "select_product",
                 "search_query": "laptop",
                 "clarification": "",
-            })
+
+            "price_preference": "relevance",
+            "max_price": None})
 
     def test_rejects_empty_search(self):
         with self.assertRaises(WhatsAppAIInvalidResponseError):
@@ -65,7 +71,9 @@ class ProductDiscoveryResponseTests(SimpleTestCase):
                 "action": "search",
                 "search_query": "",
                 "clarification": "",
-            })
+
+            "price_preference": "relevance",
+            "max_price": None})
 
     def test_rejects_search_and_clarification_together(self):
         with self.assertRaises(WhatsAppAIInvalidResponseError):
@@ -73,7 +81,9 @@ class ProductDiscoveryResponseTests(SimpleTestCase):
                 "action": "search",
                 "search_query": "laptop",
                 "clarification": "Which size?",
-            })
+
+            "price_preference": "relevance",
+            "max_price": None})
 
     def test_rejects_incomplete_provider_response(self):
         with self.assertRaises(WhatsAppAIInvalidResponseError):
@@ -81,7 +91,9 @@ class ProductDiscoveryResponseTests(SimpleTestCase):
                 "action": "search",
                 "search_query": "laptop",
                 "clarification": "",
-            }, status="incomplete")
+
+            "price_preference": "relevance",
+            "max_price": None}, status="incomplete")
 
     def test_rejects_invalid_json(self):
         response = SimpleNamespace(
@@ -166,7 +178,9 @@ class ProductDiscoveryIntegrationGuardTests(SimpleTestCase):
             "action": "search",
             "search_query": "laptop for accounting",
             "clarification": "",
-        }
+
+            "price_preference": "relevance",
+            "max_price": None}
         mock_search.return_value = "1. Actual catalogue laptop"
 
         result = get_ai_product_discovery_reply(
@@ -201,7 +215,9 @@ class ProductDiscoveryIntegrationGuardTests(SimpleTestCase):
             "action": "clarify",
             "search_query": "",
             "clarification": "Unahitaji laptop kwa matumizi gani?",
-        }
+
+            "price_preference": "relevance",
+            "max_price": None}
 
         result = get_ai_product_discovery_reply(
             "Nahitaji computer",

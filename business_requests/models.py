@@ -62,6 +62,18 @@ class RequestField(models.Model):
     is_required = models.BooleanField(default=True)
     order = models.PositiveIntegerField(default=1, help_text='Order in which this information should be collected.')
     is_active = models.BooleanField(default=True)
+    display_label = models.CharField(max_length=150, blank=True, default='')
+    validation_rules = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            'Configured rules. Supported keys: min, max, min_length, max_length, '
+            'choices, yes_values, no_values, yes_phrases, no_phrases, number_words, '
+            'skip_values, prevent_new_request_interruption and allow_new_request_interruption.'
+        ),
+    )
+    retry_message_sw = models.TextField(blank=True, default='')
+    retry_message_en = models.TextField(blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -210,6 +222,38 @@ class WhatsAppAutomationSettings(models.Model):
 
     marketing_invitation_message_sw = models.TextField(blank=True, default="")
     marketing_invitation_message_en = models.TextField(blank=True, default="")
+    request_field_retry_message_sw = models.TextField(blank=True, default="")
+    request_field_retry_message_en = models.TextField(blank=True, default="")
+    request_completed_message_sw = models.TextField(blank=True, default="")
+    request_completed_message_en = models.TextField(blank=True, default="")
+    request_yes_label_sw = models.CharField(max_length=50, blank=True, default="")
+    request_yes_label_en = models.CharField(max_length=50, blank=True, default="")
+    request_no_label_sw = models.CharField(max_length=50, blank=True, default="")
+    request_no_label_en = models.CharField(max_length=50, blank=True, default="")
+    request_not_provided_label_sw = models.CharField(max_length=100, blank=True, default="")
+    request_not_provided_label_en = models.CharField(max_length=100, blank=True, default="")
+    request_collected_details_heading_sw = models.CharField(max_length=150, blank=True, default="")
+    request_collected_details_heading_en = models.CharField(max_length=150, blank=True, default="")
+    human_handover_message_sw = models.TextField(blank=True, default="")
+    human_handover_message_en = models.TextField(blank=True, default="")
+    human_handover_message_mixed = models.TextField(blank=True, default="")
+    human_handover_phrases = models.JSONField(default=dict, blank=True)
+    marketing_opt_in_confirmation_message_sw = models.TextField(blank=True, default="")
+    marketing_opt_in_confirmation_message_en = models.TextField(blank=True, default="")
+    marketing_opt_out_confirmation_message_sw = models.TextField(blank=True, default="")
+    marketing_opt_out_confirmation_message_en = models.TextField(blank=True, default="")
+    marketing_declined_confirmation_message_sw = models.TextField(blank=True, default="")
+    marketing_declined_confirmation_message_en = models.TextField(blank=True, default="")
+    workflow_review_step_name = models.CharField(max_length=150, blank=True, default="")
+    workflow_review_step_description = models.TextField(blank=True, default="")
+    workflow_review_step_order = models.PositiveIntegerField(default=1)
+    assignment_whatsapp_message_template = models.TextField(blank=True, default="")
+    manual_assignment_notes_template = models.TextField(blank=True, default="")
+    assignment_notes = models.TextField(blank=True, default="")
+    unassigned_notes = models.TextField(blank=True, default="")
+    assignment_email_subject_template = models.CharField(max_length=255, blank=True, default="")
+    assignment_email_body_template = models.TextField(blank=True, default="")
+    assignment_email_missing_value = models.CharField(max_length=100, blank=True, default="")
 
     # Request detection phrases
     request_phrases = models.JSONField(

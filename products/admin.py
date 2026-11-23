@@ -6,6 +6,7 @@ from .models import (
     ProductCategory,
     Product,
     OrganizationCategoryAssignment,
+    ProductDiscoverySettings,
 )
 
 
@@ -95,3 +96,10 @@ class OrganizationCategoryAssignmentAdmin(admin.ModelAdmin):
         "organization__name",
         "category__name",
     )
+
+@admin.register(ProductDiscoverySettings)
+class ProductDiscoverySettingsAdmin(admin.ModelAdmin):
+    list_display = ("organization", "default_language", "is_active", "updated_at")
+    list_filter = ("default_language", "is_active")
+    search_fields = ("organization__name",)
+    readonly_fields = ("created_at", "updated_at")

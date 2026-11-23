@@ -1,4 +1,4 @@
-﻿"""
+"""
 Runtime for published Product Conversation Builder configurations.
 
 This module deliberately does not send WhatsApp messages or execute
@@ -11,6 +11,7 @@ from decimal import Decimal, InvalidOperation
 
 from conversation_builder.models import (
     ProductConversationConfiguration,
+    ProductConversationQuestion,
     ProductConversationVersion,
 )
 
@@ -84,7 +85,8 @@ def start_product_conversation(state, organization, product):
     Pin the latest enabled published version to this conversation.
 
     Returns the runtime result. Returns None when no enabled published
-    configuration exists, allowing the legacy workflow to continue.
+    configuration exists. The caller must not invent or substitute an
+    unconfigured question sequence.
     """
     version = _get_snapshot_version(state, organization, product)
 
@@ -176,6 +178,35 @@ def get_next_question(snapshot, namespace, preferred_question_key=None):
     return eligible[0] if eligible else None
 
 
+def _configured_max_attempts(question):
+    """Read attempts from the snapshot, using the model's configured default for older snapshots."""
+    value = question.get("max_attempts")
+    if value is None:
+        value = ProductConversationQuestion._meta.get_field("max_attempts").default
+    if isinstance(value, bool):
+        return None
+    try:
+        value = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return value if value >= 1 else None
+
+
+def _snapshot_is_runtime_valid(snapshot):
+    """Reject published snapshots missing required runtime configuration."""
+    if not isinstance(snapshot, dict):
+        return False
+    questions = snapshot.get("questions")
+    if not isinstance(questions, list):
+        return False
+    for question in questions:
+        if not isinstance(question, dict) or not question.get("is_active", True):
+            continue
+        if _configured_max_attempts(question) is None:
+            return False
+    return True
+
+
 def get_runtime_status(
     state, organization, product, *, preferred_question_key=None
 ):
@@ -189,7 +220,7 @@ def get_runtime_status(
 
     snapshot = version.snapshot or {}
 
-    if not isinstance(snapshot, dict):
+    if not _snapshot_is_runtime_valid(snapshot):
         return None
 
     _, namespace = _get_namespace(state)
@@ -421,9 +452,9 @@ def submit_product_question_answers(
             rejected.append({
                 "key": key,
                 "attempts": attempts[key],
-                "max_attempts": question.get("max_attempts", 3),
+                "max_attempts": _configured_max_attempts(question),
                 "attempts_exhausted": (
-                    attempts[key] >= question.get("max_attempts", 3)
+                    attempts[key] >= _configured_max_attempts(question)
                 ),
                 "correction": True,
             })
@@ -472,9 +503,9 @@ def submit_product_question_answers(
                 rejected.append({
                     "key": key,
                     "attempts": attempts[key],
-                    "max_attempts": question.get("max_attempts", 3),
+                    "max_attempts": _configured_max_attempts(question),
                     "attempts_exhausted": (
-                        attempts[key] >= question.get("max_attempts", 3)
+                        attempts[key] >= _configured_max_attempts(question)
                     ),
                 })
 

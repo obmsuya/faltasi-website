@@ -17,11 +17,9 @@ from urllib.parse import urlsplit
 from .models import WhatsAppPhoneNumber, WhatsAppConnection, Conversation, ConversationState, Message
 from customers.models import Customer
 from products.models import Product
-from product_knowledge.search import search_organization_products
-from business_requests.models import BusinessRequest, RequestCategory, RequestAssignment, WorkflowStep, DepartmentMember
+from business_requests.models import BusinessRequest, RequestCategory
 from .handover import activate_human_handover
-from django.core.mail import send_mail
-from business_requests.whatsapp_config import get_whatsapp_message, get_whatsapp_phrases
+from business_requests.whatsapp_config import get_whatsapp_message
 logger = logging.getLogger(__name__)
 
 def _whatsapp_ai_is_enabled(organization):
@@ -44,39 +42,9 @@ def verify_meta_webhook_signature(request):
     return hmac.compare_digest(expected_signature, signature)
 
 def find_request_category(text, organization=None):
-    """
-    Identify a RequestCategory using keywords stored
-    in the Django database.
-
-    Categories and keywords are managed through
-    Django Admin.
-
-    If an organization is supplied, only categories
-    belonging to that organization are searched.
-    """
-    if not text:
-        return None
-    message = text.lower().strip()
-    categories = RequestCategory.objects.filter(is_active=True)
-    if organization:
-        categories = categories.filter(organization=organization)
-    categories = categories.order_by('name')
-    best_category = None
-    best_score = 0
-    for category in categories:
-        if not category.keywords:
-            continue
-        keywords = [keyword.strip().lower() for keyword in category.keywords.split(',') if keyword.strip()]
-        score = 0
-        for keyword in keywords:
-            if keyword in message:
-                score += 1
-        if score > best_score:
-            best_score = score
-            best_category = category
-    if best_category:
-        pass
-    return best_category
+    """Delegate category matching to Business Requests."""
+    from business_requests.services.whatsapp import find_request_category as service
+    return service(text, organization)
 
 def normalize_phone_number(phone_number):
     """
@@ -315,17 +283,10 @@ def send_and_log_whatsapp_product_image(whatsapp_phone, phone_number, product, c
     image_url = get_public_product_image_url(product, request=request)
     if not image_url:
         return False
-    caption_lines = [product.name]
-    if product.brand:
-        caption_lines.append(f'Brand: {product.brand}')
-    if product.model:
-        caption_lines.append(f'Model: {product.model}')
-    if product.price is not None:
-        caption_lines.append(f'Price: {product.currency} {product.price:,.2f}')
-    else:
-        caption_lines.append('Price available on request')
-    caption_lines.append(f'Availability: {product.get_availability_display()}')
-    caption = '\n'.join(caption_lines)[:1024]
+    from products.services.whatsapp_discovery import format_whatsapp_product_caption
+    caption = format_whatsapp_product_caption(product, organization)
+    if not caption:
+        return False
     response = send_whatsapp_image(whatsapp_phone, phone_number, image_url, caption=caption)
     succeeded = response is not None and response.status_code in (200, 201)
     try:
@@ -355,11 +316,16 @@ def get_or_create_conversation_state(conversation):
     return state
 
 def _get_configured_whatsapp_message(organization, message_type, language='sw'):
-    """Read an organization's configured message with a safe project fallback."""
-    language_key = 'en' if str(language or '').lower().startswith('en') else 'sw'
+    """Read organization-owned message configuration without code fallbacks."""
+    raw_language = str(language or '').lower()
+    language_key = 'mixed' if raw_language.startswith('mixed') else (
+        'en' if raw_language.startswith('en') else 'sw'
+    )
     try:
         configured = get_whatsapp_message(
-            organization, message_type, language=language_key
+            organization,
+            message_type,
+            language=language_key,
         )
         if configured:
             return configured
@@ -369,54 +335,7 @@ def _get_configured_whatsapp_message(organization, message_type, language='sw'):
             message_type,
         )
 
-    defaults = getattr(settings, 'WHATSAPP_DEFAULT_MESSAGES', {})
-    if isinstance(defaults, dict):
-        message = defaults.get(message_type, {})
-        if isinstance(message, dict):
-            configured = message.get(language_key) or message.get('sw')
-            if configured:
-                return configured
-        elif isinstance(message, str) and message:
-            return message
-
-    # Minimal defaults apply only when an organization has not configured
-    # a message. Organization-specific messages always take precedence.
-    fallback_messages = {
-        'fallback': {
-            'sw': 'Asante kwa ujumbe wako. Tumepokea taarifa zako.',
-            'en': 'Thank you for your message. We have received it.',
-        },
-        'marketing_invitation': {
-            'sw': (
-                'Pia tuna bidhaa nyingi ambazo nina uhakika utazifurahia. '
-                'Je, ungependa kupokea taarifa za bidhaa na ofa zetu kupitia WhatsApp? '
-                'Nijibu YES kukubali au NO kukataa.'
-            ),
-            'en': (
-                'We also have many products we believe you will enjoy. '
-                'Would you like to receive WhatsApp marketing messages? '
-                'Reply YES to subscribe or NO to decline.'
-            ),
-        },
-        'human_handover': {
-            'sw': 'Sawa, tumekuelewa. Tutaendelea kukusaidia hapa.',
-            'en': 'Thanks for letting us know. We’ll continue helping you here.',
-        },
-        'marketing_opt_in_confirmation': {
-            'sw': 'Asante. Umejiunga kupokea taarifa za matangazo kupitia WhatsApp.',
-            'en': 'Thank you. You have opted in to receive WhatsApp marketing updates.',
-        },
-        'marketing_opt_out_confirmation': {
-            'sw': 'Umeondolewa kwenye orodha ya matangazo ya WhatsApp.',
-            'en': 'You have been unsubscribed from WhatsApp marketing messages.',
-        },
-        'marketing_declined_confirmation': {
-            'sw': 'Asante kwa kutujibu. Hutapokea matangazo bila kutoa ridhaa yako.',
-            'en': 'Thank you for responding. You will not receive marketing messages.',
-        },
-    }
-    return fallback_messages.get(message_type, {}).get(language_key, '')
-
+    return None
 
 def process_whatsapp_marketing_consent(customer, text):
     """
@@ -454,35 +373,9 @@ def process_whatsapp_marketing_consent(customer, text):
     return None
 
 def create_business_request(customer, text, category, conversation=None):
-    """
-    Create or reuse a BusinessRequest for a WhatsApp conversation.
-
-    Behavior:
-
-    1. No category:
-       Do not create a request.
-
-    2. Existing request with SAME category:
-       Continue using the existing request.
-
-    3. Existing request with DIFFERENT category:
-       Create a NEW BusinessRequest.
-
-    4. No existing request:
-       Create a NEW BusinessRequest.
-    """
-    if not category:
-        return None
-    if not customer.organization_id or not category.organization_id or customer.organization_id != category.organization_id:
-        return None
-    if category.department_id and category.department.organization_id != category.organization_id:
-        return None
-    if conversation and conversation.business_request:
-        existing_request = conversation.business_request
-        if existing_request.category_id == category.id:
-            return existing_request
-    business_request = BusinessRequest.objects.create(customer=customer, request_text=text, subject=category.name, category=category, department=category.department, status='new', priority='normal', source='whatsapp')
-    return business_request
+    """Delegate request creation and tenant checks to Business Requests."""
+    from business_requests.services.whatsapp import create_business_request as service
+    return service(customer, text, category, conversation)
 
 def get_whatsapp_phone_number(phone_number_id):
     """
@@ -500,195 +393,31 @@ def get_whatsapp_phone_number(phone_number_id):
         return None
 
 def is_new_request_message(text, current_category=None, current_field=None, organization=None):
-    """
-    Determine whether an incoming message appears to start
-    a new business request instead of answering the current question.
-
-    The function is intentionally conservative.
-
-    Important behavior:
-    - If there is no active request, a detected category starts a new request.
-    - If the detected category is the same as the current category,
-      continue the current request.
-    - If the customer is answering a text field, continue the current request.
-    - Location, address, name, email, phone, and other field answers
-      should not easily be interpreted as new requests.
-    - A new request requires stronger evidence.
-    """
-    if not text or not text.strip():
-        return False
-    normalized = text.lower().strip()
-    detected_category = find_request_category(text, organization=organization)
-    if not detected_category:
-        return False
-    if not current_category:
-        return True
-    if detected_category.id == current_category.id:
-        return False
-    if current_field:
-        if current_field.field_type == 'text':
-            return False
-        field_name = getattr(current_field, 'name', None) or getattr(current_field, 'field_name', None) or getattr(current_field, 'key', None) or ''
-        field_name_normalized = field_name.lower().strip()
-        location_keywords = ['location', 'address', 'area', 'city', 'region', 'place', 'where']
-        if any((keyword in field_name_normalized for keyword in location_keywords)):
-            return False
-        valid, cleaned_value = validate_request_field_value(current_field, text)
-        if valid:
-            return False
-    explicit_new_request_phrases = ['i also need', 'i also want', 'i also would like', "i'd also like", 'i would also like', 'i need another', 'i want another', 'another request', 'another service', 'another product', 'different request', 'different service', 'different product', 'actually i need', 'actually i want', 'actually i would like', "actually i'd like", 'by the way i need', 'by the way i want', "by the way i'd like", 'can you also provide', 'can you also help', 'i need a separate', 'i want a separate']
-    if any((phrase in normalized for phrase in explicit_new_request_phrases)):
-        return True
-    request_phrases = ['i need', 'i want', 'i would like', "i'd like", 'looking for', 'can you provide', 'can you help', 'quotation for', 'quote for']
-    if any((phrase in normalized for phrase in request_phrases)):
-        return True
-    return False
+    """Use organization-configured request phrases and field rules."""
+    from business_requests.services.whatsapp import is_new_request_message as service
+    return service(text, current_category, current_field, organization)
 
 def process_request_fields(category, state, text):
-    """
-    Handle category-specific questions using RequestField
-    and ConversationState.
-    """
-    collected_data = state.data or {}
-    waiting_for = state.waiting_for
-    if waiting_for:
-        try:
-            field = category.request_fields.get(name=waiting_for, is_active=True)
-        except Exception:
-            field = None
-        if field:
-            if not field.is_required:
-                normalized = text.lower().strip()
-                skip_values = ['no', 'no budget', "i don't know", 'i dont know', 'not sure', 'not certain', 'no idea', 'i have no idea', "don't have a budget", 'dont have a budget', "i don't have a budget", 'i dont have a budget', 'not decided', 'not decided yet']
-                if normalized in skip_values:
-                    collected_data[waiting_for] = None
-                    update_conversation_state(state, data=collected_data)
-                else:
-                    valid, cleaned_value = validate_request_field_value(field, text)
-                    if valid:
-                        collected_data[waiting_for] = cleaned_value
-                        update_conversation_state(state, data=collected_data)
-                    else:
-                        return f'I’m sorry, I didn’t quite understand that.\n\n{field.question}'
-            else:
-                valid, cleaned_value = validate_request_field_value(field, text)
-                if not valid:
-                    return f'I’m sorry, I didn’t quite understand that answer.\n\n{field.question}'
-                collected_data[waiting_for] = cleaned_value
-                update_conversation_state(state, data=collected_data)
-    next_field = get_next_missing_request_field(category, collected_data)
-    if next_field:
-        update_conversation_state(state, current_step='collecting_details', waiting_for=next_field.name, data=collected_data)
-        return next_field.question
-    update_conversation_state(state, current_step='details_collected', waiting_for=None, data=collected_data)
-    return 'Thank you. We now have the information we need. Our team will review your request and get back to you shortly.'
+    """Delegate request question progression to Business Requests."""
+    from business_requests.services.whatsapp import process_request_fields as service
+    organization = getattr(category, "organization", None)
+    language = getattr(organization, "language", None) if organization else None
+    return service(category, state, text, organization=organization, language=language)
 
 def update_business_request_details(business_request, state):
-    """
-    Add the customer's collected conversation details
-    to the BusinessRequest.
-    """
-    if not business_request or not state:
-        return business_request
-    collected_data = state.data or {}
-    if not collected_data:
-        return business_request
-    original_request = collected_data.get('request_text')
-    if not original_request:
-        original_request = business_request.request_text
-    details = []
-    for field_name, value in collected_data.items():
-        if field_name in ['request_text', 'category', 'business_request_id']:
-            continue
-        display_value = value
-        if value is True:
-            display_value = 'Yes'
-        elif value is False:
-            display_value = 'No'
-        elif value is None:
-            display_value = 'Not provided'
-        details.append(f"{field_name.replace('_', ' ').title()}: {display_value}")
-    if details:
-        business_request.request_text = f'{original_request}\n\nCollected Details:\n' + '\n'.join(details)
-        business_request.save(update_fields=['request_text', 'updated_at'])
-    return business_request
+    """Delegate request answer persistence to Business Requests."""
+    from business_requests.services.whatsapp import update_business_request_details as service
+    return service(business_request, state)
 
 def create_request_workflow(business_request):
-    """
-    Create the initial workflow for a business request and automatically
-    assign it to the active department member with the fewest active requests.
-
-    A staff notification is sent only when a new staff assignment is created.
-    Existing assignments do not trigger duplicate notifications.
-    """
-    department = business_request.department
-    if not department:
-        return None
-    organization = department.organization
-    current_assignment = RequestAssignment.objects.filter(request=business_request, is_current=True).select_related('assigned_to', 'department').first()
-    new_staff_assignment = False
-    if current_assignment:
-        assigned_user = current_assignment.assigned_to
-        if assigned_user:
-            pass
-    else:
-        department_members = DepartmentMember.objects.filter(department=department, is_active=True, user__is_active=True, user__organization_memberships__organization=organization, user__organization_memberships__is_active=True).select_related('user').distinct()
-        selected_member = None
-        selected_active_count = None
-        for member in department_members:
-            active_request_count = RequestAssignment.objects.filter(assigned_to=member.user, is_current=True, request__status__in=['new', 'in_progress']).count()
-            if selected_member is None or active_request_count < selected_active_count:
-                selected_member = member
-                selected_active_count = active_request_count
-        if selected_member:
-            assigned_user = selected_member.user
-            current_assignment = RequestAssignment.objects.create(request=business_request, department=department, assigned_to=assigned_user, is_current=True, assigned_at=timezone.now(), notes='Automatically assigned based on current staff workload.')
-            new_staff_assignment = True
-        else:
-            assigned_user = None
-            current_assignment = RequestAssignment.objects.create(request=business_request, department=department, assigned_to=None, is_current=True, assigned_at=timezone.now(), notes='Waiting for an available department staff member.')
-    workflow_step = WorkflowStep.objects.filter(request=business_request, name='Department Review').first()
-    if not workflow_step:
-        workflow_step = WorkflowStep.objects.create(request=business_request, name='Department Review', status='active', assigned_to=assigned_user)
-    elif workflow_step.assigned_to != assigned_user:
-        workflow_step.assigned_to = assigned_user
-        workflow_step.save(update_fields=['assigned_to'])
-    if assigned_user:
-        if business_request.status != 'in_progress':
-            business_request.status = 'in_progress'
-            business_request.save(update_fields=['status', 'updated_at'])
-    if new_staff_assignment and assigned_user:
-        notification_result = notify_assigned_staff(business_request, current_assignment)
-    elif assigned_user:
-        pass
-    return current_assignment
+    """Delegate assignment and workflow creation to Business Requests."""
+    from business_requests.services.workflow import create_request_workflow as service
+    return service(business_request)
 
 def notify_assigned_staff(business_request, assignment):
-    """
-    Notify the staff member assigned to a business request.
-
-    The notification is sent by email when:
-    - an assignment exists
-    - a staff member is assigned
-    - the staff member has an email address
-    """
-    if not assignment:
-        return False
-    assigned_user = assignment.assigned_to
-    if not assigned_user:
-        return False
-    if not assigned_user.email:
-        return False
-    customer = business_request.customer
-    department = business_request.department
-    subject = f'New Business Request #{business_request.id} Assigned to You'
-    message = f"\nHello {assigned_user.get_full_name() or assigned_user.username},\n\nA new business request has been assigned to you.\n\nRequest ID:\n#{business_request.id}\n\nSubject:\n{business_request.subject or 'No subject'}\n\nDepartment:\n{(department.name if department else 'Not specified')}\n\nCustomer:\n{(customer.name if customer else 'Not specified')}\n\nCustomer Phone:\n{(customer.phone if customer else 'Not specified')}\n\nRequest:\n{business_request.request_text}\n\nPriority:\n{business_request.priority}\n\nStatus:\n{business_request.status}\n\nPlease log in to the Faltasi platform to review and process this request.\n\nRegards,\nFaltasi WhatsApp Platform\n".strip()
-    try:
-        send_mail(subject=subject, message=message, from_email=None, recipient_list=[assigned_user.email], fail_silently=False)
-        return True
-    except Exception as e:
-        return False
-
+    """Delegate configured staff notification to Business Requests."""
+    from business_requests.services.workflow import notify_assigned_staff as service
+    return service(business_request, assignment)
 
 @csrf_exempt
 def webhook(request):
@@ -1040,36 +769,34 @@ def webhook(request):
             except Exception:
                 current_field = None
         new_request = False
-        if not product_flow_handled and (not current_category):
-            if detected_category:
-                new_request = True
-        elif not product_flow_handled:
-            if detected_category and detected_category.id != current_category.id:
-                new_request = is_new_request_message(text, current_category=current_category, current_field=current_field, organization=organization)
-            elif detected_category and detected_category.id == current_category.id and state.waiting_for:
-                normalized_text = text.lower().strip()
-                request_phrases = ['i need', 'i want', 'i would like', "i'd like", 'looking for', 'i am looking for', "i'm looking for", 'can you provide', 'can you help', 'i need a quote', 'i need quotation', 'quotation for', 'quote for']
-                has_request_phrase = any((phrase in normalized_text for phrase in request_phrases))
-                explicit_new_request_phrases = ['i also need', 'i also want', 'i also would like', "i'd also like", 'i would also like', 'actually i need', 'actually i want', 'actually i would like', 'another request', 'another service', 'another product', 'different request', 'different service', 'different product', 'by the way i need', 'by the way i want', 'can you also provide', 'can you also help']
-                has_explicit_new_request_phrase = any((phrase in normalized_text for phrase in explicit_new_request_phrases))
-                if current_field:
-                    if current_field.field_type == 'text':
-                        if has_explicit_new_request_phrase:
-                            new_request = True
-                        elif state.waiting_for == 'location' and detected_category and has_request_phrase:
-                            new_request = True
-                    else:
-                        valid, cleaned_value = validate_request_field_value(current_field, text)
-                        if not valid and has_request_phrase:
-                            new_request = True
+        if not product_flow_handled and detected_category:
+            new_request = is_new_request_message(
+                text,
+                current_category=current_category,
+                current_field=current_field,
+                organization=organization,
+            )
         if not product_flow_handled and new_request:
             category = detected_category
             if category and (customer.organization_id != organization.id or category.organization_id != organization.id or (category.department_id and category.department.organization_id != organization.id)):
                 category = None
             if not category:
-                reply = 'Samahani, sijaweza kutambua huduma unayoihitaji. Tafadhali eleza huduma au bidhaa unayotafuta kwa maelezo zaidi.'
+                reply = get_whatsapp_message(
+                    organization,
+                    'request_not_understood',
+                    getattr(organization, 'language', 'sw'),
+                ) or get_whatsapp_message(
+                    organization,
+                    'general_fallback',
+                    getattr(organization, 'language', 'sw'),
+                )
             else:
-                business_request = BusinessRequest.objects.create(customer=customer, request_text=text, subject=category.name, category=category, department=category.department, status='new', priority='normal', source='whatsapp')
+                business_request = create_business_request(
+                    customer,
+                    text,
+                    category,
+                    conversation,
+                )
                 conversation.business_request = business_request
                 conversation.save(update_fields=['business_request'])
                 state_data = {'request_text': text, 'category': category.name, 'business_request_id': business_request.id}
@@ -1268,111 +995,19 @@ def handle_whatsapp_product_conversation(
     step = state.current_step
     data = dict(state.data or {})
 
-    # Handle the one-at-a-time product suggestion conversation first.
-    discovery = data.get('whatsapp_product_discovery')
+    # Product discovery yes/no responses and follow-up product selection are
+    # configured and owned by the Products discovery service.
+    from products.services.whatsapp_discovery import (
+        handle_product_discovery_followup,
+    )
 
-    if (
-        isinstance(discovery, dict)
-        and discovery.get('status') == 'awaiting_next_option'
-    ):
-        normalized = text.strip().lower().strip(' .,!?:;')
-
-        yes_responses = {
-            'yes', 'yeah', 'yep', 'sure', 'okay', 'ok',
-            'another', 'next', 'show me another',
-            'yes please', 'another one', 'show another',
-            'ndio', 'ndiyo', 'ndio tafadhali',
-            'endelea', 'ongeza', 'na nyingine',
-        }
-
-        no_responses = {
-            'no', 'no thanks', 'no thank you', 'not interested',
-            'no more', 'that is all', "that's all", 'thats all',
-            'hapana', 'hapana asante', 'basi', 'imetosha',
-            'sihitaji', 'sitaki',
-        }
-
-        if normalized in no_responses:
-            data.pop('whatsapp_product_remaining_ids', None)
-            data.pop('whatsapp_product_ids', None)
-            data.pop('whatsapp_product_discovery', None)
-
-            state.data = data
-            state.current_step = 'whatsapp_product_completed'
-            state.waiting_for = None
-            state.save()
-
-            return (
-                'Thank you for your interest! '
-                'Please let us know if you need anything else.'
-            )
-
-        if normalized in yes_responses:
-            remaining_ids = data.get(
-                'whatsapp_product_remaining_ids',
-                discovery.get('remaining_product_ids', []),
-            )
-            remaining_ids = list(remaining_ids or [])
-            next_product = None
-
-            # Skip products that are no longer active or WhatsApp-visible.
-            while remaining_ids and next_product is None:
-                next_product_id = remaining_ids.pop(0)
-                next_product = Product.objects.filter(
-                    organization=organization,
-                    id=next_product_id,
-                    is_active=True,
-                    deleted_at__isnull=True,
-                    show_on_whatsapp=True,
-                ).first()
-
-            if not next_product:
-                data.pop('whatsapp_product_remaining_ids', None)
-                data.pop('whatsapp_product_ids', None)
-                data.pop('whatsapp_product_discovery', None)
-
-                state.data = data
-                state.current_step = 'whatsapp_product_completed'
-                state.waiting_for = None
-                state.save()
-
-                return (
-                    'Those are all the matching options we currently have. '
-                    'Please let us know if you need anything else.'
-                )
-
-            data['whatsapp_product_ids'] = [next_product.id]
-            data['whatsapp_product_remaining_ids'] = remaining_ids
-            data['whatsapp_product_discovery'] = {
-                'status': 'awaiting_next_option',
-                'current_product_id': next_product.id,
-                'remaining_product_ids': remaining_ids,
-            }
-
-            state.data = data
-            state.current_step = 'whatsapp_product_completed'
-            state.waiting_for = None
-            state.save()
-
-            price = (
-                f'{next_product.currency} {next_product.price:,.2f}'
-                if next_product.price is not None
-                else 'Price available on request'
-            )
-
-            return (
-                f'{next_product.name}\\n'
-                f'Brand: {next_product.brand or "Not specified"}\\n'
-                f'Model: {next_product.model or "Not specified"}\\n'
-                f'Price: {price}\\n'
-                f'Availability: {next_product.get_availability_display()}\\n\\n'
-                'Would you like to see another option?'
-            )
-
-        return (
-            'Would you like to see another product option? '
-            'Please reply Yes or No.'
-        )
+    discovery_result = handle_product_discovery_followup(
+        text,
+        organization,
+        state,
+    )
+    if discovery_result.get("handled"):
+        return discovery_result.get("reply")
 
     if step not in {
         'whatsapp_product_selection',
@@ -1737,161 +1372,18 @@ def search_whatsapp_products(
     price_preference="relevance",
     max_price=None,
 ):
-    """
-    Search WhatsApp-enabled products and prepare one product at a time
-    for customer discovery. The Product Builder selection workflow
-    remains separate.
-    """
-    if not text or not organization:
-        return None
-
-    search_options = {}
-
-    if price_preference != "relevance":
-        search_options["price_preference"] = price_preference
-
-    if max_price is not None:
-        search_options["max_price"] = max_price
-
-    search_results = search_organization_products(
-        organization,
+    """Delegate tenant catalogue discovery and presentation to Products."""
+    from products.services.whatsapp_discovery import (
+        search_and_prepare_whatsapp_product,
+    )
+    return search_and_prepare_whatsapp_product(
         text,
-        limit=5,
-        **search_options,
+        organization,
+        state,
+        price_preference=price_preference,
+        max_price=max_price,
     )
 
-    if not search_results:
-        return None
-
-    product_ids = [
-        item["id"]
-        for item in search_results
-        if item.get("id") is not None
-    ]
-
-    products_by_id = Product.objects.filter(
-        organization=organization,
-        pk__in=product_ids,
-        is_active=True,
-        deleted_at__isnull=True,
-        show_on_whatsapp=True,
-    ).select_related("category").in_bulk()
-
-    matches = [
-        products_by_id[product_id]
-        for product_id in product_ids
-        if product_id in products_by_id
-    ]
-
-    if not matches:
-        return None
-
-    # Present only the best matching product.
-    product = matches[0]
-    remaining_product_ids = [item.id for item in matches[1:]]
-
-    if state is not None:
-        state_data = dict(state.data or {})
-
-        state_data.pop("whatsapp_product_discovery", None)
-
-        for key in (
-            "selected_whatsapp_product_id",
-            "selected_whatsapp_product_name",
-            "whatsapp_product_quantity",
-            "whatsapp_product_action",
-        ):
-            state_data.pop(key, None)
-
-        state_data["whatsapp_product_ids"] = [product.id]
-        state_data["whatsapp_product_remaining_ids"] = remaining_product_ids
-
-        state_data["whatsapp_product_discovery"] = {
-            "status": "awaiting_next_option",
-            "current_product_id": product.id,
-            "remaining_product_ids": remaining_product_ids,
-        }
-
-        state.current_step = "whatsapp_product_completed"
-        state.waiting_for = None
-        state.data = state_data
-        state.save()
-
-    # Reuse the existing AI service sanitizer for JSON product fields.
-    from .ai_service import _clean_customer_data
-
-    lines = [
-        "Here is a product that matches your request:",
-        "",
-        product.name,
-    ]
-
-    if product.brand:
-        lines.append(f"Brand: {product.brand}")
-
-    if product.model:
-        lines.append(f"Model: {product.model}")
-
-    if product.manufacturer:
-        lines.append(f"Manufacturer: {product.manufacturer}")
-
-    description = (
-        product.short_description
-        or product.description
-    )
-
-    if description:
-        lines.extend([
-            "",
-            "Description:",
-            description.strip()[:1500],
-        ])
-
-    specifications = _clean_customer_data(
-        product.specifications or {}
-    )
-
-    specification_lines = _format_whatsapp_product_json(
-        specifications
-    )
-
-    if specification_lines:
-        lines.extend([
-            "",
-            "Specifications:",
-            *specification_lines,
-        ])
-
-    additional_information = _clean_customer_data(
-        product.additional_information or {}
-    )
-
-    additional_lines = _format_whatsapp_product_json(
-        additional_information
-    )
-
-    if additional_lines:
-        lines.extend([
-            "",
-            "Additional Information:",
-            *additional_lines,
-        ])
-
-    price = (
-        f"{product.currency} {product.price:,.2f}"
-        if product.price is not None
-        else "Price available on request"
-    )
-
-    lines.extend([
-        "",
-        f"Price: {price}",
-        f"Availability: {product.get_availability_display()}",
-        "",
-        "Would you like to see another option?",
-    ])
-
-    return "\n".join(lines)
 
 def update_conversation_state(state, current_step=None, waiting_for='__UNCHANGED__', data=None):
     """
@@ -1914,85 +1406,20 @@ def update_conversation_state(state, current_step=None, waiting_for='__UNCHANGED
     return state
 
 def get_required_request_fields(category):
-    """
-    Get the active required fields for a request category
-    from Django Admin, in the configured order.
-    """
-    if not category:
-        return []
-    return list(category.request_fields.filter(is_active=True).order_by('order', 'id'))
+    from business_requests.services.whatsapp import get_required_request_fields as service
+    return service(category)
 
 def validate_request_field_value(field, text):
-    """
-    Validate a customer's answer according to the RequestField type.
-
-    Returns:
-        (True, cleaned_value) -> valid answer
-        (False, None) -> invalid answer
-    """
-    if not field or text is None:
-        return (False, None)
-    value = text.strip()
-    if not value:
-        return (False, None)
-    if field.field_type == 'text':
-        return (True, value)
-    if field.field_type == 'number':
-        number_words = {'zero': 0, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10, 'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14, 'fifteen': 15, 'sixteen': 16, 'seventeen': 17, 'eighteen': 18, 'nineteen': 19, 'twenty': 20}
-        number_match = re.search('\\d+(?:\\.\\d+)?', value)
-        if number_match:
-            number = float(number_match.group())
-            if number.is_integer():
-                number = int(number)
-            return (True, number)
-        normalized = value.lower()
-        for word, number in number_words.items():
-            if re.search(f'\\b{word}\\b', normalized):
-                return (True, number)
-        return (False, None)
-    if field.field_type == 'yes_no':
-        normalized = value.lower().strip()
-        yes_values = ['yes', 'y', 'yeah', 'yep', 'sure', 'correct', 'of course', 'please do', 'i do', 'i need it', 'i need installation', 'needed', 'required']
-        no_values = ['no', 'n', 'nope', 'not needed', 'not required', "i don't", 'dont', "don't", 'not necessary']
-        if normalized in yes_values:
-            return (True, True)
-        if normalized in no_values:
-            return (True, False)
-        yes_phrases = ['yes, please', 'yes please', 'i need', 'i want', 'please do', 'go ahead', 'install it', 'install', 'installation required', 'i need installation']
-        for phrase in yes_phrases:
-            if phrase in normalized:
-                return (True, True)
-        no_phrases = ['no, thanks', 'no thanks', "i don't need", 'i dont need', 'i do not need', 'not necessary', 'not required', 'without installation', 'installation not required']
-        for phrase in no_phrases:
-            if phrase in normalized:
-                return (True, False)
-        return (False, None)
-    if field.field_type == 'choice':
-        return (True, value)
-    return (True, value)
+    from business_requests.services.whatsapp import validate_request_field_value as service
+    return service(field, text)
 
 def get_next_missing_request_field(category, collected_data):
-    """
-    Find the next required RequestField that has not
-    yet been answered by the customer.
-    """
-    if not category:
-        return None
-    fields = get_required_request_fields(category)
-    for field in fields:
-        if field.name not in collected_data:
-            return field
-    return None
+    from business_requests.services.whatsapp import get_next_missing_request_field as service
+    return service(category, collected_data)
 
 def get_next_request_question(category, collected_data):
-    """
-    Return the next required question that has not
-    yet been answered.
-    """
-    field = get_next_missing_request_field(category, collected_data)
-    if field:
-        return field.question
-    return None
+    from business_requests.services.whatsapp import get_next_request_question as service
+    return service(category, collected_data)
 
 def get_ai_general_interpretation(
         text, 
@@ -2208,91 +1635,33 @@ def get_ai_general_interpretation(
         return None
 
 def _human_handover_acknowledgement(language='sw', organization=None):
-    """Return the configured handover acknowledgement in the requested language.
-
-    The language-first signature is retained for existing callers/tests.
-    Organization-specific configuration is used whenever an organization
-    is supplied; project defaults are read from Django settings otherwise.
-    """
-    # Backward compatibility for callers that previously passed the
-    # organization as the first positional argument.
+    """Return the organization's configured human-handover acknowledgement."""
     if not isinstance(language, str):
         organization, language = language, 'sw'
-
-    raw_language = str(language or '').strip().lower()
-
-    # Preserve the deliberately mixed Tanzanian Swahili-English response.
-    # The organization message configuration currently uses the standard
-    # Swahili/English language keys, so handle this explicit test/runtime
-    # language before normalizing to either of those keys.
-    if raw_language.startswith('mixed'):
-        return "Sawa, tumekuelewa. We’ll continue helping you hapa."
-
-    language_key = 'en' if raw_language.startswith('en') else 'sw'
-    if organization is not None:
-        try:
-            configured = get_whatsapp_message(
-                organization, 'human_handover', language=language_key
-            )
-            if configured:
-                return configured
-        except Exception:
-            logger.exception(
-                'Unable to load configured WhatsApp handover message.'
-            )
-
+    language_key = 'mixed' if str(language or '').lower().startswith('mixed') else (
+        'en' if str(language or '').lower().startswith('en') else 'sw'
+    )
     return _get_configured_whatsapp_message(
-        organization, 'human_handover', language_key
+        organization,
+        'human_handover',
+        language_key,
     )
 
-def _detect_explicit_human_support_language(text):
-    """Detect clear human-support requests without relying on AI."""
-    if not text:
+
+def _detect_explicit_human_support_language(text, organization=None):
+    """Detect configured explicit human-support phrases for the organization."""
+    if not text or not organization:
         return None
-    normalized = re.sub('[^\\w\\s]', ' ', text.lower())
+    from business_requests.whatsapp_config import get_whatsapp_language_phrases
+    configured = get_whatsapp_language_phrases(
+        organization,
+        'human_handover_phrases',
+    )
+    normalized = re.sub(r'[^\w\s]', ' ', str(text).casefold())
     normalized = ' '.join(normalized.split())
-    swahili_phrases = [
-        'naomba niongee na mtu',
-        'naomba kuongea na mtu',
-        'naomba nizungumze na mtu',
-        'naomba kuzungumza na mtu',
-        'nataka kuongea na mtu',
-        'nataka kuzungumza na mtu',
-        'naomba kuongea na mfanyakazi',
-        'naomba kuongea na ofisi',
-        'naomba msaada wa mtu',
-        'niunganishe na mtu',
-        'nipe mtu wa kuongea naye',
-        'naomba ongea na mtu',
-        'naomba ongea na mfanyakazi',
-        'naomba kuongeza na mtu',
-        'naomba uniongezee mtu',
-        'naomba mtu wa kunisaidia',
-        'ongeza mtu kwenye mazungumzo',
-        'niunge na mtu',
-    ]
-    english_phrases = [
-        'speak to a human',
-        'talk to a human',
-        'speak with a human',
-        'talk with a human',
-        'speak to an agent',
-        'talk to an agent',
-        'speak to a person',
-        'talk to a person',
-        'speak to someone',
-        'talk to someone',
-        'human support',
-        'customer care agent',
-        'real person',
-        'add a person',
-        'add someone',
-        'connect me to an agent',
-    ]
-    if any((phrase in normalized for phrase in swahili_phrases)):
-        return 'sw'
-    if any((phrase in normalized for phrase in english_phrases)):
-        return 'en'
+    for language in ('sw', 'en'):
+        if any(phrase in normalized for phrase in configured.get(language, [])):
+            return language
     return None
 
 def get_ai_human_support_language(text, organization, state, current_message_id):
@@ -2302,7 +1671,7 @@ def get_ai_human_support_language(text, organization, state, current_message_id)
     conversation = getattr(state, 'conversation', None)
     if conversation is None or getattr(conversation, 'organization_id', None) != organization.pk:
         return None
-    detected_language = _detect_explicit_human_support_language(text)
+    detected_language = _detect_explicit_human_support_language(text, organization)
     if detected_language:
         return detected_language
     if not _whatsapp_ai_is_enabled(organization):
@@ -2562,53 +1931,12 @@ def get_ai_request_category_reply(text, organization, state, current_message_id=
         return None
 
 def _format_whatsapp_product_json(value, depth=0):
-    """
-    Format sanitized product JSON fields for customer-facing WhatsApp
-    messages without exposing restricted information.
-    """
-    if value is None or depth > 4:
-        return []
-
-    if isinstance(value, dict):
-        lines = []
-
-        for key, item in value.items():
-            if item is None or item == "":
-                continue
-
-            label = str(key).replace("_", " ").replace("-", " ").strip().title()
-
-            if isinstance(item, dict):
-                nested = _format_whatsapp_product_json(item, depth + 1)
-                if nested:
-                    lines.append(f"{label}:")
-                    lines.extend(f"  {line}" for line in nested)
-
-            elif isinstance(item, (list, tuple)):
-                nested = _format_whatsapp_product_json(item, depth + 1)
-                if nested:
-                    lines.append(f"{label}:")
-                    lines.extend(f"  {line}" for line in nested)
-
-            else:
-                lines.append(f"{label}: {item}")
-
-            if len(lines) >= 20:
-                break
-
-        return lines
-
-    if isinstance(value, (list, tuple)):
-        lines = []
-
-        for item in value[:15]:
-            if isinstance(item, dict):
-                lines.extend(
-                    _format_whatsapp_product_json(item, depth + 1)
-                )
-            elif item is not None and item != "":
-                lines.append(str(item))
-
-        return lines
-
-    return [str(value)]
+    """Compatibility wrapper for safe product-data formatting."""
+    from products.services.public_data import (
+        clean_public_product_data,
+        format_public_product_json,
+    )
+    return format_public_product_json(
+        clean_public_product_data(value),
+        depth=depth,
+    )

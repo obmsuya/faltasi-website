@@ -105,12 +105,16 @@ class Phase3DHumanHandoverTests(SimpleTestCase):
             "language": "sw",
         }
 
-        result = get_ai_human_support_language(
-            "Naomba kuongea na mtu",
-            self.organization,
-            self.state,
-            55,
-        )
+        with patch(
+            "business_requests.whatsapp_config.get_whatsapp_language_phrases",
+            return_value={"sw": ["naomba kuongea na mtu"], "en": []},
+        ):
+            result = get_ai_human_support_language(
+                "Naomba kuongea na mtu",
+                self.organization,
+                self.state,
+                55,
+            )
 
         self.assertEqual(result, "sw")
 
@@ -123,12 +127,16 @@ class Phase3DHumanHandoverTests(SimpleTestCase):
             "language": "en",
         }
 
-        result = get_ai_human_support_language(
-            "I want to speak to someone",
-            self.organization,
-            self.state,
-            56,
-        )
+        with patch(
+            "business_requests.whatsapp_config.get_whatsapp_language_phrases",
+            return_value={"sw": [], "en": ["speak to someone"]},
+        ):
+            result = get_ai_human_support_language(
+                "I want to speak to someone",
+                self.organization,
+                self.state,
+                56,
+            )
 
         self.assertEqual(result, "en")
 
@@ -217,37 +225,61 @@ class Phase3DHumanHandoverTests(SimpleTestCase):
         self.assertIs(result, True)
 
     def test_detects_customer_request_to_add_a_person(self):
-        self.assertEqual(
-            _detect_explicit_human_support_language("Naomba kuongeza na mtu"),
-            "sw",
-        )
+        with patch(
+            "business_requests.whatsapp_config.get_whatsapp_language_phrases",
+            return_value={"sw": ["naomba kuongeza na mtu"], "en": []},
+        ):
+            self.assertEqual(
+                _detect_explicit_human_support_language(
+                    "Naomba kuongeza na mtu", self.organization
+                ),
+                "sw",
+            )
 
     def test_detects_natural_swahili_human_request_variant(self):
-        self.assertEqual(
-            _detect_explicit_human_support_language("Naomba uniongezee mtu"),
-            "sw",
-        )
+        with patch(
+            "business_requests.whatsapp_config.get_whatsapp_language_phrases",
+            return_value={"sw": ["naomba uniongezee mtu"], "en": []},
+        ):
+            self.assertEqual(
+                _detect_explicit_human_support_language(
+                    "Naomba uniongezee mtu", self.organization
+                ),
+                "sw",
+            )
 
     def test_detects_english_add_someone_request(self):
-        self.assertEqual(
-            _detect_explicit_human_support_language("Please add someone"),
-            "en",
-        )
+        with patch(
+            "business_requests.whatsapp_config.get_whatsapp_language_phrases",
+            return_value={"sw": [], "en": ["please add someone"]},
+        ):
+            self.assertEqual(
+                _detect_explicit_human_support_language(
+                    "Please add someone", self.organization
+                ),
+                "en",
+            )
 
     def test_swahili_acknowledgement(self):
-        self.assertEqual(
-            _human_handover_acknowledgement("sw"),
-            "Sawa, tumekuelewa. Tutaendelea kukusaidia hapa.",
-        )
+        expected = "Sawa, tumekuelewa. Tutaendelea kukusaidia hapa."
+        with patch("whatsapp.views.get_whatsapp_message", return_value=expected):
+            self.assertEqual(
+                _human_handover_acknowledgement("sw", self.organization),
+                expected,
+            )
 
     def test_english_acknowledgement(self):
-        self.assertEqual(
-            _human_handover_acknowledgement("en"),
-            "Thanks for letting us know. We’ll continue helping you here.",
-        )
+        expected = "Thanks for letting us know. We’ll continue helping you here."
+        with patch("whatsapp.views.get_whatsapp_message", return_value=expected):
+            self.assertEqual(
+                _human_handover_acknowledgement("en", self.organization),
+                expected,
+            )
 
     def test_mixed_acknowledgement(self):
-        self.assertEqual(
-            _human_handover_acknowledgement("mixed"),
-            "Sawa, tumekuelewa. We’ll continue helping you hapa.",
-        )
+        expected = "Sawa, tumekuelewa. We’ll continue helping you hapa."
+        with patch("whatsapp.views.get_whatsapp_message", return_value=expected):
+            self.assertEqual(
+                _human_handover_acknowledgement("mixed", self.organization),
+                expected,
+            )

@@ -429,3 +429,42 @@ class OrganizationCategoryAssignment(models.Model):
 
     def __str__(self):
         return f"{self.organization} - {self.category}"
+
+class ProductDiscoverySettings(models.Model):
+    """Organization-owned configuration for customer-facing product discovery."""
+
+    organization = models.OneToOneField(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="product_discovery_settings",
+    )
+    default_language = models.CharField(max_length=10, default="sw")
+    yes_phrases = models.JSONField(default=list, blank=True)
+    no_phrases = models.JSONField(default=list, blank=True)
+    search_stop_words = models.JSONField(default=list, blank=True)
+    messages = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Customer-facing product discovery messages and display labels by language.",
+    )
+    max_results = models.PositiveSmallIntegerField(default=5)
+    max_description_chars = models.PositiveSmallIntegerField(default=1500)
+    max_candidates = models.PositiveSmallIntegerField(default=500)
+    minimum_query_tokens_for_long_query = models.PositiveSmallIntegerField(default=3)
+    minimum_matches_for_long_query = models.PositiveSmallIntegerField(default=2)
+    long_query_required_coverage = models.FloatField(default=0.5)
+    short_query_required_coverage = models.FloatField(default=1.0)
+    relevance_weights = models.JSONField(default=dict, blank=True)
+    identity_match_bonus = models.PositiveIntegerField(default=1000)
+    coverage_bonus_multiplier = models.PositiveSmallIntegerField(default=10)
+    exact_name_match_bonus = models.PositiveSmallIntegerField(default=20)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Product Discovery Settings"
+        verbose_name_plural = "Product Discovery Settings"
+
+    def __str__(self):
+        return f"Product Discovery - {self.organization}"

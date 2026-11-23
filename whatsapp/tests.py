@@ -3,6 +3,7 @@ import json
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from whatsapp.views import search_whatsapp_products
+from business_requests.models import WhatsAppAutomationSettings
 
 from django.utils import timezone
 
@@ -39,6 +40,17 @@ class WhatsAppMarketingConsentTests(TestCase):
             organization_type="business",
             status="active",
         )
+
+        for organization in (self.org_a, self.org_b):
+            WhatsAppAutomationSettings.objects.create(
+                organization=organization,
+                marketing_opt_in_confirmation_message_sw="Asante. Umejiunga kupokea taarifa za matangazo kupitia WhatsApp.",
+                marketing_opt_in_confirmation_message_en="Thank you. You have opted in to receive WhatsApp marketing updates.",
+                marketing_opt_out_confirmation_message_sw="Umeondolewa kwenye orodha ya matangazo ya WhatsApp.",
+                marketing_opt_out_confirmation_message_en="You have been unsubscribed from WhatsApp marketing messages.",
+                marketing_declined_confirmation_message_sw="Asante kwa kutujibu. Hutapokea matangazo bila kutoa ridhaa yako.",
+                marketing_declined_confirmation_message_en="Thank you for responding. You will not receive marketing messages.",
+            )
 
         self.customer_a = Customer.objects.create(
             organization=self.org_a,
@@ -589,6 +601,20 @@ class WhatsAppMarketingInvitationWebhookTests(TestCase):
             status="active",
         )
 
+        WhatsAppAutomationSettings.objects.create(
+            organization=self.organization,
+            marketing_invitation_message_sw=(
+                "Pia tuna bidhaa nyingi ambazo nina uhakika utazifurahia. "
+                "Je, ungependa kupokea taarifa za bidhaa na ofa zetu kupitia WhatsApp? "
+                "Nijibu YES kukubali au NO kukataa."
+            ),
+            marketing_invitation_message_en=(
+                "We also have many products we believe you will enjoy. "
+                "Would you like to receive WhatsApp marketing messages? "
+                "Reply YES to subscribe or NO to decline."
+            ),
+        )
+
         self.waba = WhatsAppBusinessAccount.objects.create(
             organization=self.organization,
             waba_id="TEST_INVITATION_WABA",
@@ -1027,6 +1053,43 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
             status="active",
         )
 
+        from products.models import ProductDiscoverySettings
+        discovery_messages = {
+            "sw": {
+                "intro": "Hii hapa bidhaa inayolingana na ulichotafuta:",
+                "another_option_prompt": "Je, ungependa kuona chaguo jingine?",
+                "thank_you": "Asante kwa kuwasiliana nasi.",
+                "no_more_options": "Hizi ndizo bidhaa zinazolingana tulizonazo kwa sasa.",
+                "price_on_request": "Bei inapatikana kwa maombi",
+                "labels": {
+                    "brand": "Chapa", "model": "Modeli", "manufacturer": "Mtengenezaji",
+                    "description": "Maelezo", "specifications": "Sifa",
+                    "additional_information": "Taarifa za ziada", "price": "Bei",
+                    "availability": "Upatikanaji",
+                },
+            },
+            "en": {
+                "intro": "Here is a product that matches your request:",
+                "another_option_prompt": "Would you like to see another option?",
+                "thank_you": "Thank you for your interest.",
+                "no_more_options": "Those are all the matching options we currently have.",
+                "price_on_request": "Price available on request",
+                "labels": {
+                    "brand": "Brand", "model": "Model", "manufacturer": "Manufacturer",
+                    "description": "Description", "specifications": "Specifications",
+                    "additional_information": "Additional information", "price": "Price",
+                    "availability": "Availability",
+                },
+            },
+        }
+        ProductDiscoverySettings.objects.create(
+            organization=self.organization,
+            default_language="en",
+            yes_phrases=["yes", "ndiyo"],
+            no_phrases=["no", "hapana"],
+            messages=discovery_messages,
+        )
+
         self.customer = Customer.objects.create(
             organization=self.organization,
             name="Search Customer",
@@ -1075,7 +1138,7 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
         results = [self.search_result(product) for product in products]
 
         with patch(
-            "whatsapp.views.search_organization_products",
+            "products.services.whatsapp_discovery.search_organization_products",
             return_value=results,
         ) as canonical_search:
             reply = search_whatsapp_products(
@@ -1117,7 +1180,7 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
         )
 
         with patch(
-            "whatsapp.views.search_organization_products",
+            "products.services.whatsapp_discovery.search_organization_products",
             return_value=[
                 self.search_result(first),
                 self.search_result(second),
@@ -1192,7 +1255,7 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
         ]
 
         with patch(
-            "whatsapp.views.search_organization_products",
+            "products.services.whatsapp_discovery.search_organization_products",
             return_value=results,
         ):
             reply = search_whatsapp_products(
@@ -1220,7 +1283,7 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
         original_waiting_for = self.state.waiting_for
 
         with patch(
-            "whatsapp.views.search_organization_products",
+            "products.services.whatsapp_discovery.search_organization_products",
             return_value=[],
         ) as canonical_search:
             reply = search_whatsapp_products(
@@ -1247,7 +1310,7 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
         from whatsapp.views import search_whatsapp_products
 
         with patch(
-            "whatsapp.views.search_organization_products",
+            "products.services.whatsapp_discovery.search_organization_products",
         ) as canonical_search:
             self.assertIsNone(
                 search_whatsapp_products(
@@ -1285,7 +1348,9 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
                     "Are you looking for a laser distance meter "
                     "or a measuring tape?"
                 ),
-            },
+
+            "price_preference": "relevance",
+            "max_price": None},
         ):
             result = get_ai_product_discovery_reply(
                 "I need something for measuring distance",
@@ -1356,9 +1421,11 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
                 "action": "search",
                 "search_query": "laser distance meter for construction",
                 "clarification": "",
-            },
+
+            "price_preference": "relevance",
+            "max_price": None},
         ) as interpret, patch(
-            "whatsapp.views.search_organization_products",
+            "products.services.whatsapp_discovery.search_organization_products",
             return_value=[],
         ) as canonical_search:
             result = get_ai_product_discovery_reply(
@@ -1399,7 +1466,9 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
                 "action": "search",
                 "search_query": "laser distance meter for construction",
                 "clarification": "",
-            }),
+
+            "price_preference": "relevance",
+            "max_price": None}),
         )
 
         mock_client = SimpleNamespace(
@@ -1470,7 +1539,9 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
                 "clarification": (
                     "Will you use it indoors or outdoors?"
                 ),
-            },
+
+            "price_preference": "relevance",
+            "max_price": None},
         ):
             result = get_ai_product_discovery_reply(
                 "A laser one, for construction",
@@ -1520,7 +1591,7 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
         self.state.save()
 
         with patch(
-            "whatsapp.views.search_organization_products",
+            "products.services.whatsapp_discovery.search_organization_products",
             return_value=[self.search_result(product)],
         ):
             reply = search_whatsapp_products(
@@ -1701,7 +1772,7 @@ class WhatsAppProductBuilderIntegrationTests(TestCase):
             self.state.data,
         )
 
-    
+
     def test_builder_answers_advance_and_return_to_quantity(self):
         self.publish_builder([
             {
@@ -2004,7 +2075,7 @@ class WhatsAppProductBuilderIntegrationTests(TestCase):
         self.assertNotIn("delivery_location", namespace["answers"])
         self.assertEqual(self.state.current_step, "whatsapp_product_builder")
 
-    
+
     def test_builder_extraction_failure_does_not_save_raw_message(self):
         self.publish_builder([
             {
@@ -2067,6 +2138,25 @@ class WhatsAppProductDiscoveryWebhookTests(TestCase):
             name="Product Discovery Test Business",
             organization_type="business",
             status="active",
+        )
+
+        from products.models import ProductDiscoverySettings
+        ProductDiscoverySettings.objects.create(
+            organization=self.organization,
+            default_language="en",
+            yes_phrases=["yes", "yes please"],
+            no_phrases=["no", "no thanks"],
+            search_stop_words=["a", "an", "and", "for", "i", "need", "the", "to", "with"],
+            messages={
+                "en": {
+                    "intro": "Here is a product that matches your request:",
+                    "another_option_prompt": "Would you like to see another option?",
+                    "thank_you": "Thank you for your interest.",
+                    "no_more_options": "Those are all the matching options we currently have.",
+                    "price_on_request": "Price available on request",
+                    "labels": {"brand": "Brand", "model": "Model", "description": "Description", "price": "Price", "availability": "Availability", "specifications": "Specifications", "additional_information": "Additional information"},
+                },
+            },
         )
 
         self.waba = WhatsAppBusinessAccount.objects.create(
@@ -2303,7 +2393,9 @@ class WhatsAppProductDiscoveryWebhookTests(TestCase):
             "action": "search",
             "search_query": ai_search_query,
             "clarification": "",
-        }
+
+            "price_preference": "relevance",
+            "max_price": None}
 
         canonical_results = [
             {"id": product.pk},
@@ -2315,7 +2407,7 @@ class WhatsAppProductDiscoveryWebhookTests(TestCase):
                 return_value=ai_result,
             ) as mock_ai,
             patch(
-                "whatsapp.views.search_organization_products",
+                "products.services.whatsapp_discovery.search_organization_products",
                 return_value=canonical_results,
             ) as mock_catalogue_search,
         ):

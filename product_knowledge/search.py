@@ -1,12 +1,8 @@
 
 import re
-from decimal import Decimal, InvalidOperation
-from urllib.parse import urlsplit
 
-from django.db.models import CharField, Q
-from django.db.models.functions import Cast
+from django.db.models import Q
 
-from products.models import Product
 from business_requests.models import RequestCategory
 from .models import ProductKnowledgeDocument, ProductKnowledgeChunk
 
@@ -14,34 +10,6 @@ from .models import ProductKnowledgeDocument, ProductKnowledgeChunk
 MAX_QUERY_LENGTH = 500
 DEFAULT_LIMIT = 5
 
-
-PUBLIC_PRODUCT_MEDIA_HOST = "media.faltasi.com"
-
-
-def get_public_product_image_url(product):
-    """
-    Return only HTTPS product image URLs from Faltasi's approved
-    public Cloudflare R2 media domain.
-    """
-    if not product.image or not product.image.name:
-        return None
-
-    try:
-        url = product.image.url
-        parsed = urlsplit(str(url))
-    except Exception:
-        return None
-
-    if (
-        parsed.scheme.lower() != "https"
-        or parsed.netloc.lower() != PUBLIC_PRODUCT_MEDIA_HOST
-        or not parsed.path
-        or parsed.query
-        or parsed.fragment
-    ):
-        return None
-
-    return str(url)
 
 
 def _tokens(query):
@@ -262,6 +230,35 @@ def get_request_categories(organization, query=None, limit=20):
 
 
 
+
+def _search_products_for_knowledge(organization, query, limit):
+    """Search the full business question, then its individual terms."""
+    try:
+        maximum = max(1, int(limit))
+    except (TypeError, ValueError, OverflowError):
+        maximum = 5
+
+    results = search_organization_products(organization, query, limit=maximum)
+    if results:
+        return results[:maximum]
+
+    tokens = list(dict.fromkeys(_tokens(query)))
+    collected = []
+    seen_ids = set()
+    for token in tokens:
+        for product in search_organization_products(
+            organization, token, limit=maximum
+        ):
+            product_id = product.get("id")
+            if product_id in seen_ids:
+                continue
+            seen_ids.add(product_id)
+            collected.append(product)
+            if len(collected) >= maximum:
+                return collected
+    return collected
+
+
 def retrieve_knowledge(
     organization,
     query,
@@ -290,7 +287,7 @@ def retrieve_knowledge(
     return {
         "query": str(query)[:MAX_QUERY_LENGTH],
         "products": (
-            search_organization_products(
+            _search_products_for_knowledge(
                 organization,
                 query,
                 limit=product_limit,
@@ -320,291 +317,20 @@ def retrieve_knowledge(
         ),
     }
 
-def _normalize_relevance_token(token):
-    """Normalize simple English plurals for product-query matching."""
-    token = str(token).lower()
-    if len(token) > 4 and token.endswith("ies"):
-        return token[:-3] + "y"
-    if len(token) > 4 and token.endswith(("ches", "shes", "xes", "zes")):
-        return token[:-2]
-    if len(token) > 3 and token.endswith("s") and not token.endswith("ss"):
-        return token[:-1]
-    return token
-
-
-def _relevance_tokens(value):
-    return {
-        _normalize_relevance_token(token)
-        for token in _tokens(value)
-    }
-
-
-
-
-
 def search_organization_products(
     organization,
     query,
-    limit=DEFAULT_LIMIT,
+    limit=None,
     *,
     price_preference="relevance",
     max_price=None,
 ):
-    """
-    Canonical organization-scoped product search.
-
-    Used by customer-facing WhatsApp product discovery and internal
-    Product Knowledge retrieval.
-
-    Returns selling information only. Never returns cost price or
-    other internal financial fields.
-    """
-    tokens = _tokens(query)
-
-    if not tokens or organization is None:
-        return []
-
-    # Remove conversational words that should not influence matching.
-    ignored_tokens = {
-        "a", "an", "and", "are", "available", "can", "do", "for",
-        "me", "my", "of", "please", "show", "the", "to", "what",
-        "which", "with", "would", "you", "your", "find", "get", "need",
-
-        # Common Swahili conversational words.
-        "nataka", "kununua", "ninataka", "ninahitaji", "nahitaji",
-        "naomba", "tafadhali", "bei", "ya", "za", "na", "ni",
-        "kwa", "yangu", "una", "unazo", "onyesha",
-    }
-
-    query_tokens = {
-        _normalize_relevance_token(token)
-        for token in tokens
-        if token not in ignored_tokens
-    }
-
-    if not query_tokens:
-        return []
-
-    limit = _safe_limit(limit)
-
-    fields = [
-        "name",
-        "sku",
-        "barcode",
-        "brand",
-        "model",
-        "manufacturer",
-        "short_description",
-        "description",
-        "category__name",
-        "_specifications_text",
-        "_additional_information_text",
-    ]
-
-    # Strict organization and product visibility boundaries.
-    queryset = Product.objects.filter(
-        organization=organization,
-        is_active=True,
-        deleted_at__isnull=True,
-        show_on_whatsapp=True,
-    ).annotate(
-        _specifications_text=Cast(
-            "specifications",
-            output_field=CharField(),
-        ),
-        _additional_information_text=Cast(
-            "additional_information",
-            output_field=CharField(),
-        ),
-    ).filter(
-        # Use normalized query tokens so singular/plural variants such as
-        # "laptop" and "laptops" can find the same products.
-        _matching_q(fields, query_tokens)
-    ).select_related(
-        "category"
-    ).order_by("pk")
-
-    candidates = list(queryset[:500])
-    results = []
-
-    minimum_matches = 2 if len(query_tokens) >= 3 else 1
-    required_coverage = (
-        0.5 if len(query_tokens) >= 3
-        else 1 / len(query_tokens)
+    """Compatibility entry point; catalogue search is owned by Products."""
+    from products.services.search import search_organization_products as service
+    return service(
+        organization,
+        query,
+        limit=limit,
+        price_preference=price_preference,
+        max_price=max_price,
     )
-
-    for product in candidates:
-        specifications = product.specifications or {}
-        additional_information = product.additional_information or {}
-
-        searchable_values = {
-            "name": product.name or "",
-            "sku": product.sku or "",
-            "barcode": product.barcode or "",
-            "brand": product.brand or "",
-            "model": product.model or "",
-            "manufacturer": product.manufacturer or "",
-            "short_description": product.short_description or "",
-            "description": product.description or "",
-            "specifications": str(specifications),
-            "additional_information": str(additional_information),
-            "category": (
-                product.category.name if product.category else ""
-            ),
-        }
-
-        field_tokens = {
-            field: _relevance_tokens(value)
-            for field, value in searchable_values.items()
-        }
-
-        # Prefer matches in product identity fields. Keep description and
-        # technical-detail matching as a fallback so customers can still find
-        # products by a feature that is not repeated in the product name.
-        identity_fields = (
-            "name",
-            "category",
-            "brand",
-            "model",
-            "sku",
-            "barcode",
-            "manufacturer",
-        )
-        identity_tokens = set().union(
-            *(field_tokens[field] for field in identity_fields)
-        )
-        matched_identity_tokens = query_tokens.intersection(identity_tokens)
-
-        all_product_tokens = set().union(*field_tokens.values())
-        matched_tokens = query_tokens.intersection(all_product_tokens)
-        coverage = len(matched_tokens) / len(query_tokens)
-
-        if (
-            len(matched_tokens) < minimum_matches
-            or coverage < required_coverage
-        ):
-            continue
-
-        # Identity matches receive a large ranking advantage. If any identity
-        # matches exist, supporting-only matches are removed below; otherwise
-        # they remain available as the fallback search tier.
-        weights = {
-            "name": 25,
-            "category": 18,
-            "brand": 14,
-            "model": 14,
-            "sku": 10,
-            "barcode": 10,
-            "manufacturer": 8,
-            "short_description": 3,
-            "description": 2,
-            "specifications": 1,
-            "additional_information": 1,
-        }
-
-        score = sum(
-            len(query_tokens.intersection(field_tokens[field])) * weight
-            for field, weight in weights.items()
-        )
-        score += round(coverage * 10)
-        identity_match = bool(matched_identity_tokens)
-        if identity_match:
-            score += 1000
-
-        normalized_query = " ".join(sorted(query_tokens))
-        normalized_name = " ".join(_tokens(product.name or ""))
-        if normalized_query and normalized_query in normalized_name:
-            score += 20
-
-        results.append({
-            "source": "product",
-            "id": product.pk,
-            "name": product.name,
-            "sku": product.sku,
-            "brand": product.brand,
-            "model": product.model,
-            "category": searchable_values["category"] or None,
-            "description": (
-                product.short_description or product.description
-            ),
-            "price": (
-                str(product.price)
-                if product.price is not None else None
-            ),
-            "currency": product.currency,
-            "unit": product.unit,
-            "availability": product.availability,
-            "availability_display": product.get_availability_display(),
-            "specifications": specifications,
-            "additional_information": additional_information,
-            "image_url": get_public_product_image_url(product),
-            "display_order": product.display_order,
-            "score": score,
-            "_identity_match": identity_match,
-        })
-
-    # Do not mix unrelated supporting-text matches into a result set when
-    # there are direct product identity matches. Use supporting matches only
-    # when the query cannot be matched to any product identity fields.
-    if any(item["_identity_match"] for item in results):
-        results = [
-            item for item in results
-            if item["_identity_match"]
-        ]
-
-    for item in results:
-        item.pop("_identity_match", None)
-
-    # Optional customer price constraints use selling price only.
-    # Keep the existing relevance ranking unchanged by default.
-    if max_price is not None:
-        try:
-            maximum = Decimal(str(max_price))
-        except (InvalidOperation, TypeError, ValueError):
-            return []
-
-        if not maximum.is_finite() or maximum < 0:
-            return []
-
-        budget_matches = []
-        for item in results:
-            raw_price = item.get("price")
-            if raw_price is None:
-                continue
-            try:
-                selling_price = Decimal(str(raw_price))
-            except (InvalidOperation, TypeError, ValueError):
-                continue
-            if selling_price.is_finite() and selling_price <= maximum:
-                budget_matches.append(item)
-
-        results = budget_matches
-
-    if price_preference == "lowest":
-        def selling_price_key(item):
-            raw_price = item.get("price")
-            if raw_price is None:
-                return (1, Decimal("0"), -item["score"],
-                        item["display_order"], (item["name"] or "").lower())
-            try:
-                price = Decimal(str(raw_price))
-            except (InvalidOperation, TypeError, ValueError):
-                return (1, Decimal("0"), -item["score"],
-                        item["display_order"], (item["name"] or "").lower())
-            if not price.is_finite():
-                return (1, Decimal("0"), -item["score"],
-                        item["display_order"], (item["name"] or "").lower())
-            return (0, price, -item["score"],
-                    item["display_order"], (item["name"] or "").lower())
-
-        results.sort(key=selling_price_key)
-    else:
-        results.sort(
-            key=lambda item: (
-                -item["score"],
-                item["display_order"],
-                (item["name"] or "").lower(),
-            )
-        )
-
-    return results[:limit]

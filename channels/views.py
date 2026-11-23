@@ -11,17 +11,11 @@ from organizations.utils import (
 )
 from products.models import Product
 from .models import ChannelConnection, ProductChannelPublication
-
-
-CHANNELS = [
-    ("website", "Website"),
-    ("whatsapp", "WhatsApp"),
-    ("instagram", "Instagram"),
-    ("facebook", "Facebook"),
-    ("tiktok", "TikTok"),
-    ("google_business_profile", "Google Business Profile"),
-    ("google_merchant_center", "Google Merchant Center"),
-]
+from .registry import (
+    CHANNEL_REGISTRY,
+    CHANNEL_BY_KEY,
+    PROVIDER_CHANNELS,
+)
 
 
 def _active_organization(request):
@@ -61,42 +55,55 @@ def channel_dashboard(request):
         connection.provider: connection
         for connection in ChannelConnection.objects.filter(organization=organization)
     }
-    connection_status = {
-        provider: connections[provider].get_status_display() if provider in connections else "Not connected"
-        for provider, _label in ChannelConnection.PROVIDER_CHOICES
-    }
+    connection_cards = []
+    for provider in PROVIDER_CHANNELS:
+        connection = connections.get(provider["key"])
+        connection_cards.append({
+            "key": provider["key"],
+            "label": provider["label"],
+            "status": connection.get_status_display() if connection else "Not connected",
+            "connection": connection,
+            "setup_message": (
+                "Authorization and publishing integration are not configured yet."
+                if not connection or connection.status != "connected"
+                else "Account authorization is recorded; publishing still requires its provider integration."
+            ),
+        })
 
-    publication_map = {}
-    for publication in ProductChannelPublication.objects.filter(
-        product__organization=organization,
-        product__deleted_at__isnull=True,
-    ):
-        publication_map[(publication.product_id, publication.channel)] = publication
+    publication_map = {
+        (publication.product_id, publication.channel): publication
+        for publication in ProductChannelPublication.objects.filter(
+            product__organization=organization,
+            product__deleted_at__isnull=True,
+        )
+    }
 
     product_rows = []
     for product in products:
-        product_rows.append({
-            "product": product,
-            "website_enabled": product.show_on_website,
-            "whatsapp_enabled": product.show_on_whatsapp,
-            "public_visible": bool(
-                organization.organization_type == "platform_owner"
-                and product.is_publicly_visible
-            ),
-            "public_visibility_locked": organization.organization_type != "platform_owner",
-            "publications": {
-                channel: publication_map.get((product.id, channel))
-                for channel, _label in CHANNELS
-                if channel not in {"website", "whatsapp"}
-            },
-        })
+        cells = []
+        for channel in CHANNEL_REGISTRY:
+            kind = channel["kind"]
+            cell = {"key": channel["key"], "label": channel["label"], "kind": kind}
+            if kind == "product_flag":
+                cell["enabled"] = bool(getattr(product, channel["product_field"]))
+            elif kind == "visibility":
+                cell["visible"] = bool(
+                    organization.organization_type == "platform_owner"
+                    and product.is_publicly_visible
+                )
+                cell["locked"] = organization.organization_type != "platform_owner"
+            else:
+                publication = publication_map.get((product.pk, channel["key"]))
+                cell["publication"] = publication
+                cell["enabled"] = bool(publication and publication.is_enabled)
+            cells.append(cell)
+        product_rows.append({"product": product, "cells": cells})
 
     return render(request, "channels/dashboard.html", {
         "organization": organization,
         "product_rows": product_rows,
-        "channels": CHANNELS,
-        "connections": connections,
-        "connection_status": connection_status,
+        "channel_columns": CHANNEL_REGISTRY,
+        "connection_cards": connection_cards,
         "can_manage_channels": _can_manage_channels(request.user, membership),
     })
 
@@ -116,17 +123,16 @@ def toggle_product_channel(request, product_id, channel):
         organization=organization,
         deleted_at__isnull=True,
     )
-    enabled = request.POST.get("enabled") == "1"
+    definition = CHANNEL_BY_KEY.get(channel)
+    if not definition or definition["kind"] == "visibility":
+        return HttpResponseForbidden("Unsupported channel.")
 
-    if channel == "website":
-        product.show_on_website = enabled
-        # This setting controls website presentation only. It never grants
-        # public catalogue visibility.
-        product.save(update_fields=["show_on_website", "updated_at"])
-    elif channel == "whatsapp":
-        product.show_on_whatsapp = enabled
-        product.save(update_fields=["show_on_whatsapp", "updated_at"])
-    elif channel in dict(ProductChannelPublication.CHANNEL_CHOICES):
+    enabled = request.POST.get("enabled") == "1"
+    if definition["kind"] == "product_flag":
+        field_name = definition["product_field"]
+        setattr(product, field_name, enabled)
+        product.save(update_fields=[field_name, "updated_at"])
+    elif definition["kind"] == "publication":
         publication, _created = ProductChannelPublication.objects.get_or_create(
             product=product,
             channel=channel,

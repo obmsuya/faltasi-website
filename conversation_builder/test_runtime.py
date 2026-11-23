@@ -19,6 +19,7 @@ from conversation_builder.runtime import (
     BUILDER_WAITING_FOR,
     get_next_question,
     get_runtime_status,
+    _snapshot_is_runtime_valid,
     skip_product_question,
     start_product_conversation,
     submit_product_question_answers,
@@ -758,3 +759,30 @@ class ProductConversationRuntimeTests(TestCase):
         answers = self.state.data["product_conversation"]["answers"]
         self.assertEqual(answers, {"customer_name": "Amina"})
         self.assertEqual(result["corrected"], [])
+
+
+class PublishedSnapshotConfigurationTests(TestCase):
+    def test_legacy_snapshot_uses_the_question_model_default(self):
+        snapshot = {
+            "questions": [
+                {"key": "location", "is_active": True},
+            ],
+        }
+        self.assertTrue(_snapshot_is_runtime_valid(snapshot))
+
+    def test_invalid_configured_attempt_limit_is_rejected(self):
+        snapshot = {
+            "questions": [
+                {"key": "location", "is_active": True, "max_attempts": 0},
+            ],
+        }
+        self.assertFalse(_snapshot_is_runtime_valid(snapshot))
+
+    def test_inactive_question_does_not_block_snapshot(self):
+        snapshot = {
+            "questions": [
+                {"key": "old_question", "is_active": False, "max_attempts": 0},
+                {"key": "location", "is_active": True, "max_attempts": 2},
+            ],
+        }
+        self.assertTrue(_snapshot_is_runtime_valid(snapshot))

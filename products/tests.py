@@ -10,6 +10,7 @@ from products.models import (
     OrganizationCategoryAssignment,
     Product,
     ProductCategory,
+    ProductDiscoverySettings,
 )
 from customers.models import Customer
 from whatsapp.models import (
@@ -183,9 +184,35 @@ class WhatsAppProductCatalogueIsolationTests(TestCase):
             status="active",
         )
 
+        discovery_messages = {
+            "sw": {
+                "intro": "Hii hapa bidhaa inayolingana na ulichotafuta:",
+                "another_option_prompt": "Je, ungependa kuona chaguo jingine?",
+                "thank_you": "Asante kwa kuwasiliana nasi.",
+                "no_more_options": "Hizi ndizo bidhaa zinazolingana tulizonazo kwa sasa.",
+                "price_on_request": "Bei inapatikana kwa maombi",
+                "labels": {"price": "Bei", "availability": "Upatikanaji"},
+            },
+            "en": {
+                "intro": "Here is a product that matches your request:",
+                "another_option_prompt": "Would you like to see another option?",
+                "thank_you": "Thank you for your interest.",
+                "no_more_options": "Those are all the matching options we currently have.",
+                "price_on_request": "Price available on request",
+                "labels": {"price": "Price", "availability": "Availability"},
+            },
+        }
+        for organization in (self.faltasi, self.business):
+            ProductDiscoverySettings.objects.create(
+                organization=organization,
+                yes_phrases=["yes", "ndiyo"],
+                no_phrases=["no", "hapana"],
+                messages=discovery_messages,
+            )
+
         self.faltasi_product = Product.objects.create(
             organization=self.faltasi,
-            name="Test Router",
+            name="Faltasi Router",
             price="50000.00",
             show_on_whatsapp=True,
             is_active=True,
@@ -193,7 +220,7 @@ class WhatsAppProductCatalogueIsolationTests(TestCase):
 
         self.business_product = Product.objects.create(
             organization=self.business,
-            name="Test Router",
+            name="Business Router",
             price="45000.00",
             show_on_whatsapp=True,
             is_active=True,
@@ -209,7 +236,7 @@ class WhatsAppProductCatalogueIsolationTests(TestCase):
         def save(self):
             self.saved = True
 
-    def test_faltasi_receives_its_own_catalogue_url(self):
+    def test_faltasi_receives_its_own_whatsapp_product(self):
         state = self.TestConversationState()
 
         reply = search_whatsapp_products(
@@ -218,27 +245,17 @@ class WhatsAppProductCatalogueIsolationTests(TestCase):
             state,
         )
 
-        self.assertIn(
-            "https://www.faltasi.com/products/",
-            reply,
-        )
-
-        self.assertIn("Test Router", reply)
-        self.assertEqual(
-            state.current_step,
-            "whatsapp_product_selection",
-        )
-        self.assertEqual(
-            state.waiting_for,
-            "product_selection",
-        )
+        self.assertIn("Faltasi Router", reply)
+        self.assertNotIn("Business Router", reply)
+        self.assertEqual(state.current_step, "whatsapp_product_completed")
+        self.assertIsNone(state.waiting_for)
         self.assertEqual(
             state.data["whatsapp_product_ids"],
             [self.faltasi_product.id],
         )
         self.assertTrue(state.saved)
 
-    def test_business_receives_its_own_configured_catalogue(self):
+    def test_business_receives_its_own_configured_product_reply(self):
         self.business.settings = {
             "public_catalogue_enabled": True,
             "public_catalogue_url": "https://business.example.com/products/",
@@ -250,52 +267,28 @@ class WhatsAppProductCatalogueIsolationTests(TestCase):
             self.business,
         )
 
-        self.assertIn(
-            "https://business.example.com/products/",
-            reply,
-        )
+        self.assertIn("Business Router", reply)
+        self.assertNotIn("Faltasi Router", reply)
 
-        self.assertNotIn(
-            "https://www.faltasi.com/products/",
-            reply,
-        )
+    def test_whatsapp_discovery_is_independent_of_website_visibility(self):
+        self.business_product.show_on_website = False
+        self.business_product.show_on_whatsapp = True
+        self.business_product.save(update_fields=["show_on_website", "show_on_whatsapp"])
 
-    def test_business_with_disabled_catalogue_receives_no_catalogue_link(self):
-        self.business.settings = {
-            "public_catalogue_enabled": False,
-            "public_catalogue_url": "https://business.example.com/products/",
-        }
-        self.business.save(update_fields=["settings"])
+        reply = search_whatsapp_products("router", self.business)
 
-        reply = search_whatsapp_products(
-            "router",
-            self.business,
-        )
+        self.assertIn("Business Router", reply)
+        self.assertNotIn("Faltasi Router", reply)
 
-        self.assertNotIn("View our catalogue:", reply)
-        self.assertNotIn(
-            "https://www.faltasi.com/products/",
-            reply,
-        )
+    def test_whatsapp_discovery_respects_its_own_visibility_flag(self):
+        self.business_product.show_on_whatsapp = False
+        self.business_product.save(update_fields=["show_on_whatsapp"])
 
-    def test_business_without_catalogue_url_receives_no_catalogue_link(self):
-        self.business.settings = {
-            "public_catalogue_enabled": True,
-        }
-        self.business.save(update_fields=["settings"])
+        reply = search_whatsapp_products("router", self.business)
 
-        reply = search_whatsapp_products(
-            "router",
-            self.business,
-        )
+        self.assertIsNone(reply)
 
-        self.assertNotIn("View our catalogue:", reply)
-        self.assertNotIn(
-            "https://www.faltasi.com/products/",
-            reply,
-        )
-
-    def test_business_with_non_https_catalogue_url_receives_no_link(self):
+    def test_whatsapp_product_search_does_not_depend_on_public_catalogue_url(self):
         self.business.settings = {
             "public_catalogue_enabled": True,
             "public_catalogue_url": "http://business.example.com/products/",
@@ -307,7 +300,8 @@ class WhatsAppProductCatalogueIsolationTests(TestCase):
             self.business,
         )
 
-        self.assertNotIn("View our catalogue:", reply)
+        self.assertIn("Business Router", reply)
+        self.assertNotIn("Faltasi Router", reply)
 
     def test_business_product_search_does_not_expose_other_organization_products(self):
         reply = search_whatsapp_products(
@@ -315,7 +309,8 @@ class WhatsAppProductCatalogueIsolationTests(TestCase):
             self.business,
         )
 
-        self.assertIn("Test Router", reply)
+        self.assertIn("Business Router", reply)
+        self.assertNotIn("Faltasi Router", reply)
 
         state = self.TestConversationState()
 

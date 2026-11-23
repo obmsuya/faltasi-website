@@ -4,7 +4,8 @@ from django.urls import reverse
 
 from organizations.models import Organization, OrganizationMember
 from products.models import Product
-from .models import ProductChannelPublication
+from .models import ChannelConnection, ProductChannelPublication
+from .registry import PROVIDER_CHOICES, PUBLICATION_CHOICES
 
 
 class ChannelManagementTests(TestCase):
@@ -74,3 +75,17 @@ class ChannelManagementTests(TestCase):
             {"enabled": "1"},
         )
         self.assertEqual(response.status_code, 403)
+
+
+class ChannelRegistryTests(TestCase):
+    def test_model_choices_share_the_central_registry(self):
+        self.assertEqual(tuple(ChannelConnection.PROVIDER_CHOICES), PROVIDER_CHOICES)
+        self.assertEqual(tuple(ProductChannelPublication.CHANNEL_CHOICES), PUBLICATION_CHOICES)
+
+    def test_website_and_whatsapp_are_not_external_publication_providers(self):
+        provider_keys = {key for key, _label in ChannelConnection.PROVIDER_CHOICES}
+        publication_keys = {key for key, _label in ProductChannelPublication.CHANNEL_CHOICES}
+        self.assertNotIn("website", provider_keys)
+        self.assertNotIn("whatsapp", provider_keys)
+        self.assertNotIn("website", publication_keys)
+        self.assertNotIn("whatsapp", publication_keys)

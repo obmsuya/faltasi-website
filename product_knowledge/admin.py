@@ -1,7 +1,7 @@
 
 from django.contrib import admin
 
-from .models import ProductKnowledgeDocument, ProductKnowledgeChunk
+from .models import ProductKnowledgeDocument, ProductKnowledgeChunk, ProductKnowledgeSettings
 
 
 class ProductKnowledgeChunkInline(admin.TabularInline):
@@ -83,3 +83,11 @@ class ProductKnowledgeChunkAdmin(admin.ModelAdmin):
     search_fields = ("text", "section_title")
     readonly_fields = ("created_at", "updated_at")
     list_per_page = 50
+
+
+@admin.register(ProductKnowledgeSettings)
+class ProductKnowledgeSettingsAdmin(admin.ModelAdmin):
+    list_display = ("organization", "is_active", "max_context_chars", "updated_at")
+    list_filter = ("is_active",)
+    search_fields = ("organization__name",)
+    readonly_fields = ("created_at", "updated_at")

@@ -1,6 +1,8 @@
 from django.core.exceptions import ValidationError
 from django.db import models
 
+from .registry import PROVIDER_CHOICES, PUBLICATION_CHOICES
+
 
 class ChannelConnection(models.Model):
     """Organization-owned external channel account metadata.
@@ -10,13 +12,7 @@ class ChannelConnection(models.Model):
     with the corresponding OAuth integration.
     """
 
-    PROVIDER_CHOICES = [
-        ("instagram", "Instagram"),
-        ("facebook", "Facebook"),
-        ("tiktok", "TikTok"),
-        ("google_business_profile", "Google Business Profile"),
-        ("google_merchant_center", "Google Merchant Center"),
-    ]
+    PROVIDER_CHOICES = PROVIDER_CHOICES
     STATUS_CHOICES = [
         ("pending", "Pending authorization"),
         ("connected", "Connected"),
@@ -55,13 +51,7 @@ class ChannelConnection(models.Model):
 class ProductChannelPublication(models.Model):
     """Per-product channel publication preference and synchronization state."""
 
-    CHANNEL_CHOICES = [
-        ("instagram", "Instagram"),
-        ("facebook", "Facebook"),
-        ("tiktok", "TikTok"),
-        ("google_business_profile", "Google Business Profile"),
-        ("google_merchant_center", "Google Merchant Center"),
-    ]
+    CHANNEL_CHOICES = PUBLICATION_CHOICES
     STATUS_CHOICES = [
         ("draft", "Draft"),
         ("pending", "Pending publication"),

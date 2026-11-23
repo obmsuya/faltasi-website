@@ -36,7 +36,8 @@ from django.contrib.auth.models import User
 from django.urls import reverse
 from organizations.models import OrganizationMember
 
-from products.models import Product
+from products.models import Product, ProductDiscoverySettings
+from product_knowledge.models import ProductKnowledgeSettings
 from business_requests.models import (
     Department,
     RequestCategory,
@@ -282,6 +283,18 @@ class KnowledgeSearchTests(TestCase):
             organization_type="business",
             status="active",
         )
+        stop_words = ["a", "an", "and", "are", "available", "can", "do", "for", "me", "my", "of", "please", "show", "the", "to", "what", "which", "with", "would", "you", "your", "find", "get", "need", "nataka", "kununua", "ninataka", "ninahitaji", "nahitaji", "naomba", "tafadhali", "bei", "ya", "za", "na", "ni", "kwa", "yangu", "una", "unazo", "onyesha"]
+        for organization in (self.organization, self.other_organization):
+            ProductDiscoverySettings.objects.create(
+                organization=organization,
+                search_stop_words=stop_words,
+            )
+            ProductKnowledgeSettings.objects.create(
+                organization=organization,
+                employee_instructions="Never disclose information belonging to another organization.",
+                customer_instructions="Answer only using approved customer-facing references.",
+                labels={"employee_question": "EMPLOYEE QUESTION", "customer_question": "CUSTOMER QUESTION"},
+            )
 
     def test_search_products_returns_matching_product(self):
         product = Product.objects.create(
@@ -737,6 +750,29 @@ class KnowledgeSearchTests(TestCase):
             "excel_request_configuration",
         )
     
+    def test_context_builder_uses_organization_owned_instructions(self):
+        settings = ProductKnowledgeSettings.objects.get(
+            organization=self.organization
+        )
+        settings.employee_instructions = "Employee-only configured guidance."
+        settings.customer_instructions = "Customer-only configured guidance."
+        settings.save(update_fields=["employee_instructions", "customer_instructions"])
+
+        employee_context = build_knowledge_context(
+            organization=self.organization,
+            query="",
+        )
+        customer_context = build_knowledge_context(
+            organization=self.organization,
+            query="",
+            customer_facing=True,
+        )
+
+        self.assertIn("Employee-only configured guidance.", employee_context["context_text"])
+        self.assertNotIn("Customer-only configured guidance.", employee_context["context_text"])
+        self.assertIn("Customer-only configured guidance.", customer_context["context_text"])
+        self.assertNotIn("Employee-only configured guidance.", customer_context["context_text"])
+
     def test_context_builder_excludes_other_organization_data(self):
         Product.objects.create(
             organization=self.other_organization,
@@ -1132,6 +1168,12 @@ class AISalesProductSearchTests(TestCase):
             organization_type="business",
             status="active",
         )
+        stop_words = ["a", "an", "and", "are", "available", "can", "do", "for", "me", "my", "of", "please", "show", "the", "to", "what", "which", "with", "would", "you", "your", "find", "get", "need", "nataka", "kununua", "ninataka", "ninahitaji", "nahitaji", "naomba", "tafadhali", "bei", "ya", "za", "na", "ni", "kwa", "yangu", "una", "unazo", "onyesha"]
+        for organization in (cls.organization, cls.other_organization):
+            ProductDiscoverySettings.objects.create(
+                organization=organization,
+                search_stop_words=stop_words,
+            )
 
     def create_product(self, name, organization=None, **kwargs):
         data = {

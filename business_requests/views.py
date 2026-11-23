@@ -1,4 +1,4 @@
-﻿from django.http import HttpResponseForbidden, HttpResponseNotAllowed
+from django.http import HttpResponseForbidden, HttpResponseNotAllowed
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404, redirect, render
@@ -1367,63 +1367,25 @@ def assign_request(request, request_id):
         is_active=True,
         department_memberships__department=business_request.department,
         department_memberships__is_active=True,
+        organization_memberships__organization=business_request.department.organization,
+        organization_memberships__is_active=True,
     )
 
     # ---------------------------------------------------------
     # UPDATE ASSIGNMENT
     # ---------------------------------------------------------
 
-    RequestAssignment.objects.filter(
-        request=business_request,
-        is_current=True,
-    ).update(is_current=False)
-
-    RequestAssignment.objects.create(
-        request=business_request,
-        assigned_to=staff_user,
-        department=business_request.department,
-        is_current=True,
-        notes=(
-            f"Assigned to "
-            f"{staff_user.get_full_name() or staff_user.username} "
-            f"by "
-            f"{request.user.get_full_name() or request.user.username}."
-        ),
+    from business_requests.services.workflow import (
+        create_manual_request_assignment,
     )
-
-    # ---------------------------------------------------------
-    # UPDATE OR CREATE WORKFLOW STEP
-    # ---------------------------------------------------------
-
-    workflow_step = (
-        WorkflowStep.objects
-        .filter(
-            request=business_request,
-            status="active",
-        )
-        .order_by("step_order", "id")
-        .first()
+    assignment = create_manual_request_assignment(
+        business_request,
+        staff_user,
+        request.user,
     )
-
-    if workflow_step:
-        workflow_step.assigned_to = staff_user
-        workflow_step.save(update_fields=["assigned_to"])
-    else:
-        WorkflowStep.objects.create(
-            request=business_request,
-            name="Department Review",
-            description=(
-                "Review the customer's request and process the request."
-            ),
-            step_order=1,
-            status="active",
-            assigned_to=staff_user,
-        )
-
-    business_request.status = "in_progress"
-    business_request.save(
-        update_fields=["status", "updated_at"]
-    )
+    if assignment is None:
+        messages.error(request, "The assignment could not be created because the organization workflow configuration is missing.")
+        return redirect("business_requests:request_detail", request_id=request_id)
 
     # ---------------------------------------------------------
     # NOTIFY ASSIGNED STAFF ON WHATSAPP
@@ -1469,90 +1431,71 @@ def assign_request(request, request_id):
                 ),
             )
         else:
-            staff_name = (
-                staff_user.get_full_name() or staff_user.username
+            from business_requests.services.workflow import (
+                format_assignment_whatsapp_message,
+            )
+            notification_text = format_assignment_whatsapp_message(
+                business_request,
+                staff_user,
             )
 
-            request_subject = (
-                getattr(business_request, "subject", "")
-                or f"Request #{business_request.id}"
-            )
+            staff_name = staff_user.get_full_name() or staff_user.username
 
-            customer = business_request.customer
-
-            notification_text = (
-                f"Hello {staff_name}, a business request has been assigned to you.\n\n"
-                f"Request: #{business_request.id}\n"
-                f"Subject: {request_subject}\n"
-                f"Department: {business_request.department.name}\n"
-                f"Customer: {customer.name if customer else 'Not provided'}\n"
-                f"Customer phone: {customer.phone if customer else 'Not provided'}\n\n"
-                "Please open your business dashboard to review and process it."
-            )
-
-            try:
-                whatsapp_response = send_whatsapp_message(
-                    whatsapp_phone,
-                    staff_contact.whatsapp_number.strip(),
-                    notification_text,
+            if not notification_text:
+                messages.warning(
+                    request,
+                    "The request was assigned successfully, but the WhatsApp assignment message is not configured.",
                 )
-
-                if (
-                    whatsapp_response is not None
-                    and getattr(
-                        whatsapp_response,
-                        "status_code",
-                        None,
-                    ) in (200, 201)
-                ):
-                    messages.success(
-                        request,
-                        f"WhatsApp accepted the notification for {staff_name}.",
-                    )
-                else:
-                    response_status = getattr(
-                        whatsapp_response,
-                        "status_code",
-                        "no response",
+            else:
+                try:
+                    whatsapp_response = send_whatsapp_message(
+                        whatsapp_phone,
+                        staff_contact.whatsapp_number.strip(),
+                        notification_text,
                     )
 
-                    response_text = getattr(
-                        whatsapp_response,
-                        "text",
-                        "",
+                    if (
+                        whatsapp_response is not None
+                        and getattr(whatsapp_response, "status_code", None) in (200, 201)
+                    ):
+                        messages.success(
+                            request,
+                            f"WhatsApp accepted the notification for {staff_name}.",
+                        )
+                    else:
+                        response_status = getattr(
+                            whatsapp_response,
+                            "status_code",
+                            "no response",
+                        )
+                        response_text = getattr(whatsapp_response, "text", "")
+                        print(
+                            "STAFF WHATSAPP NOTIFICATION FAILED:",
+                            response_status,
+                            response_text,
+                        )
+                        messages.warning(
+                            request,
+                            (
+                                "The request was assigned successfully, but "
+                                "WhatsApp could not accept the notification. "
+                                "Check the server console for details."
+                            ),
+                        )
+                except Exception:
+                    import logging
+                    logging.getLogger(__name__).exception(
+                        "WhatsApp notification failed for request %s assigned to user %s",
+                        business_request.id,
+                        staff_user.id,
                     )
-
-                    print(
-                        "STAFF WHATSAPP NOTIFICATION FAILED:",
-                        response_status,
-                        response_text,
-                    )
-
                     messages.warning(
                         request,
                         (
-                            "The request was assigned successfully, but "
-                            "WhatsApp could not accept the notification. "
-                            "Check the server console for details."
+                            "The request was assigned successfully, but an error "
+                            "occurred while notifying the staff member on WhatsApp."
                         ),
                     )
-
-            except Exception:
-                import logging
-
-                logging.getLogger(__name__).exception(
-                    "WhatsApp notification failed for request %s assigned to user %s",
-                    business_request.id,
-                    staff_user.id,
-                )
-
-                messages.warning(
-                    request,
-                    (
-                        "The request was assigned successfully, but an error "
-                        "occurred while notifying the staff member on WhatsApp."
-                    ),
-                )
 
     # ---------------------------------------------------------
     # SUCCESS

@@ -553,3 +553,35 @@ class ProductKnowledgeChunk(models.Model):
             f"Document {self.document_id} "
             f"- Chunk {self.chunk_index}"
         )
+
+
+class ProductKnowledgeSettings(models.Model):
+    """Organization-owned AI knowledge instructions and retrieval settings."""
+
+    organization = models.OneToOneField(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="product_knowledge_settings",
+    )
+    employee_instructions = models.TextField(blank=True, default="")
+    customer_instructions = models.TextField(blank=True, default="")
+    product_intent_terms = models.JSONField(default=list, blank=True)
+    product_intent_phrases = models.JSONField(default=list, blank=True)
+    labels = models.JSONField(default=dict, blank=True)
+    truncation_marker = models.TextField(blank=True, default="")
+    max_context_chars = models.PositiveIntegerField(default=18000)
+    max_description_chars = models.PositiveIntegerField(default=1200)
+    max_document_chars = models.PositiveIntegerField(default=3500)
+    product_limit = models.PositiveSmallIntegerField(default=5)
+    document_limit = models.PositiveSmallIntegerField(default=5)
+    category_limit = models.PositiveSmallIntegerField(default=5)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Product Knowledge Settings"
+        verbose_name_plural = "Product Knowledge Settings"
+
+    def __str__(self):
+        return f"Product Knowledge Settings - {self.organization}"

@@ -2,7 +2,6 @@
 import json
 import logging
 import os
-from datetime import date, datetime
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
@@ -20,6 +19,11 @@ from openai import (
 from products.models import Product
 from whatsapp.models import Message
 
+
+from products.services.public_data import (
+    SENSITIVE_PRODUCT_FIELD_TERMS,
+    clean_public_product_data,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,17 +44,7 @@ ALLOWED_ACTIONS = {
 
 # Internal information must never be sent to the customer-facing AI.
 # Key comparison ignores underscores, spaces and capitalization.
-SENSITIVE_FIELD_TERMS = {
-    "cost",
-    "wholesale",
-    "purchase",
-    "buying",
-    "supplier",
-    "profit",
-    "margin",
-    "markup",
-    "internalprice",
-}
+SENSITIVE_FIELD_TERMS = SENSITIVE_PRODUCT_FIELD_TERMS
 
 
 class WhatsAppAIError(Exception):
@@ -184,66 +178,18 @@ path handles the customer.
 
 
 def _normalize_key(value):
-    """Normalize a field name for sensitive-data detection."""
-    return "".join(
-        character
-        for character in str(value).lower()
-        if character.isalnum()
-    )
+    """Compatibility wrapper for product-field key normalization."""
+    return "".join(character for character in str(value).casefold() if character.isalnum())
 
 
 def _is_sensitive_key(key):
     normalized = _normalize_key(key)
-
-    return any(
-        term in normalized
-        for term in SENSITIVE_FIELD_TERMS
-    )
+    return any(term in normalized for term in SENSITIVE_FIELD_TERMS)
 
 
 def _clean_customer_data(value, depth=0):
-    """
-    Sanitize product JSON data before it enters the AI context.
-
-    Sensitive information is removed recursively. Unsupported values
-    are converted to safe strings or omitted.
-    """
-    if depth > 8:
-        return None
-
-    if isinstance(value, dict):
-        cleaned = {}
-
-        for key, item in value.items():
-            if _is_sensitive_key(key):
-                continue
-
-            cleaned[str(key)[:100]] = _clean_customer_data(
-                item,
-                depth + 1,
-            )
-
-        return cleaned
-
-    if isinstance(value, (list, tuple)):
-        return [
-            _clean_customer_data(item, depth + 1)
-            for item in value[:100]
-        ]
-
-    if isinstance(value, Decimal):
-        return str(value)
-
-    if isinstance(value, (datetime, date)):
-        return value.isoformat()
-
-    if isinstance(value, str):
-        return value[:MAX_PRODUCT_TEXT_CHARS]
-
-    if isinstance(value, (int, float, bool)) or value is None:
-        return value
-
-    return str(value)[:500]
+    """Compatibility wrapper around Products' customer-safe serializer."""
+    return clean_public_product_data(value, depth=depth)
 
 
 def _product_context(product):
