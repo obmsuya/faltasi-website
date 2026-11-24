@@ -1369,8 +1369,10 @@ def search_whatsapp_products(
     organization,
     state=None,
     *,
-    price_preference="relevance",
+    price_preference="any",
+    min_price=None,
     max_price=None,
+    specification_requirements=None,
 ):
     """Delegate tenant catalogue discovery and presentation to Products."""
     from products.services.whatsapp_discovery import (
@@ -1381,7 +1383,9 @@ def search_whatsapp_products(
         organization,
         state,
         price_preference=price_preference,
+        min_price=min_price,
         max_price=max_price,
+        specification_requirements=specification_requirements,
     )
 
 
@@ -1797,10 +1801,23 @@ def get_ai_product_discovery_reply(text, organization, state, current_message_id
                 else text.strip()
             )
 
+            previous_requirements = (
+                discovery_state.get('requirements', {})
+                if pending_discovery and isinstance(discovery_state.get('requirements'), dict)
+                else {}
+            )
+            requirements = dict(previous_requirements)
+            requirements.update({
+                'price_preference': result.get('price_preference', requirements.get('price_preference', 'any')),
+                'min_price': str(result['min_price']) if result.get('min_price') is not None else None,
+                'max_price': str(result['max_price']) if result.get('max_price') is not None else None,
+                'specification_requirements': result.get('specification_requirements', requirements.get('specification_requirements', [])),
+            })
             state_data['whatsapp_product_discovery'] = {
                 'status': 'awaiting_clarification',
                 'original_request': original_request,
                 'clarification_question': clarification.strip(),
+                'requirements': requirements,
             }
 
             state.data = state_data
@@ -1831,19 +1848,15 @@ def get_ai_product_discovery_reply(text, organization, state, current_message_id
             ):
                 return None
 
-            price_preference = result.get('price_preference', 'relevance')
-            max_price = result.get('max_price')
-            search_options = {}
-            if price_preference != 'relevance':
-                search_options['price_preference'] = price_preference
-            if max_price is not None:
-                search_options['max_price'] = max_price
-
+            price_preference = result.get('price_preference', 'any')
+            search_options = {
+                'price_preference': price_preference,
+                'min_price': result.get('min_price'),
+                'max_price': result.get('max_price'),
+                'specification_requirements': result.get('specification_requirements', []),
+            }
             product_reply = search_whatsapp_products(
-                search_query.strip(),
-                organization,
-                state,
-                **search_options,
+                search_query.strip(), organization, state, **search_options,
             )
 
             if product_reply:

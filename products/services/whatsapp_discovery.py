@@ -1,13 +1,17 @@
 """Organization-configured product discovery for customer messaging."""
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+import math
+import re
+
+from django.db.models import CharField, Q
+from django.db.models.functions import Cast
 
 from products.models import Product, ProductDiscoverySettings
 from products.services.public_data import (
     clean_public_product_data,
     format_public_product_json,
 )
-from products.services.search import search_organization_products
 
 
 def get_product_discovery_settings(organization):
@@ -196,53 +200,165 @@ def handle_product_discovery_followup(text, organization, state):
     return {"handled": True, "reply": _format_product(next_product, configuration, language)}
 
 
+def _discovery_tokens(value):
+    return list(dict.fromkeys(re.findall(r"[a-z0-9]+", str(value or "").casefold())))
+
+
+def _product_search_text(product):
+    values = [
+        product.name, product.sku, product.barcode, product.brand, product.model,
+        product.manufacturer, product.short_description, product.description,
+        product.category.name if product.category else "",
+        str(product.specifications or {}), str(product.additional_information or {}),
+    ]
+    return " ".join(str(value or "") for value in values).casefold()
+
+
+def _valid_price(value):
+    if value is None:
+        return None
+    try:
+        price = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    return price if price.is_finite() and price >= 0 else None
+
+
+def _apply_relative_price_tier(products, preference):
+    """Apply economical/mid-range/premium tiers from real prices per currency."""
+    if preference not in {"economical", "mid_range", "premium"}:
+        return products
+    by_currency = {}
+    for product in products:
+        price = _valid_price(product.price)
+        if price is not None:
+            by_currency.setdefault(str(product.currency or "").upper(), []).append((price, product))
+    selected_ids = set()
+    tier_index = {"economical": 0, "mid_range": 1, "premium": 2}[preference]
+    for entries in by_currency.values():
+        unique_prices = sorted({price for price, _ in entries})
+        if len(unique_prices) <= 1:
+            selected_ids.update(product.pk for _, product in entries)
+            continue
+        tiers = {}
+        for index, price in enumerate(unique_prices):
+            tier = min(2, (index * 3) // len(unique_prices))
+            tiers[price] = tier
+        available_tiers = set(tiers.values())
+        chosen_tier = tier_index
+        if chosen_tier not in available_tiers:
+            chosen_tier = min(available_tiers, key=lambda item: (abs(item - tier_index), item))
+        selected_ids.update(
+            product.pk for price, product in entries if tiers[price] == chosen_tier
+        )
+    # Products without a valid selling price cannot be compared in price tiers.
+    return [product for product in products if product.pk in selected_ids]
+
+
+def _search_catalogue(organization, query, *, price_preference="any", min_price=None,
+                      max_price=None, specification_requirements=None, limit=5):
+    """Fresh WhatsApp-only matching; does not use the legacy shared ranking."""
+    tokens = _discovery_tokens(query)
+    if not organization or not tokens:
+        return []
+    settings = get_product_discovery_settings(organization)
+    max_candidates = min(max(int(getattr(settings, "max_candidates", 500) or 500), 1), 2000)
+    fields = (
+        "name", "sku", "barcode", "brand", "model", "manufacturer",
+        "short_description", "description", "category__name",
+        "_specifications_text", "_additional_information_text",
+    )
+    condition = Q()
+    for token in tokens:
+        for field in fields:
+            condition |= Q(**{f"{field}__icontains": token})
+    queryset = Product.objects.filter(
+        organization=organization, is_active=True, deleted_at__isnull=True,
+        show_on_whatsapp=True,
+    ).annotate(
+        _specifications_text=Cast("specifications", output_field=CharField()),
+        _additional_information_text=Cast("additional_information", output_field=CharField()),
+    ).filter(condition).select_related("category").distinct().order_by("pk")
+    candidates = list(queryset[:max_candidates])
+
+    required = [str(item).strip().casefold() for item in (specification_requirements or [])
+                if isinstance(item, str) and item.strip()]
+    scored = []
+    for product in candidates:
+        corpus = _product_search_text(product)
+        if required and not all(item in corpus for item in required):
+            continue
+        matched = sum(1 for token in tokens if token in corpus)
+        minimum_matches = 1 if len(tokens) <= 3 else max(2, math.ceil(len(tokens) * 0.35))
+        if matched < minimum_matches:
+            continue
+        score = matched / len(tokens)
+        # Exact product identity terms carry more weight than descriptive overlap.
+        identity = " ".join(str(value or "") for value in (
+            product.name, product.brand, product.model, product.sku, product.barcode,
+        )).casefold()
+        identity_matches = sum(1 for token in tokens if token in identity)
+        score += identity_matches * 0.35
+        scored.append((product, score))
+
+    min_value, max_value = _valid_price(min_price), _valid_price(max_price)
+    if min_price is not None and min_value is None:
+        return []
+    if max_price is not None and max_value is None:
+        return []
+    if min_value is not None or max_value is not None:
+        filtered = []
+        for product, score in scored:
+            price = _valid_price(product.price)
+            if price is None:
+                continue
+            if min_value is not None and price < min_value:
+                continue
+            if max_value is not None and price > max_value:
+                continue
+            filtered.append((product, score))
+        scored = filtered
+
+    products = [product for product, _ in scored]
+    if price_preference in {"economical", "mid_range", "premium"} and not (min_value is not None or max_value is not None):
+        products = _apply_relative_price_tier(products, price_preference)
+    score_by_id = {product.pk: score for product, score in scored}
+
+    if price_preference in {"lowest", "economical"}:
+        products.sort(key=lambda p: (_valid_price(p.price) is None, _valid_price(p.price) or Decimal("0"), -score_by_id[p.pk], p.display_order, p.name.casefold()))
+    elif price_preference in {"premium"}:
+        products.sort(key=lambda p: (_valid_price(p.price) is None, -(_valid_price(p.price) or Decimal("0")), -score_by_id[p.pk], p.display_order, p.name.casefold()))
+    elif price_preference == "mid_range":
+        products.sort(key=lambda p: (_valid_price(p.price) is None, abs((_valid_price(p.price) or Decimal("0"))), -score_by_id[p.pk], p.display_order, p.name.casefold()))
+    else:
+        products.sort(key=lambda p: (-score_by_id[p.pk], p.display_order, p.name.casefold()))
+    return products[:max(1, min(int(limit or 5), 20))]
+
+
 def search_and_prepare_whatsapp_product(
-    text, organization, state=None, *, price_preference="relevance", max_price=None
+    text, organization, state=None, *, price_preference="any", min_price=None,
+    max_price=None, specification_requirements=None,
 ):
-    """Search the tenant catalogue and prepare the first configured product reply."""
+    """Search real tenant products and prepare the first product reply."""
     if not text or not organization:
         return None
-
     configuration = get_product_discovery_settings(organization)
     if not configuration:
         return None
-
-    search_options = {}
-    if price_preference != "relevance":
-        search_options["price_preference"] = price_preference
-    if max_price is not None:
-        search_options["max_price"] = max_price
-
-    results = search_organization_products(
-        organization,
-        text,
+    matches = _search_catalogue(
+        organization, text, price_preference=price_preference,
+        min_price=min_price, max_price=max_price,
+        specification_requirements=specification_requirements,
         limit=configuration.max_results,
-        **search_options,
     )
-    if not results:
-        return None
-
-    product_ids = [item.get("id") for item in results if item.get("id") is not None]
-    products_by_id = Product.objects.filter(
-        organization=organization,
-        pk__in=product_ids,
-        is_active=True,
-        deleted_at__isnull=True,
-        show_on_whatsapp=True,
-    ).select_related("category").in_bulk()
-    matches = [products_by_id[item_id] for item_id in product_ids if item_id in products_by_id]
     if not matches:
         return None
-
     product = matches[0]
     remaining_ids = [item.pk for item in matches[1:]]
     if state is not None:
         data = dict(state.data or {})
         data.pop("whatsapp_product_discovery", None)
-        for key in (
-            "selected_whatsapp_product_id", "selected_whatsapp_product_name",
-            "whatsapp_product_quantity", "whatsapp_product_action",
-        ):
+        for key in ("selected_whatsapp_product_id", "selected_whatsapp_product_name", "whatsapp_product_quantity", "whatsapp_product_action"):
             data.pop(key, None)
         data["whatsapp_product_ids"] = [product.pk]
         data["whatsapp_product_remaining_ids"] = remaining_ids
@@ -255,5 +371,4 @@ def search_and_prepare_whatsapp_product(
         state.waiting_for = None
         state.data = data
         state.save()
-
     return _format_product(product, configuration, getattr(organization, "language", None))

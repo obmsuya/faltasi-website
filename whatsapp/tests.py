@@ -1032,28 +1032,26 @@ class WhatsAppMarketingInvitationWebhookTests(TestCase):
         )
 
 class WhatsAppCanonicalProductSearchTests(TestCase):
-    """Tests for the WhatsApp adapter using canonical product search."""
+    """Tests for the independent WhatsApp product discovery engine."""
 
     def setUp(self):
-        from products.models import Product
+        from products.models import Product, ProductDiscoverySettings
         from whatsapp.models import ConversationState
 
         self.Product = Product
         self.ConversationState = ConversationState
 
         self.organization = Organization.objects.create(
-            name="Canonical Search Business",
+            name="WhatsApp Discovery Business",
             organization_type="business",
             status="active",
         )
-
         self.other_organization = Organization.objects.create(
-            name="Other Search Business",
+            name="Other Discovery Business",
             organization_type="business",
             status="active",
         )
 
-        from products.models import ProductDiscoverySettings
         discovery_messages = {
             "sw": {
                 "intro": "Hii hapa bidhaa inayolingana na ulichotafuta:",
@@ -1062,9 +1060,13 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
                 "no_more_options": "Hizi ndizo bidhaa zinazolingana tulizonazo kwa sasa.",
                 "price_on_request": "Bei inapatikana kwa maombi",
                 "labels": {
-                    "brand": "Chapa", "model": "Modeli", "manufacturer": "Mtengenezaji",
-                    "description": "Maelezo", "specifications": "Sifa",
-                    "additional_information": "Taarifa za ziada", "price": "Bei",
+                    "brand": "Chapa",
+                    "model": "Modeli",
+                    "manufacturer": "Mtengenezaji",
+                    "description": "Maelezo",
+                    "specifications": "Sifa",
+                    "additional_information": "Taarifa za ziada",
+                    "price": "Bei",
                     "availability": "Upatikanaji",
                 },
             },
@@ -1075,9 +1077,13 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
                 "no_more_options": "Those are all the matching options we currently have.",
                 "price_on_request": "Price available on request",
                 "labels": {
-                    "brand": "Brand", "model": "Model", "manufacturer": "Manufacturer",
-                    "description": "Description", "specifications": "Specifications",
-                    "additional_information": "Additional information", "price": "Price",
+                    "brand": "Brand",
+                    "model": "Model",
+                    "manufacturer": "Manufacturer",
+                    "description": "Description",
+                    "specifications": "Specifications",
+                    "additional_information": "Additional information",
+                    "price": "Price",
                     "availability": "Availability",
                 },
             },
@@ -1087,6 +1093,8 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
             default_language="en",
             yes_phrases=["yes", "ndiyo"],
             no_phrases=["no", "hapana"],
+            max_results=5,
+            max_candidates=500,
             messages=discovery_messages,
         )
 
@@ -1095,13 +1103,11 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
             name="Search Customer",
             phone="+255700000101",
         )
-
         self.conversation = Conversation.objects.create(
             organization=self.organization,
             customer=self.customer,
             phone_number="+255700000101",
         )
-
         self.state = ConversationState.objects.create(
             conversation=self.conversation,
             current_step="previous_step",
@@ -1120,14 +1126,12 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
             organization=organization or self.organization,
             name=name,
             price=kwargs.pop("price", "25000.00"),
+            is_active=kwargs.pop("is_active", True),
+            show_on_whatsapp=kwargs.pop("show_on_whatsapp", True),
             **kwargs,
         )
 
-    def search_result(self, product):
-        return {"id": product.pk}
-
-    def test_uses_canonical_search_with_five_result_limit(self):
-        from unittest.mock import patch
+    def test_search_returns_one_real_catalogue_product_and_saves_remaining_ids(self):
         from whatsapp.views import search_whatsapp_products
 
         products = [
@@ -1135,135 +1139,87 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
             for number in range(1, 6)
         ]
 
-        results = [self.search_result(product) for product in products]
-
-        with patch(
-            "products.services.whatsapp_discovery.search_organization_products",
-            return_value=results,
-        ) as canonical_search:
-            reply = search_whatsapp_products(
-                "laptop",
-                self.organization,
-                self.state,
-            )
-
-        canonical_search.assert_called_once_with(
-            self.organization,
+        reply = search_whatsapp_products(
             "laptop",
-            limit=5,
+            self.organization,
+            self.state,
         )
 
+        self.assertIsNotNone(reply)
+        self.assertIn("Laptop Model", reply)
         self.assertEqual(reply.count("Price:"), 1)
-        self.assertIn("Laptop Model 1", reply)
 
         self.state.refresh_from_db()
-        self.assertEqual(
-            self.state.data["whatsapp_product_ids"],
-            [products[0].pk],
-        )
-        self.assertEqual(
-            self.state.data["whatsapp_product_remaining_ids"],
-            [product.pk for product in products[1:]],
-        )
+        displayed_ids = self.state.data["whatsapp_product_ids"]
+        remaining_ids = self.state.data["whatsapp_product_remaining_ids"]
 
-    def test_preserves_canonical_ranking_and_updates_state(self):
-        from unittest.mock import patch
+        self.assertEqual(len(displayed_ids), 1)
+        self.assertIn(displayed_ids[0], [product.pk for product in products])
+        self.assertEqual(
+            set(remaining_ids) | set(displayed_ids),
+            {product.pk for product in products},
+        )
+        self.assertEqual(len(remaining_ids), 4)
+
+    def test_new_search_order_uses_match_quality_then_display_order(self):
         from whatsapp.views import search_whatsapp_products
 
-        first = self.create_product(
+        later_display = self.create_product(
             "Laptop Alpha",
             display_order=20,
         )
-        second = self.create_product(
+        earlier_display = self.create_product(
             "Laptop Beta",
             display_order=1,
         )
 
-        with patch(
-            "products.services.whatsapp_discovery.search_organization_products",
-            return_value=[
-                self.search_result(first),
-                self.search_result(second),
-            ],
-        ):
-            reply = search_whatsapp_products(
-                "laptop",
-                self.organization,
-                self.state,
-            )
+        reply = search_whatsapp_products(
+            "laptop",
+            self.organization,
+            self.state,
+        )
 
-        # Only the first canonical search result is returned.
-        self.assertIn("Laptop Alpha", reply)
-        self.assertNotIn("Laptop Beta", reply)
+        self.assertIsNotNone(reply)
+        self.assertIn("Laptop Beta", reply)
+        self.assertNotIn("Laptop Alpha", reply)
 
         self.state.refresh_from_db()
-
         self.assertEqual(
             self.state.data["whatsapp_product_ids"],
-            [first.pk],
+            [earlier_display.pk],
         )
         self.assertEqual(
             self.state.data["whatsapp_product_remaining_ids"],
-            [second.pk],
+            [later_display.pk],
         )
-        self.assertEqual(
-            self.state.current_step,
-            "whatsapp_product_completed",
-        )
-        self.assertIsNone(self.state.waiting_for)
 
-        self.assertNotIn(
-            "selected_whatsapp_product_id",
-            self.state.data,
-        )
-        self.assertNotIn(
-            "selected_whatsapp_product_name",
-            self.state.data,
-        )
-        self.assertNotIn(
-            "whatsapp_product_quantity",
-            self.state.data,
-        )
-        self.assertNotIn(
-            "whatsapp_product_action",
-            self.state.data,
-        )
-        self.assertEqual(
-            self.state.data["unrelated_value"],
-            "preserve_me",
-        )
-    def test_hydration_excludes_other_organizations_and_hidden_products(self):
-        from unittest.mock import patch
+        # Existing unrelated conversation data is preserved.
+        self.assertEqual(self.state.data["unrelated_value"], "preserve_me")
+        self.assertNotIn("selected_whatsapp_product_id", self.state.data)
+        self.assertNotIn("selected_whatsapp_product_name", self.state.data)
+        self.assertNotIn("whatsapp_product_quantity", self.state.data)
+        self.assertNotIn("whatsapp_product_action", self.state.data)
+
+    def test_search_excludes_other_organizations_and_hidden_products(self):
         from whatsapp.views import search_whatsapp_products
 
         own_product = self.create_product("Laptop Own Business")
-
-        foreign_product = self.create_product(
+        self.create_product(
             "Laptop Foreign Business",
             organization=self.other_organization,
         )
-
-        hidden_product = self.create_product(
+        self.create_product(
             "Laptop Hidden Product",
             show_on_whatsapp=False,
         )
 
-        results = [
-            self.search_result(own_product),
-            self.search_result(foreign_product),
-            self.search_result(hidden_product),
-        ]
+        reply = search_whatsapp_products(
+            "laptop",
+            self.organization,
+            self.state,
+        )
 
-        with patch(
-            "products.services.whatsapp_discovery.search_organization_products",
-            return_value=results,
-        ):
-            reply = search_whatsapp_products(
-                "laptop",
-                self.organization,
-                self.state,
-            )
-
+        self.assertIsNotNone(reply)
         self.assertIn("Laptop Own Business", reply)
         self.assertNotIn("Laptop Foreign Business", reply)
         self.assertNotIn("Laptop Hidden Product", reply)
@@ -1274,30 +1230,50 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
             [own_product.pk],
         )
 
+    def test_search_excludes_inactive_products(self):
+        from whatsapp.views import search_whatsapp_products
+
+        self.create_product("Laptop Inactive", is_active=False)
+
+        reply = search_whatsapp_products(
+            "laptop",
+            self.organization,
+            self.state,
+        )
+
+        self.assertIsNone(reply)
+
     def test_no_results_returns_none_without_changing_state(self):
-        from unittest.mock import patch
         from whatsapp.views import search_whatsapp_products
 
         original_data = dict(self.state.data)
         original_step = self.state.current_step
         original_waiting_for = self.state.waiting_for
 
-        with patch(
-            "products.services.whatsapp_discovery.search_organization_products",
-            return_value=[],
-        ) as canonical_search:
-            reply = search_whatsapp_products(
-                "unknown product",
-                self.organization,
-                self.state,
-            )
+        reply = search_whatsapp_products(
+            "unknown product phrase",
+            self.organization,
+            self.state,
+        )
 
         self.assertIsNone(reply)
+        self.state.refresh_from_db()
+        self.assertEqual(self.state.data, original_data)
+        self.assertEqual(self.state.current_step, original_step)
+        self.assertEqual(self.state.waiting_for, original_waiting_for)
 
-        canonical_search.assert_called_once_with(
-            self.organization,
-            "unknown product",
-            limit=5,
+    def test_empty_input_does_not_change_state(self):
+        from whatsapp.views import search_whatsapp_products
+
+        original_data = dict(self.state.data)
+        original_step = self.state.current_step
+        original_waiting_for = self.state.waiting_for
+
+        self.assertIsNone(
+            search_whatsapp_products("", self.organization, self.state)
+        )
+        self.assertIsNone(
+            search_whatsapp_products("laptop", None, self.state)
         )
 
         self.state.refresh_from_db()
@@ -1305,30 +1281,94 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
         self.assertEqual(self.state.current_step, original_step)
         self.assertEqual(self.state.waiting_for, original_waiting_for)
 
-    def test_empty_input_does_not_call_canonical_search(self):
-        from unittest.mock import patch
+    def test_specification_requirements_filter_catalogue_products(self):
         from whatsapp.views import search_whatsapp_products
 
-        with patch(
-            "products.services.whatsapp_discovery.search_organization_products",
-        ) as canonical_search:
-            self.assertIsNone(
-                search_whatsapp_products(
-                    "",
-                    self.organization,
-                    self.state,
-                )
-            )
+        matching = self.create_product(
+            "Business Laptop",
+            specifications={"RAM": "8GB", "Storage": "512GB SSD"},
+        )
+        self.create_product(
+            "Business Laptop Basic",
+            specifications={"RAM": "4GB", "Storage": "256GB SSD"},
+        )
 
-            self.assertIsNone(
-                search_whatsapp_products(
-                    "laptop",
-                    None,
-                    self.state,
-                )
-            )
+        reply = search_whatsapp_products(
+            "business laptop",
+            self.organization,
+            self.state,
+            specification_requirements=["8GB", "512GB SSD"],
+        )
 
-        canonical_search.assert_not_called()
+        self.assertIsNotNone(reply)
+        self.assertIn(matching.name, reply)
+        self.assertNotIn("Business Laptop Basic", reply)
+
+        self.state.refresh_from_db()
+        self.assertEqual(
+            self.state.data["whatsapp_product_ids"],
+            [matching.pk],
+        )
+
+    def test_maximum_price_excludes_products_above_budget(self):
+        from whatsapp.views import search_whatsapp_products
+
+        affordable = self.create_product(
+            "Thermal Label Printer",
+            price="180000.00",
+        )
+        self.create_product(
+            "Thermal Label Printer Premium",
+            price="450000.00",
+        )
+
+        reply = search_whatsapp_products(
+            "thermal label printer",
+            self.organization,
+            self.state,
+            max_price="200000",
+        )
+
+        self.assertIsNotNone(reply)
+        self.assertIn(affordable.name, reply)
+        self.assertNotIn("Premium", reply)
+
+        self.state.refresh_from_db()
+        self.assertEqual(
+            self.state.data["whatsapp_product_ids"],
+            [affordable.pk],
+        )
+
+    def test_relative_price_preference_selects_economical_products(self):
+        from whatsapp.views import search_whatsapp_products
+
+        economical = self.create_product(
+            "Barcode Printer",
+            price="100000.00",
+        )
+        self.create_product(
+            "Barcode Printer Standard",
+            price="300000.00",
+        )
+        self.create_product(
+            "Barcode Printer Premium",
+            price="700000.00",
+        )
+
+        reply = search_whatsapp_products(
+            "barcode printer",
+            self.organization,
+            self.state,
+            price_preference="economical",
+        )
+
+        self.assertIsNotNone(reply)
+        self.assertIn(economical.name, reply)
+        self.state.refresh_from_db()
+        self.assertEqual(
+            self.state.data["whatsapp_product_ids"],
+            [economical.pk],
+        )
 
     def test_ai_clarification_is_saved_in_conversation_state(self):
         from unittest.mock import patch
@@ -1348,9 +1388,11 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
                     "Are you looking for a laser distance meter "
                     "or a measuring tape?"
                 ),
-
-            "price_preference": "relevance",
-            "max_price": None},
+                "price_preference": "any",
+                "min_price": None,
+                "max_price": None,
+                "specification_requirements": [],
+            },
         ):
             result = get_ai_product_discovery_reply(
                 "I need something for measuring distance",
@@ -1367,13 +1409,9 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
         self.assertIsNone(result["product_reply"])
 
         self.state.refresh_from_db()
-
         discovery = self.state.data.get("whatsapp_product_discovery", {})
 
-        self.assertEqual(
-            discovery.get("status"),
-            "awaiting_clarification",
-        )
+        self.assertEqual(discovery.get("status"), "awaiting_clarification")
         self.assertEqual(
             discovery.get("original_request"),
             "I need something for measuring distance",
@@ -1383,33 +1421,32 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
             "Are you looking for a laser distance meter or a measuring tape?",
         )
         self.assertEqual(
-            self.state.current_step,
-            "whatsapp_product_discovery",
+            discovery["requirements"]["price_preference"],
+            "any",
         )
+        self.assertEqual(self.state.current_step, "whatsapp_product_discovery")
         self.assertEqual(
             self.state.waiting_for,
             "product_discovery_clarification",
         )
-        self.assertEqual(
-            self.state.data["unrelated_value"],
-            "preserve_me",
-        )
+        self.assertEqual(self.state.data["unrelated_value"], "preserve_me")
 
-    def test_pending_discovery_accepts_customer_clarification_reply(self):
+    def test_pending_discovery_accepts_customer_clarification_and_searches_catalogue(self):
         from unittest.mock import patch
         from whatsapp.views import get_ai_product_discovery_reply
 
+        product = self.create_product(
+            "Laser Distance Meter for Construction",
+            specifications={"Range": "100m"},
+        )
         self.state.current_step = "whatsapp_product_discovery"
         self.state.waiting_for = "product_discovery_clarification"
         self.state.data = {
             "whatsapp_product_discovery": {
                 "status": "awaiting_clarification",
-                "original_request": (
-                    "I need something for measuring distance"
-                ),
+                "original_request": "I need something for measuring distance",
                 "clarification_question": (
-                    "Are you looking for a laser distance meter "
-                    "or a measuring tape?"
+                    "Are you looking for a laser distance meter or a measuring tape?"
                 ),
             }
         }
@@ -1419,15 +1456,14 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
             "whatsapp.ai_service.interpret_product_discovery",
             return_value={
                 "action": "search",
-                "search_query": "laser distance meter for construction",
+                "search_query": "laser distance meter construction",
                 "clarification": "",
-
-            "price_preference": "relevance",
-            "max_price": None},
-        ) as interpret, patch(
-            "products.services.whatsapp_discovery.search_organization_products",
-            return_value=[],
-        ) as canonical_search:
+                "price_preference": "any",
+                "min_price": None,
+                "max_price": None,
+                "specification_requirements": [],
+            },
+        ) as interpret:
             result = get_ai_product_discovery_reply(
                 "A laser one, for construction",
                 self.organization,
@@ -1436,12 +1472,13 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
             )
 
         interpret.assert_called_once()
-        canonical_search.assert_called_once_with(
-            self.organization,
-            "laser distance meter for construction",
-            limit=5,
+        self.assertIsNotNone(result)
+        self.assertIn(product.name, result["reply"])
+        self.state.refresh_from_db()
+        self.assertEqual(
+            self.state.data["whatsapp_product_discovery"]["status"],
+            "awaiting_next_option",
         )
-
 
     def test_ai_discovery_receives_saved_clarification_context(self):
         import json
@@ -1451,26 +1488,29 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
         from whatsapp.ai_service import interpret_product_discovery
 
         discovery_context = {
-            "original_request": (
-                "I need something for measuring distance"
-            ),
+            "original_request": "I need something for measuring distance",
             "clarification_question": (
-                "Are you looking for a laser distance meter "
-                "or a measuring tape?"
+                "Are you looking for a laser distance meter or a measuring tape?"
             ),
+            "requirements": {
+                "price_preference": "any",
+                "min_price": None,
+                "max_price": None,
+                "specification_requirements": [],
+            },
         }
-
         mock_response = SimpleNamespace(
             status="completed",
             output_text=json.dumps({
                 "action": "search",
                 "search_query": "laser distance meter for construction",
                 "clarification": "",
-
-            "price_preference": "relevance",
-            "max_price": None}),
+                "price_preference": "any",
+                "min_price": None,
+                "max_price": None,
+                "specification_requirements": [],
+            }),
         )
-
         mock_client = SimpleNamespace(
             responses=SimpleNamespace(
                 create=Mock(return_value=mock_response)
@@ -1497,10 +1537,8 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
             )
 
         self.assertEqual(result["action"], "search")
-
         ai_input = mock_client.responses.create.call_args.kwargs["input"]
         context = json.loads(ai_input)
-
         self.assertEqual(
             context["product_discovery_context"],
             discovery_context,
@@ -1510,13 +1548,11 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
             "A laser one, for construction",
         )
 
-
     def test_second_clarification_preserves_original_product_request(self):
         from unittest.mock import patch
         from whatsapp.views import get_ai_product_discovery_reply
 
         original_request = "I need something for measuring distance"
-
         self.state.current_step = "whatsapp_product_discovery"
         self.state.waiting_for = "product_discovery_clarification"
         self.state.data = {
@@ -1524,9 +1560,14 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
                 "status": "awaiting_clarification",
                 "original_request": original_request,
                 "clarification_question": (
-                    "Are you looking for a laser distance meter "
-                    "or a measuring tape?"
+                    "Are you looking for a laser distance meter or a measuring tape?"
                 ),
+                "requirements": {
+                    "price_preference": "any",
+                    "min_price": None,
+                    "max_price": None,
+                    "specification_requirements": [],
+                },
             }
         }
         self.state.save()
@@ -1536,12 +1577,12 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
             return_value={
                 "action": "clarify",
                 "search_query": "",
-                "clarification": (
-                    "Will you use it indoors or outdoors?"
-                ),
-
-            "price_preference": "relevance",
-            "max_price": None},
+                "clarification": "Will you use it indoors or outdoors?",
+                "price_preference": "any",
+                "min_price": None,
+                "max_price": None,
+                "specification_requirements": [],
+            },
         ):
             result = get_ai_product_discovery_reply(
                 "A laser one, for construction",
@@ -1555,29 +1596,19 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
             result["reply"],
             "Will you use it indoors or outdoors?",
         )
-
         self.state.refresh_from_db()
         discovery = self.state.data["whatsapp_product_discovery"]
-
-        self.assertEqual(
-            discovery["original_request"],
-            original_request,
-        )
+        self.assertEqual(discovery["original_request"], original_request)
         self.assertEqual(
             discovery["clarification_question"],
             "Will you use it indoors or outdoors?",
         )
-        self.assertEqual(
-            discovery["status"],
-            "awaiting_clarification",
-        )
+        self.assertEqual(discovery["status"], "awaiting_clarification")
 
-
-    def test_successful_search_keeps_next_option_state(self):
-        from unittest.mock import patch
+    def test_successful_search_keeps_next_option_state_and_clears_old_product_state(self):
         from whatsapp.views import search_whatsapp_products
-        product = self.create_product("Laser Distance Meter")
 
+        product = self.create_product("Laser Distance Meter")
         self.state.current_step = "whatsapp_product_discovery"
         self.state.waiting_for = "product_discovery_clarification"
         self.state.data = {
@@ -1587,55 +1618,36 @@ class WhatsAppCanonicalProductSearchTests(TestCase):
                 "clarification_question": "Laser or measuring tape?",
             },
             "unrelated_value": "preserve_me",
+            "selected_whatsapp_product_id": 999,
+            "selected_whatsapp_product_name": "Old Product",
+            "whatsapp_product_quantity": 2,
+            "whatsapp_product_action": "buy",
         }
         self.state.save()
 
-        with patch(
-            "products.services.whatsapp_discovery.search_organization_products",
-            return_value=[self.search_result(product)],
-        ):
-            reply = search_whatsapp_products(
-                "laser distance meter",
-                self.organization,
-                self.state,
-            )
+        reply = search_whatsapp_products(
+            "laser distance meter",
+            self.organization,
+            self.state,
+        )
 
         self.assertIsNotNone(reply)
         self.assertIn("Laser Distance Meter", reply)
-
         self.state.refresh_from_db()
-
         discovery = self.state.data["whatsapp_product_discovery"]
-
-        self.assertEqual(
-            discovery["status"],
-            "awaiting_next_option",
-        )
-        self.assertEqual(
-            discovery["current_product_id"],
-            product.pk,
-        )
-        self.assertEqual(
-            discovery["remaining_product_ids"],
-            [],
-        )
-        self.assertEqual(
-            self.state.data["unrelated_value"],
-            "preserve_me",
-        )
-        self.assertEqual(
-            self.state.data["whatsapp_product_ids"],
-            [product.pk],
-        )
-        self.assertEqual(
-            self.state.data["whatsapp_product_remaining_ids"],
-            [],
-        )
-        self.assertEqual(
-            self.state.current_step,
-            "whatsapp_product_completed",
-        )
+        self.assertEqual(discovery["status"], "awaiting_next_option")
+        self.assertEqual(discovery["current_product_id"], product.pk)
+        self.assertEqual(discovery["remaining_product_ids"], [])
+        self.assertEqual(self.state.data["unrelated_value"], "preserve_me")
+        self.assertEqual(self.state.data["whatsapp_product_ids"], [product.pk])
+        self.assertEqual(self.state.data["whatsapp_product_remaining_ids"], [])
+        self.assertEqual(self.state.current_step, "whatsapp_product_completed")
         self.assertIsNone(self.state.waiting_for)
+        self.assertNotIn("selected_whatsapp_product_id", self.state.data)
+        self.assertNotIn("selected_whatsapp_product_name", self.state.data)
+        self.assertNotIn("whatsapp_product_quantity", self.state.data)
+        self.assertNotIn("whatsapp_product_action", self.state.data)
+
 
 class WhatsAppProductBuilderIntegrationTests(TestCase):
     """Integration tests for product-specific Builder in WhatsApp."""
@@ -2394,8 +2406,10 @@ class WhatsAppProductDiscoveryWebhookTests(TestCase):
             "search_query": ai_search_query,
             "clarification": "",
 
-            "price_preference": "relevance",
-            "max_price": None}
+            "price_preference": "any",
+            "min_price": None,
+            "max_price": None,
+            "specification_requirements": []}
 
         canonical_results = [
             {"id": product.pk},
@@ -2406,10 +2420,6 @@ class WhatsAppProductDiscoveryWebhookTests(TestCase):
                 "whatsapp.ai_service.interpret_product_discovery",
                 return_value=ai_result,
             ) as mock_ai,
-            patch(
-                "products.services.whatsapp_discovery.search_organization_products",
-                return_value=canonical_results,
-            ) as mock_catalogue_search,
         ):
             result = get_ai_product_discovery_reply(
                 customer_reply,
@@ -2421,13 +2431,7 @@ class WhatsAppProductDiscoveryWebhookTests(TestCase):
         # AI interprets the customer's clarification.
         mock_ai.assert_called_once()
 
-        # Django executes the AI-generated search description.
-        mock_catalogue_search.assert_called_once_with(
-            self.organization,
-            ai_search_query,
-            limit=5,
-        )
-
+        # Django executes the AI-generated search against the real catalogue.
         # Django, not AI, retrieves the actual organization-owned product.
         self.assertIsNotNone(result)
         self.assertIn(product.name, result["reply"])
