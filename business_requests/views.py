@@ -1,9 +1,12 @@
-from django.http import HttpResponseForbidden, HttpResponseNotAllowed
+from django.http import HttpResponseForbidden, HttpResponseNotAllowed, JsonResponse
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404, redirect, render
 from django.contrib import messages
 from django.db import transaction
+from django.utils import timezone
+import csv
+from django.http import HttpResponse
 
 from organizations.models import (Country, Organization, OrganizationMember, OrganizationOnboardingMessage,)
 from customers.models import Customer
@@ -19,7 +22,9 @@ from .models import (
 from django.contrib.auth import login
 from django.core.mail import send_mail
 from django.utils import timezone
-from whatsapp.models import Conversation, Message, WhatsAppPhoneNumber
+from decimal import Decimal, InvalidOperation
+from django.core.exceptions import ValidationError
+from whatsapp.models import Conversation, Message, WhatsAppPhoneNumber, WhatsAppLocationRecord, WhatsAppLocationRecordHistory
 from whatsapp.views import (
     send_whatsapp_message,
     send_whatsapp_template,
@@ -48,6 +53,7 @@ from organizations.utils import (
     get_user_organization,
     is_platform_administrator,
 )
+
 
 User = get_user_model()
 
@@ -399,6 +405,1023 @@ def business_dashboard(request):
         "business_requests/business_dashboard.html",
         context,
     )
+
+
+
+@login_required
+def gis_map(request):
+    """
+    GIS map canvas for the currently active organization.
+
+    All active organization members can view locations.
+    Only owners and admins can review or delete locations.
+    """
+    organization = get_user_organization(
+        request.user,
+        request=request,
+    )
+
+    if not organization:
+        messages.error(
+            request,
+            "You are not assigned to an organization.",
+        )
+        return redirect("accounts:login")
+
+    active_membership = OrganizationMember.objects.filter(
+        organization=organization,
+        user=request.user,
+        is_active=True,
+    ).first()
+
+    is_platform_admin = is_platform_administrator(request.user)
+
+    if not active_membership and not is_platform_admin:
+        return HttpResponseForbidden(
+            "You are not an active member of this organization."
+        )
+
+    can_manage_locations = bool(
+        active_membership
+        and active_membership.role in ["owner", "admin"]
+    )
+
+    records = WhatsAppLocationRecord.objects.filter(
+        organization=organization,
+        is_deleted=False,
+        location__isnull=False,
+    )
+
+    context = {
+        "organization": organization,
+        "is_platform_admin": is_platform_admin,
+        "can_manage_locations": can_manage_locations,
+        "location_count": records.count(),
+        "pending_count": records.filter(
+            status="pending_review"
+        ).count(),
+        "approved_count": records.filter(
+            status="approved"
+        ).count(),
+        "rejected_count": records.filter(
+            status="rejected"
+        ).count(),
+        "gis_data_url": "business_requests:gis_map_data",
+    }
+
+    return render(
+        request,
+        "business_requests/gis_map.html",
+        context,
+    )
+
+
+@login_required
+def gis_map_data(request):
+    """
+    Return GeoJSON locations belonging only to the active organization.
+
+    Soft-deleted locations are excluded from normal map results.
+    """
+    organization = get_user_organization(
+        request.user,
+        request=request,
+    )
+
+    if not organization:
+        return JsonResponse(
+            {"error": "No active organization."},
+            status=403,
+        )
+
+    active_membership = OrganizationMember.objects.filter(
+        organization=organization,
+        user=request.user,
+        is_active=True,
+    ).exists()
+
+    if not active_membership and not is_platform_administrator(request.user):
+        return JsonResponse(
+            {"error": "You are not an active member of this organization."},
+            status=403,
+        )
+
+    records = (
+        WhatsAppLocationRecord.objects
+        .filter(
+            organization=organization,
+            is_deleted=False,
+            location__isnull=False,
+        )
+        .select_related(
+            "conversation",
+            "source_message",
+            "reviewed_by",
+        )
+        .order_by("-created_at")
+    )
+
+    # Optional status filter.
+    status = request.GET.get("status", "").strip()
+
+    valid_statuses = {
+        value
+        for value, label in WhatsAppLocationRecord.STATUS_CHOICES
+    }
+
+    if status:
+        if status not in valid_statuses:
+            return JsonResponse(
+                {"error": "Invalid status filter."},
+                status=400,
+            )
+
+        records = records.filter(status=status)
+
+    # Optional text search.
+    search = request.GET.get("q", "").strip()
+
+    if search:
+        from django.db.models import Q
+
+        records = records.filter(
+            Q(subject_name__icontains=search)
+            | Q(subject_phone__icontains=search)
+            | Q(collector_name__icontains=search)
+            | Q(collector_phone__icontains=search)
+            | Q(location_name__icontains=search)
+            | Q(location_address__icontains=search)
+            | Q(location_description__icontains=search)
+        )
+
+    features = []
+
+    for record in records.iterator():
+        point = record.location
+
+        features.append({
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    point.x,
+                    point.y,
+                ],
+            },
+            "properties": {
+                "reference": str(record.reference),
+                "subject_name": record.subject_name,
+                "subject_phone": record.subject_phone,
+                "collector_name": record.collector_name,
+                "collector_phone": record.collector_phone,
+                "location_name": record.location_name,
+                "location_address": record.location_address,
+                "location_description": record.location_description,
+                "latitude": str(record.latitude),
+                "longitude": str(record.longitude),
+                "accuracy_meters": (
+                    str(record.accuracy_meters)
+                    if record.accuracy_meters is not None
+                    else None
+                ),
+                "source": record.get_source_display(),
+                "status": record.status,
+                "status_label": record.get_status_display(),
+                "collected_at": (
+                    record.collected_at.isoformat()
+                    if record.collected_at
+                    else None
+                ),
+                "created_at": record.created_at.isoformat(),
+            },
+        })
+
+    return JsonResponse({
+        "type": "FeatureCollection",
+        "features": features,
+        "count": len(features),
+    })
+
+
+@login_required
+def gis_create_location(request):
+    """
+    Create a location manually for the active organization.
+
+    All active organization members may create locations.
+    New records require review before approval.
+    """
+
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    organization = get_user_organization(
+        request.user,
+        request=request,
+    )
+
+    if not organization:
+        return JsonResponse(
+            {"success": False, "error": "No active organization."},
+            status=403,
+        )
+
+    # Confirm the user is an active member of this organization.
+    is_active_member = OrganizationMember.objects.filter(
+        organization=organization,
+        user=request.user,
+        is_active=True,
+    ).exists()
+
+    if not is_active_member:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "You are not an active member of this organization.",
+            },
+            status=403,
+        )
+
+    subject_name = request.POST.get("subject_name", "").strip()
+    subject_phone = request.POST.get("subject_phone", "").strip()
+    location_name = request.POST.get("location_name", "").strip()
+    location_address = request.POST.get("location_address", "").strip()
+    location_description = request.POST.get(
+        "location_description", ""
+    ).strip()
+
+    latitude_input = request.POST.get("latitude", "").strip()
+    longitude_input = request.POST.get("longitude", "").strip()
+
+    if not subject_name:
+        return JsonResponse(
+            {"success": False, "error": "Subject name is required."},
+            status=400,
+        )
+
+    try:
+        latitude = Decimal(latitude_input)
+        longitude = Decimal(longitude_input)
+
+    except (InvalidOperation, TypeError, ValueError):
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "Enter valid latitude and longitude values.",
+            },
+            status=400,
+        )
+
+    record = WhatsAppLocationRecord(
+        organization=organization,
+        conversation=None,
+        source_message=None,
+
+        collector_name=(
+            request.user.get_full_name()
+            or request.user.get_username()
+        ),
+        collector_phone="",
+
+        subject_name=subject_name,
+        subject_phone=subject_phone,
+
+        latitude=latitude,
+        longitude=longitude,
+
+        location_name=location_name,
+        location_address=location_address,
+        location_description=location_description,
+
+        source="manual",
+        source_url="",
+        source_metadata={
+            "entry_method": "gis_map",
+            "submitted_by_user_id": request.user.pk,
+        },
+
+        status="pending_review",
+    )
+
+    try:
+        with transaction.atomic():
+            record.full_clean()
+            record.save()
+
+            WhatsAppLocationRecordHistory.objects.create(
+                organization=organization,
+                location_record=record,
+                reference=record.reference,
+                action="created",
+                actor=request.user,
+                reason="Location manually created from GIS map.",
+                new_values={
+                    "subject_name": record.subject_name,
+                    "subject_phone": record.subject_phone,
+                    "latitude": str(record.latitude),
+                    "longitude": str(record.longitude),
+                    "location_name": record.location_name,
+                    "location_address": record.location_address,
+                    "source": record.source,
+                    "status": record.status,
+                },
+            )
+
+    except ValidationError as exc:
+        if hasattr(exc, "message_dict"):
+            errors = exc.message_dict
+        else:
+            errors = {"error": exc.messages}
+
+        return JsonResponse(
+            {"success": False, "errors": errors},
+            status=400,
+        )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "message": "Location created and submitted for review.",
+            "reference": str(record.reference),
+            "status": record.status,
+            "latitude": str(record.latitude),
+            "longitude": str(record.longitude),
+        },
+        status=201,
+    )
+
+
+@login_required
+def gis_update_location(request, reference):
+    """
+    Update an existing GIS location.
+
+    All active organization members can edit locations
+    belonging to their active organization.
+
+    Every change is recorded in the location history.
+    """
+
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    organization = get_user_organization(
+        request.user,
+        request=request,
+    )
+
+    if not organization:
+        return JsonResponse(
+            {"success": False, "error": "No active organization."},
+            status=403,
+        )
+
+    is_active_member = OrganizationMember.objects.filter(
+        organization=organization,
+        user=request.user,
+        is_active=True,
+    ).exists()
+
+    if not is_active_member:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "You are not an active member of this organization.",
+            },
+            status=403,
+        )
+
+    try:
+        with transaction.atomic():
+            record = (
+                WhatsAppLocationRecord.objects
+                .select_for_update()
+                .get(
+                    reference=reference,
+                    organization=organization,
+                    is_deleted=False,
+                )
+            )
+
+            old_values = {
+                "subject_name": record.subject_name,
+                "subject_phone": record.subject_phone,
+                "latitude": str(record.latitude),
+                "longitude": str(record.longitude),
+                "location_name": record.location_name,
+                "location_address": record.location_address,
+                "location_description": record.location_description,
+            }
+
+            subject_name = request.POST.get(
+                "subject_name",
+                record.subject_name,
+            ).strip()
+
+            subject_phone = request.POST.get(
+                "subject_phone",
+                record.subject_phone,
+            ).strip()
+
+            location_name = request.POST.get(
+                "location_name",
+                record.location_name,
+            ).strip()
+
+            location_address = request.POST.get(
+                "location_address",
+                record.location_address,
+            ).strip()
+
+            location_description = request.POST.get(
+                "location_description",
+                record.location_description,
+            ).strip()
+
+            if not subject_name:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "Subject name is required.",
+                    },
+                    status=400,
+                )
+
+            latitude_input = request.POST.get(
+                "latitude",
+                str(record.latitude),
+            ).strip()
+
+            longitude_input = request.POST.get(
+                "longitude",
+                str(record.longitude),
+            ).strip()
+
+            try:
+                latitude = Decimal(latitude_input)
+                longitude = Decimal(longitude_input)
+
+                if not latitude.is_finite() or not longitude.is_finite():
+                    raise InvalidOperation
+
+            except (InvalidOperation, TypeError, ValueError):
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "Enter valid latitude and longitude values.",
+                    },
+                    status=400,
+                )
+
+            record.subject_name = subject_name
+            record.subject_phone = subject_phone
+            record.location_name = location_name
+            record.location_address = location_address
+            record.location_description = location_description
+            record.latitude = latitude
+            record.longitude = longitude
+
+            record.full_clean()
+            record.save()
+
+            new_values = {
+                "subject_name": record.subject_name,
+                "subject_phone": record.subject_phone,
+                "latitude": str(record.latitude),
+                "longitude": str(record.longitude),
+                "location_name": record.location_name,
+                "location_address": record.location_address,
+                "location_description": record.location_description,
+            }
+
+            coordinates_changed = (
+                old_values["latitude"] != new_values["latitude"]
+                or old_values["longitude"] != new_values["longitude"]
+            )
+
+            action = (
+                "moved"
+                if coordinates_changed
+                else "updated"
+            )
+
+            WhatsAppLocationRecordHistory.objects.create(
+                organization=organization,
+                location_record=record,
+                reference=record.reference,
+                action=action,
+                actor=request.user,
+                reason="Location updated from GIS map.",
+                old_values=old_values,
+                new_values=new_values,
+            )
+
+    except WhatsAppLocationRecord.DoesNotExist:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "Location not found or no longer available.",
+            },
+            status=404,
+        )
+
+    except ValidationError as exc:
+        if hasattr(exc, "message_dict"):
+            errors = exc.message_dict
+        else:
+            errors = {"error": exc.messages}
+
+        return JsonResponse(
+            {"success": False, "errors": errors},
+            status=400,
+        )
+
+    return JsonResponse({
+        "success": True,
+        "message": "Location updated successfully.",
+        "reference": str(record.reference),
+        "action": action,
+        "latitude": str(record.latitude),
+        "longitude": str(record.longitude),
+    })
+
+
+@login_required
+def gis_review_location(request, reference):
+    """
+    Approve or reject a GIS location.
+
+    Only active organization owners and administrators
+    can review locations.
+    """
+
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    organization = get_user_organization(
+        request.user,
+        request=request,
+    )
+
+    if not organization:
+        return JsonResponse(
+            {"success": False, "error": "No active organization."},
+            status=403,
+        )
+
+    # Only active owners and administrators may review.
+    is_authorized = OrganizationMember.objects.filter(
+        organization=organization,
+        user=request.user,
+        is_active=True,
+        role__in=["owner", "admin"],
+    ).exists()
+
+    if not is_authorized:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "Only organization owners and administrators can review locations.",
+            },
+            status=403,
+        )
+
+    action = request.POST.get("action", "").strip().lower()
+    reason = request.POST.get("reason", "").strip()
+
+    if action not in ["approve", "reject"]:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "Invalid review action. Use approve or reject.",
+            },
+            status=400,
+        )
+
+    if action == "reject" and not reason:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "Please provide a reason for rejecting this location.",
+            },
+            status=400,
+        )
+
+    try:
+        with transaction.atomic():
+            record = (
+                WhatsAppLocationRecord.objects
+                .select_for_update()
+                .get(
+                    reference=reference,
+                    organization=organization,
+                    is_deleted=False,
+                )
+            )
+
+            if record.status != "pending_review":
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "This location has already been reviewed.",
+                    },
+                    status=400,
+                )
+
+            old_values = {
+                "status": record.status,
+                "review_reason": record.review_reason,
+                "reviewed_by": (
+                    record.reviewed_by_id
+                    if record.reviewed_by_id
+                    else None
+                ),
+                "reviewed_at": (
+                    record.reviewed_at.isoformat()
+                    if record.reviewed_at
+                    else None
+                ),
+            }
+
+            if action == "approve":
+                record.status = "approved"
+                history_action = "approved"
+                message = "Location approved successfully."
+
+            else:
+                record.status = "rejected"
+                history_action = "rejected"
+                message = "Location rejected successfully."
+
+            record.review_reason = reason
+            record.reviewed_by = request.user
+            record.reviewed_at = timezone.now()
+
+            record.save()
+
+            new_values = {
+                "status": record.status,
+                "review_reason": record.review_reason,
+                "reviewed_by": request.user.pk,
+                "reviewed_at": record.reviewed_at.isoformat(),
+            }
+
+            WhatsAppLocationRecordHistory.objects.create(
+                organization=organization,
+                location_record=record,
+                reference=record.reference,
+                action=history_action,
+                actor=request.user,
+                reason=reason,
+                old_values=old_values,
+                new_values=new_values,
+            )
+
+    except WhatsAppLocationRecord.DoesNotExist:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "Location not found or no longer available.",
+            },
+            status=404,
+        )
+
+    return JsonResponse({
+        "success": True,
+        "message": message,
+        "reference": str(record.reference),
+        "status": record.status,
+        "reviewed_at": record.reviewed_at.isoformat(),
+    })
+
+
+@login_required
+def gis_delete_location(request, reference):
+    """
+    Soft-delete a GIS location.
+
+    Only active organization owners and administrators
+    can delete locations.
+
+    The record and its history remain in the database.
+    """
+
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    organization = get_user_organization(
+        request.user,
+        request=request,
+    )
+
+    if not organization:
+        return JsonResponse(
+            {"success": False, "error": "No active organization."},
+            status=403,
+        )
+
+    # Only active owners and administrators may delete.
+    is_authorized = OrganizationMember.objects.filter(
+        organization=organization,
+        user=request.user,
+        is_active=True,
+        role__in=["owner", "admin"],
+    ).exists()
+
+    if not is_authorized:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "Only organization owners and administrators can delete locations.",
+            },
+            status=403,
+        )
+
+    reason = request.POST.get("reason", "").strip()
+
+    try:
+        with transaction.atomic():
+            record = (
+                WhatsAppLocationRecord.objects
+                .select_for_update()
+                .get(
+                    reference=reference,
+                    organization=organization,
+                    is_deleted=False,
+                )
+            )
+
+            old_values = {
+                "subject_name": record.subject_name,
+                "subject_phone": record.subject_phone,
+                "latitude": str(record.latitude),
+                "longitude": str(record.longitude),
+                "location_name": record.location_name,
+                "location_address": record.location_address,
+                "status": record.status,
+                "is_deleted": record.is_deleted,
+            }
+
+            record.is_deleted = True
+            record.deleted_by = request.user
+            record.deleted_at = timezone.now()
+            record.save(
+                update_fields=[
+                    "is_deleted",
+                    "deleted_by",
+                    "deleted_at",
+                    "updated_at",
+                ]
+            )
+
+            new_values = {
+                "is_deleted": record.is_deleted,
+                "deleted_by": request.user.pk,
+                "deleted_at": record.deleted_at.isoformat(),
+            }
+
+            WhatsAppLocationRecordHistory.objects.create(
+                organization=organization,
+                location_record=record,
+                reference=record.reference,
+                action="deleted",
+                actor=request.user,
+                reason=reason or "Location soft-deleted from GIS map.",
+                old_values=old_values,
+                new_values=new_values,
+            )
+
+    except WhatsAppLocationRecord.DoesNotExist:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "Location not found or already deleted.",
+            },
+            status=404,
+        )
+
+    return JsonResponse({
+        "success": True,
+        "message": "Location deleted successfully.",
+        "reference": str(record.reference),
+        "deleted_at": record.deleted_at.isoformat(),
+    })
+
+
+@login_required
+def gis_location_history(request, reference):
+    """
+    Return the audit history for one GIS location.
+
+    All active members of the organization can view its history.
+    History is retained even after a location is soft-deleted.
+    """
+
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+
+    organization = get_user_organization(
+        request.user,
+        request=request,
+    )
+
+    if not organization:
+        return JsonResponse(
+            {"success": False, "error": "No active organization."},
+            status=403,
+        )
+
+    is_active_member = OrganizationMember.objects.filter(
+        organization=organization,
+        user=request.user,
+        is_active=True,
+    ).exists()
+
+    if not is_active_member:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "You are not an active member of this organization.",
+            },
+            status=403,
+        )
+
+    history_records = (
+        WhatsAppLocationRecordHistory.objects
+        .filter(
+            organization=organization,
+            reference=reference,
+        )
+        .select_related("actor")
+        .order_by("-created_at")
+    )
+
+    history = []
+
+    for entry in history_records:
+        actor_name = None
+
+        if entry.actor:
+            actor_name = (
+                entry.actor.get_full_name()
+                or entry.actor.get_username()
+            )
+
+        history.append({
+            "action": entry.action,
+            "action_label": entry.get_action_display(),
+            "actor": actor_name,
+            "reason": entry.reason,
+            "old_values": entry.old_values,
+            "new_values": entry.new_values,
+            "created_at": entry.created_at.isoformat(),
+        })
+
+    return JsonResponse({
+        "success": True,
+        "reference": str(reference),
+        "count": len(history),
+        "history": history,
+    })
+
+
+@login_required
+def gis_export_csv(request):
+    """
+    Export active GIS locations for the current organization as CSV.
+
+    Supports the map's status and text search filters.
+    Soft-deleted records are excluded.
+    """
+
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+
+    organization = get_user_organization(
+        request.user,
+        request=request,
+    )
+
+    if not organization:
+        return JsonResponse(
+            {"success": False, "error": "No active organization."},
+            status=403,
+        )
+
+    is_active_member = OrganizationMember.objects.filter(
+        organization=organization,
+        user=request.user,
+        is_active=True,
+    ).exists()
+
+    if not is_active_member:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "You are not an active member of this organization.",
+            },
+            status=403,
+        )
+
+    records = WhatsAppLocationRecord.objects.filter(
+        organization=organization,
+        is_deleted=False,
+        location__isnull=False,
+    ).order_by("-created_at")
+
+    # Apply the same status filter used by the map.
+    status = request.GET.get("status", "").strip()
+
+    valid_statuses = {
+        value
+        for value, label in WhatsAppLocationRecord.STATUS_CHOICES
+    }
+
+    if status:
+        if status not in valid_statuses:
+            return JsonResponse(
+                {"success": False, "error": "Invalid status filter."},
+                status=400,
+            )
+
+        records = records.filter(status=status)
+
+    # Apply the same text search used by the map.
+    search = request.GET.get("q", "").strip()
+
+    if search:
+        from django.db.models import Q
+
+        records = records.filter(
+            Q(subject_name__icontains=search)
+            | Q(subject_phone__icontains=search)
+            | Q(collector_name__icontains=search)
+            | Q(collector_phone__icontains=search)
+            | Q(location_name__icontains=search)
+            | Q(location_address__icontains=search)
+            | Q(location_description__icontains=search)
+        )
+
+    response = HttpResponse(
+        content_type="text/csv; charset=utf-8",
+    )
+
+    response["Content-Disposition"] = (
+        'attachment; filename="gis_locations.csv"'
+    )
+
+    # UTF-8 BOM helps Excel recognize the CSV encoding.
+    response.write("\ufeff")
+
+    writer = csv.writer(response)
+
+    writer.writerow([
+        "Reference",
+        "Subject Name",
+        "Subject Phone",
+        "Collector Name",
+        "Collector Phone",
+        "Location Name",
+        "Address",
+        "Description",
+        "Latitude",
+        "Longitude",
+        "Accuracy (meters)",
+        "Source",
+        "Status",
+        "Collected At",
+        "Created At",
+    ])
+
+    for record in records.iterator():
+        writer.writerow([
+            str(record.reference),
+            record.subject_name,
+            record.subject_phone,
+            record.collector_name,
+            record.collector_phone,
+            record.location_name,
+            record.location_address,
+            record.location_description,
+            str(record.latitude),
+            str(record.longitude),
+            (
+                str(record.accuracy_meters)
+                if record.accuracy_meters is not None
+                else ""
+            ),
+            record.get_source_display(),
+            record.get_status_display(),
+            (
+                record.collected_at.isoformat()
+                if record.collected_at
+                else ""
+            ),
+            record.created_at.isoformat(),
+        ])
+
+    return response
+
 
 @login_required
 def request_dashboard(request):

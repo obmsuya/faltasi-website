@@ -4,6 +4,12 @@ from django.db import models
 from organizations.models import Organization
 from customers.models import Customer
 from business_requests.models import BusinessRequest
+import uuid
+from django.contrib.gis.db.models import PointField
+from django.contrib.gis.geos import Point
+
+from django.core.validators import MinValueValidator, MaxValueValidator
+from django.conf import settings
 
 
 class WhatsAppBusinessAccount(models.Model):
@@ -643,3 +649,453 @@ class Message(models.Model):
             f"Message - "
             f"{self.conversation.phone_number}"
         )
+
+
+
+
+
+class WhatsAppLocationRecord(models.Model):
+    """
+    Stores geographical locations collected through WhatsApp
+    or entered manually by an organization member.
+
+    Collector: person submitting the location.
+    Subject: person, property, business, or place being recorded.
+    """
+
+    SOURCE_CHOICES = [
+        ("whatsapp_pin", "WhatsApp location pin"),
+        ("google_maps_link", "Google Maps link"),
+        ("manual", "Manually entered"),
+    ]
+
+    STATUS_CHOICES = [
+        ("pending_review", "Pending review"),
+        ("approved", "Approved"),
+        ("rejected", "Rejected"),
+    ]
+
+    reference = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
+    )
+
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="whatsapp_location_records",
+    )
+
+    # WhatsApp conversation is optional for manually entered records.
+    conversation = models.ForeignKey(
+        "Conversation",
+        on_delete=models.PROTECT,
+        related_name="location_records",
+        blank=True,
+        null=True,
+    )
+
+    source_message = models.OneToOneField(
+        "Message",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="collected_location_record",
+    )
+
+    # COLLECTOR DETAILS
+
+    collector_name = models.CharField(
+        max_length=255,
+        help_text="Name of the person collecting and submitting the data.",
+    )
+
+    collector_phone = models.CharField(
+        max_length=30,
+        blank=True,
+        help_text="WhatsApp number used by the collector, if available.",
+    )
+
+    # SUBJECT DETAILS
+
+    subject_name = models.CharField(
+        max_length=255,
+        help_text="Name of the person, property owner, business, or subject.",
+    )
+
+    subject_phone = models.CharField(
+        max_length=30,
+        blank=True,
+        help_text="Contact number of the subject, if available.",
+    )
+
+    # GEOGRAPHICAL INFORMATION
+
+    latitude = models.DecimalField(
+        max_digits=10,
+        decimal_places=7,
+        validators=[
+            MinValueValidator(-90),
+            MaxValueValidator(90),
+        ],
+        help_text="Latitude in decimal degrees, WGS84.",
+    )
+
+    longitude = models.DecimalField(
+        max_digits=10,
+        decimal_places=7,
+        validators=[
+            MinValueValidator(-180),
+            MaxValueValidator(180),
+        ],
+        help_text="Longitude in decimal degrees, WGS84.",
+    )
+
+    location = PointField(
+        srid=4326,
+        geography=True,
+        null=True,
+        blank=True,
+        spatial_index=True,
+        help_text="Spatial location stored in WGS84.",
+    )
+
+    location_name = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Name of the location, property, or place.",
+    )
+
+    location_address = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Address supplied with the location, if available.",
+    )
+
+    location_description = models.TextField(
+        blank=True,
+        help_text="Additional field observations about the location.",
+    )
+
+    accuracy_meters = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        validators=[MinValueValidator(0)],
+        help_text="Reported horizontal location accuracy in metres.",
+    )
+
+    altitude_meters = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        help_text="Altitude in metres, if supplied by the source.",
+    )
+
+    # LOCATION SOURCE AND EVIDENCE
+
+    source = models.CharField(
+        max_length=30,
+        choices=SOURCE_CHOICES,
+    )
+
+    source_url = models.URLField(
+        max_length=2048,
+        blank=True,
+        help_text="Original Google Maps URL, when a map link was submitted.",
+    )
+
+    source_metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Additional source information, such as provider metadata.",
+    )
+
+    # REVIEW INFORMATION
+
+    status = models.CharField(
+        max_length=30,
+        choices=STATUS_CHOICES,
+        default="pending_review",
+    )
+
+    review_reason = models.TextField(
+        blank=True,
+        help_text="Reason or notes provided during review.",
+    )
+
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_gis_locations",
+    )
+
+    reviewed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    # SOFT DELETION
+
+    is_deleted = models.BooleanField(
+        default=False,
+        db_index=True,
+    )
+
+    deleted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="deleted_gis_locations",
+    )
+
+    deleted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    # TIMESTAMPS
+
+    collected_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text="Time the location was captured, if supplied by the source.",
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+        verbose_name = "WhatsApp Location Record"
+        verbose_name_plural = "WhatsApp Location Records"
+
+        indexes = [
+            models.Index(
+                fields=["organization", "created_at"],
+                name="wa_loc_org_created_idx",
+            ),
+            models.Index(
+                fields=["organization", "status"],
+                name="wa_loc_org_status_idx",
+            ),
+            models.Index(
+                fields=["organization", "subject_phone"],
+                name="wa_loc_org_subject_idx",
+            ),
+            models.Index(
+                fields=["organization", "collector_phone"],
+                name="wa_loc_org_collect_idx",
+            ),
+            models.Index(
+                fields=["organization", "is_deleted"],
+                name="wa_loc_org_deleted_idx",
+            ),
+        ]
+
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(
+                    latitude__gte=-90,
+                    latitude__lte=90,
+                ),
+                name="wa_loc_valid_latitude",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(
+                    longitude__gte=-180,
+                    longitude__lte=180,
+                ),
+                name="wa_loc_valid_longitude",
+            ),
+        ]
+
+    def _sync_location(self):
+        """
+        Synchronize the PostGIS point from latitude and longitude.
+
+        PostGIS coordinate order:
+        X = longitude
+        Y = latitude
+        """
+        if self.latitude is None or self.longitude is None:
+            self.location = None
+            return
+
+        self.location = Point(
+            float(self.longitude),
+            float(self.latitude),
+            srid=4326,
+        )
+
+    def clean(self):
+        super().clean()
+
+        errors = {}
+
+        # WhatsApp records must have a conversation.
+        # Manual records do not require one.
+        if (
+            self.source in ["whatsapp_pin", "google_maps_link"]
+            and not self.conversation_id
+        ):
+            errors["conversation"] = (
+                "A WhatsApp conversation is required for this source."
+            )
+
+        # Validate organization and conversation ownership.
+        if self.organization_id and self.conversation_id:
+            if (
+                self.conversation.organization_id
+                != self.organization_id
+            ):
+                errors["conversation"] = (
+                    "The conversation must belong to the same "
+                    "organization as this location record."
+                )
+
+        # Validate source message ownership.
+        if self.source_message_id:
+            if self.conversation_id:
+                if (
+                    self.source_message.conversation_id
+                    != self.conversation_id
+                ):
+                    errors["source_message"] = (
+                        "The source message must belong to the selected "
+                        "conversation."
+                    )
+
+            if (
+                self.organization_id
+                and self.source_message.organization_id
+                != self.organization_id
+            ):
+                errors["source_message"] = (
+                    "The source message must belong to the same "
+                    "organization as this location record."
+                )
+
+        # Google Maps links must have a source URL.
+        if (
+            self.source == "google_maps_link"
+            and not self.source_url
+        ):
+            errors["source_url"] = (
+                "A Google Maps URL is required for this source."
+            )
+
+        # Manual records must not require WhatsApp source evidence.
+        if self.source == "manual":
+            self.source_message = None
+
+        # Validate accuracy.
+        if (
+            self.accuracy_meters is not None
+            and self.accuracy_meters < 0
+        ):
+            errors["accuracy_meters"] = (
+                "Accuracy cannot be negative."
+            )
+
+        if errors:
+            raise ValidationError(errors)
+
+        self._sync_location()
+
+    def save(self, *args, **kwargs):
+        """
+        Always synchronize the PostGIS point before saving.
+
+        Also ensures the spatial point is included when update_fields
+        is explicitly supplied.
+        """
+        self._sync_location()
+
+        update_fields = kwargs.get("update_fields")
+
+        if update_fields is not None:
+            kwargs["update_fields"] = set(update_fields) | {"location"}
+
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return (
+            f"{self.subject_name} | "
+            f"{self.latitude}, {self.longitude}"
+        )
+
+
+ 
+class WhatsAppLocationRecordHistory(models.Model):
+    ACTION_CHOICES = [
+        ("created", "Created"),
+        ("updated", "Updated"),
+        ("moved", "Coordinates changed"),
+        ("approved", "Approved"),
+        ("rejected", "Rejected"),
+        ("deleted", "Soft deleted"),
+    ]
+
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="gis_location_history",
+    )
+
+    location_record = models.ForeignKey(
+        WhatsAppLocationRecord,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="history",
+    )
+
+    reference = models.UUIDField(
+        db_index=True,
+    )
+
+    action = models.CharField(
+        max_length=20,
+        choices=ACTION_CHOICES,
+    )
+
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="gis_location_actions",
+    )
+
+    reason = models.TextField(blank=True)
+
+    old_values = models.JSONField(default=dict, blank=True)
+
+    new_values = models.JSONField(default=dict, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["organization", "reference", "created_at"],
+                name="gis_hist_org_ref_date_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.action} - {self.reference}"

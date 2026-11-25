@@ -1,0 +1,531 @@
+
+{% extends "main/base_business.html" %}
+
+{% block title %}GIS Map | Faltasi Business Portal{% endblock %}
+
+{% block page_heading %}GIS Map{% endblock %}
+
+{% block extra_head %}
+<link
+    href="https://unpkg.com/maplibre-gl@6.11.2/dist/maplibre-gl.css"
+    rel="stylesheet"
+/>
+
+<style>
+    .gis-page {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .gis-heading h1 {
+        margin: 0 0 6px;
+        color: #202b3d;
+    }
+
+    .gis-stats {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+    }
+
+    .gis-stat {
+        background: white;
+        border-radius: 12px;
+        padding: 18px;
+        box-shadow: 0 2px 10px rgba(0,0,0,.04);
+    }
+
+    .gis-stat strong {
+        display: block;
+        font-size: 25px;
+        color: #263d65;
+    }
+
+    .gis-stat span {
+        color: #718096;
+        font-size: 13px;
+    }
+
+    .gis-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        background: white;
+        padding: 14px;
+        border-radius: 12px;
+    }
+
+    .gis-toolbar input,
+    .gis-toolbar select,
+    .gis-toolbar button {
+        padding: 10px 12px;
+        border: 1px solid #d8e0eb;
+        border-radius: 7px;
+        background: white;
+    }
+
+    .gis-toolbar input {
+        flex: 1;
+        min-width: 180px;
+    }
+
+    .gis-toolbar button {
+        cursor: pointer;
+        background: #405fa5;
+        color: white;
+        border: none;
+    }
+
+    .gis-toolbar button:hover {
+        background: #304b87;
+    }
+
+    .gis-map-card {
+        background: white;
+        padding: 14px;
+        border-radius: 12px;
+    }
+
+    #gisMap {
+        width: 100%;
+        height: 650px;
+        border-radius: 12px;
+        border: 1px solid #d8e0eb;
+        overflow: hidden;
+    }
+
+    #gisMapMessage {
+        margin: 12px 2px 0;
+        color: #718096;
+        font-size: 13px;
+    }
+
+    .gis-popup {
+        min-width: 220px;
+        font-size: 13px;
+        line-height: 1.7;
+        color: #263247;
+    }
+
+    .gis-popup-title {
+        font-weight: 700;
+        font-size: 15px;
+        margin-bottom: 6px;
+    }
+
+    .gis-popup-row {
+        margin-bottom: 3px;
+    }
+
+    .gis-popup-label {
+        font-weight: 600;
+    }
+
+    .gis-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 18px;
+        padding: 12px 4px 2px;
+        font-size: 13px;
+        color: #536176;
+    }
+
+    .gis-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+    }
+
+    .gis-legend-dot {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+
+    @media (max-width: 768px) {
+        .gis-stats {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        #gisMap {
+            height: 500px;
+        }
+    }
+</style>
+{% endblock %}
+
+
+{% block content %}
+
+<div class="gis-page">
+
+    <div class="gis-heading">
+        <h1>GIS Map Canvas</h1>
+        <p>
+            View geographical locations collected by
+            {{ organization.name }}.
+        </p>
+    </div>
+
+    <div class="gis-stats">
+
+        <div class="gis-stat">
+            <strong>{{ location_count }}</strong>
+            <span>Total mapped locations</span>
+        </div>
+
+        <div class="gis-stat">
+            <strong>{{ pending_count }}</strong>
+            <span>Pending review</span>
+        </div>
+
+        <div class="gis-stat">
+            <strong>{{ approved_count }}</strong>
+            <span>Approved</span>
+        </div>
+
+        <div class="gis-stat">
+            <strong>{{ rejected_count }}</strong>
+            <span>Rejected</span>
+        </div>
+
+    </div>
+
+    <div class="gis-toolbar">
+
+        <input
+            type="search"
+            id="gisSearch"
+            placeholder="Search subject, collector or location..."
+        >
+
+        <select id="gisStatus">
+            <option value="">All statuses</option>
+            <option value="pending_review">Pending review</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+        </select>
+
+        <button type="button" id="gisApplyFilters">
+            Apply filters
+        </button>
+
+        <button type="button" id="gisResetFilters">
+            Reset
+        </button>
+
+        <button type="button" id="gisFitPoints">
+            Fit all points
+        </button>
+
+    </div>
+
+    <div class="gis-map-card">
+
+        <div id="gisMap"></div>
+
+        <div class="gis-legend">
+            <div class="gis-legend-item">
+                <span class="gis-legend-dot" style="background:#e6a23c"></span>
+                Pending review
+            </div>
+
+            <div class="gis-legend-item">
+                <span class="gis-legend-dot" style="background:#239b65"></span>
+                Approved
+            </div>
+
+            <div class="gis-legend-item">
+                <span class="gis-legend-dot" style="background:#d9534f"></span>
+                Rejected
+            </div>
+        </div>
+
+        <p id="gisMapMessage" aria-live="polite">
+            Loading map...
+        </p>
+
+    </div>
+
+</div>
+
+{% endblock %}
+
+
+{% block extra_js %}
+
+<script type="module">
+import * as maplibregl from
+    "https://unpkg.com/maplibre-gl@6.11.2/dist/maplibre-gl.mjs";
+
+(function () {
+
+    const dataUrl = "{% url 'business_requests:gis_map_data' %}";
+
+    const message = document.getElementById("gisMapMessage");
+
+    const statusColors = {
+        pending_review: "#e6a23c",
+        approved: "#239b65",
+        rejected: "#d9534f"
+    };
+
+    const emptyFeatureCollection = {
+        type: "FeatureCollection",
+        features: []
+    };
+
+    let currentFeatures = [];
+
+    // Initialize MapLibre with OpenFreeMap.
+    const map = new maplibregl.Map({
+        container: "gisMap",
+        style: "https://tiles.openfreemap.org/styles/liberty",
+        center: [39.26951, -6.82349],
+        zoom: 11,
+        attributionControl: true
+    });
+
+    // Navigation controls.
+    map.addControl(
+        new maplibregl.NavigationControl(),
+        "top-right"
+    );
+
+    // Scale control.
+    map.addControl(
+        new maplibregl.ScaleControl({
+            maxWidth: 120,
+            unit: "metric"
+        }),
+        "bottom-left"
+    );
+
+    function createPopup(properties) {
+
+        const container = document.createElement("div");
+        container.className = "gis-popup";
+
+        function addRow(label, value) {
+            const row = document.createElement("div");
+            row.className = "gis-popup-row";
+
+            const labelElement = document.createElement("span");
+            labelElement.className = "gis-popup-label";
+            labelElement.textContent = label + ": ";
+
+            const valueElement = document.createElement("span");
+            valueElement.textContent = value || "Not supplied";
+
+            row.appendChild(labelElement);
+            row.appendChild(valueElement);
+
+            container.appendChild(row);
+        }
+
+        const title = document.createElement("div");
+        title.className = "gis-popup-title";
+        title.textContent = properties.subject_name || "Location";
+
+        container.appendChild(title);
+
+        addRow("Location", properties.location_name);
+        addRow("Address", properties.location_address);
+        addRow("Collector", properties.collector_name);
+        addRow("Subject phone", properties.subject_phone);
+        addRow("Status", properties.status_label);
+        addRow("Latitude", properties.latitude);
+        addRow("Longitude", properties.longitude);
+        addRow("Source", properties.source);
+
+        return container;
+    }
+
+    function fitPoints() {
+
+        if (!currentFeatures.length) {
+            return;
+        }
+
+        const bounds = new maplibregl.LngLatBounds();
+
+        currentFeatures.forEach(function (feature) {
+            const coordinates = feature.geometry.coordinates;
+            bounds.extend(coordinates);
+        });
+
+        map.fitBounds(bounds, {
+            padding: 60,
+            maxZoom: 15,
+            duration: 800
+        });
+    }
+
+    function updateMapData(features) {
+
+        currentFeatures = features;
+
+        const source = map.getSource("location-records");
+
+        if (source) {
+            source.setData({
+                type: "FeatureCollection",
+                features: features
+            });
+        }
+
+        message.textContent =
+            features.length + " location(s) displayed.";
+    }
+
+    async function loadLocations() {
+
+        message.textContent = "Loading locations...";
+
+        const params = new URLSearchParams();
+
+        const search = document
+            .getElementById("gisSearch")
+            .value.trim();
+
+        const status = document
+            .getElementById("gisStatus")
+            .value;
+
+        if (search) {
+            params.set("q", search);
+        }
+
+        if (status) {
+            params.set("status", status);
+        }
+
+        try {
+
+            const response = await fetch(
+                dataUrl + "?" + params.toString(),
+                {
+                    headers: {
+                        "Accept": "application/json"
+                    },
+                    credentials: "same-origin"
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error(
+                    "Unable to retrieve location records."
+                );
+            }
+
+            const data = await response.json();
+
+            updateMapData(data.features || []);
+
+        } catch (error) {
+
+            console.error("GIS location loading error:", error);
+
+            message.textContent = error.message;
+
+            updateMapData([]);
+        }
+    }
+
+    map.on("load", function () {
+
+        // GeoJSON source for collected locations.
+        map.addSource("location-records", {
+            type: "geojson",
+            data: emptyFeatureCollection
+        });
+
+        // Point circles.
+        map.addLayer({
+            id: "location-points",
+            type: "circle",
+            source: "location-records",
+            paint: {
+                "circle-radius": [
+                    "interpolate",
+                    ["linear"],
+                    ["zoom"],
+                    4, 5,
+                    12, 9,
+                    18, 12
+                ],
+
+                "circle-color": [
+                    "match",
+                    ["get", "status"],
+                    "pending_review", statusColors.pending_review,
+                    "approved", statusColors.approved,
+                    "rejected", statusColors.rejected,
+                    "#405fa5"
+                ],
+
+                "circle-stroke-color": "#ffffff",
+                "circle-stroke-width": 2,
+                "circle-opacity": 0.9
+            }
+        });
+
+        // Pointer cursor on points.
+        map.on("mouseenter", "location-points", function () {
+            map.getCanvas().style.cursor = "pointer";
+        });
+
+        map.on("mouseleave", "location-points", function () {
+            map.getCanvas().style.cursor = "";
+        });
+
+        // Display location details when a point is clicked.
+        map.on("click", "location-points", function (event) {
+
+            const feature = event.features[0];
+
+            const coordinates = feature.geometry.coordinates.slice();
+
+            new maplibregl.Popup({
+                maxWidth: "320px"
+            })
+                .setLngLat(coordinates)
+                .setDOMContent(
+                    createPopup(feature.properties)
+                )
+                .addTo(map);
+        });
+
+        loadLocations();
+    });
+
+    // Map loading errors.
+    map.on("error", function (event) {
+        console.error("MapLibre error:", event.error);
+    });
+
+    // Filter buttons.
+    document
+        .getElementById("gisApplyFilters")
+        .addEventListener("click", loadLocations);
+
+    document
+        .getElementById("gisResetFilters")
+        .addEventListener("click", function () {
+
+            document.getElementById("gisSearch").value = "";
+            document.getElementById("gisStatus").value = "";
+
+            loadLocations();
+        });
+
+    document
+        .getElementById("gisFitPoints")
+        .addEventListener("click", fitPoints);
+
+})();
+</script>
+
+{% endblock %}

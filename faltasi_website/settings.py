@@ -131,6 +131,7 @@ INSTALLED_APPS = [
     "product_knowledge",
     'channels.apps.ChannelsConfig',
     'conversation_builder',
+    "django.contrib.gis",
 
 ]
 
@@ -168,8 +169,20 @@ WSGI_APPLICATION = "faltasi_website.wsgi.application"
 
 # Database
 DATABASE_URL = os.environ.get("DATABASE_URL")
+DJANGO_ENV = os.environ.get("DJANGO_ENV", "production")
 
-if DATABASE_URL:
+if DJANGO_ENV == "local":
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.contrib.gis.db.backends.postgis",
+            "NAME": os.environ.get("LOCAL_DB_NAME", "faltasi_db"),
+            "USER": os.environ.get("LOCAL_DB_USER", "postgres"),
+            "PASSWORD": os.environ.get("LOCAL_DB_PASSWORD"),
+            "HOST": os.environ.get("LOCAL_DB_HOST", "127.0.0.1"),
+            "PORT": os.environ.get("LOCAL_DB_PORT", "5432"),
+        }
+    }
+elif DATABASE_URL:
     import dj_database_url
 
     DATABASES = {
@@ -178,15 +191,11 @@ if DATABASE_URL:
             conn_max_age=600,
         )
     }
-else:
-    # Local development database: SQLite.
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
-        }
-    }
 
+    # Use PostGIS for GeoDjango spatial fields.
+    DATABASES["default"]["ENGINE"] = (
+        "django.contrib.gis.db.backends.postgis"
+    )
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -229,6 +238,27 @@ USE_TZ = True
 
 # Static files
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Local Windows GeoDjango libraries (QGIS)
+if os.environ.get("DJANGO_ENV") == "local" and os.name == "nt":
+    QGIS_ROOT = Path(r"C:\Program Files\QGIS 3.44.15")
+    QGIS_BIN = QGIS_ROOT / "bin"
+
+    GDAL_LIBRARY_PATH = str(QGIS_BIN / "gdal313.dll")
+    GEOS_LIBRARY_PATH = str(QGIS_BIN / "geos_c.dll")
+
+    _GIS_DLL_DIRECTORY_HANDLES = []
+
+    for _dll_dir in (
+        QGIS_BIN,
+        QGIS_ROOT / "apps" / "gdal" / "lib",
+        QGIS_ROOT / "apps" / "proj" / "lib",
+    ):
+        if _dll_dir.is_dir():
+            _GIS_DLL_DIRECTORY_HANDLES.append(
+                os.add_dll_directory(str(_dll_dir))
+            )
+
 STATIC_URL = "/static/"
 
 STATICFILES_DIRS = []

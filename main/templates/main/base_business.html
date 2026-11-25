@@ -112,6 +112,13 @@
                 <span class="pa-nav-icon">✉</span>
                 <span>WhatsApp Conversations</span>
             </a>
+
+            <a class="pa-nav-link {% if request.resolver_match.url_name == 'gis_map' %}is-active{% endif %}"
+                href="{% url 'business_requests:gis_map' %}">
+                <span class="pa-nav-icon">⌖</span>
+                <span>GIS Map</span>
+            </a>
+
             <a class="pa-nav-link {% if request.resolver_match.app_name == 'conversation_builder' %}is-active{% endif %}"
                 href="{% url 'conversation_builder:overview' %}">
                  <span class="pa-nav-icon">⚙</span>
@@ -209,6 +216,8 @@
                             
                         {% elif request.resolver_match.app_name == 'whatsapp' %}
                             WhatsApp Conversations
+                        {% elif request.resolver_match.url_name == 'gis_map' %}
+                            GIS Map
 
                         {% elif request.resolver_match.app_name == 'conversation_builder' %}
                             WhatsApp Conversation Builder
