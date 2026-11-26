@@ -1,0 +1,16 @@
+.env
+.env.*
+*.sqlite3
+backups/
+media/
+staticfiles/
+venv/
+.venv/
+.git/
+.vercel/
+__pycache__/
+*.pyc
+faltasi_whatsapp_workflow_inspection.txt
+faltasi_whatsapp_deep_inspection.txt
+test_ai_staff_live.py
+whatsapp_test.json

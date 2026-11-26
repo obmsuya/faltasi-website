@@ -43,4 +43,39 @@ urlpatterns = [
     path("organizations/create/", views.organization_create, name="organization_create"),
     path("organizations/<int:organization_id>/create-owner/", views.organization_create_owner, name="organization_create_owner"),
     path("organizations/<int:organization_id>/status/", views.organization_toggle_status, name="organization_toggle_status"),
+    path("gis-map/", views.gis_map, name="gis_map"),
+    path("gis-map/data/", views.gis_map_data, name="gis_map_data"),
+    path(
+        "gis-map/create/",
+        views.gis_create_location,
+        name="gis_create_location",
+    ),
+    path(
+        "gis-map/update/<uuid:reference>/",
+        views.gis_update_location,
+        name="gis_update_location",
+    ),
+    path(
+        "gis-map/review/<uuid:reference>/",
+        views.gis_review_location,
+        name="gis_review_location",
+    ),
+
+    path(
+        "gis-map/delete/<uuid:reference>/",
+        views.gis_delete_location,
+        name="gis_delete_location",
+    ),
+
+    path(
+        "gis-map/history/<uuid:reference>/",
+        views.gis_location_history,
+        name="gis_location_history",
+    ),
+
+    path(
+        "gis-map/export/csv/",
+        views.gis_export_csv,
+        name="gis_export_csv",
+    ),
 ]

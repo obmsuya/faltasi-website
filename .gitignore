@@ -30,3 +30,5 @@ staticfiles/
 # Temporary local test scripts
 /test_ai_staff_live.py
 
+.vercel
+.env*

@@ -1,0 +1,29 @@
+﻿FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Install Linux GIS libraries
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gdal-bin \
+    libgdal-dev \
+    libgeos-dev \
+    libproj-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install existing Python dependencies and Gunicorn
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt gunicorn==23.0.0
+
+# Copy the Django project
+COPY . .
+
+# Collect static files without accessing the production database
+RUN SECRET_KEY=temporary-build-key \
+    DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build \
+    python manage.py collectstatic --noinput
+
+# Vercel uses port 80 by default; local testing can override PORT
+CMD ["sh", "-c", "exec gunicorn faltasi_website.wsgi:application --bind 0.0.0.0:${PORT:-80} --workers 2 --timeout 60"]
